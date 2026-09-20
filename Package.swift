@@ -56,7 +56,9 @@ let package = Package(
     ),
     .testTarget(
       name: "AgentCtlTests",
-      dependencies: ["AgentCtlTCA"]
+      // AgentCtlCLI so the help pages and the messages that name the CLI can be rendered and asserted on;
+      // its files are `#if os(macOS)`, and so is the test that reads them.
+      dependencies: ["AgentCtlTCA", "AgentCtlCLI"]
     ),
   ]
 )

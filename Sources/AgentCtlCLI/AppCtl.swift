@@ -3,16 +3,13 @@
   import ArgumentParser
   import Foundation
 
-  /// The host's example commands, for the help text below. Computed, not stored: `AgentCtl.runtime` is set by
-  /// `run(config:)`, which happens before any `CommandConfiguration` is read.
-  private var help: HelpExamples { AgentCtl.runtime.help }
-
   /// The `appctl` command tree. `AgentCtl.run(config:)` runs it; the host app's facts — including every example
   /// in the help text — come from `AgentCtl.runtime`, never from a literal here.
   struct AppCtlCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
       // The name the CLI was invoked under, so a host's own executable (`tinyctl`) names itself in its help.
-      commandName: URL(fileURLWithPath: CommandLine.arguments.first ?? "appctl").lastPathComponent,
+      // If there is no argv[0] at all, fall back to how the host spells the CLI in its examples.
+      commandName: URL(fileURLWithPath: CommandLine.arguments.first ?? help.invocation).lastPathComponent,
       abstract: "Drive \(AgentCtl.runtime.name) headlessly, run its scenarios and check the verification ladder.",
       discussion: [help.note, "Command reference: docs/agent-commands.md (or \(help.invocation) screens)."]
         .compactMap { $0 }

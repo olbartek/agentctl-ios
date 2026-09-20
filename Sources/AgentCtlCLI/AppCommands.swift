@@ -63,7 +63,7 @@
         print(response.body, terminator: response.body.hasSuffix("\n") ? "" : "\n")
         return response.exitCode
       } catch {
-        printError("cannot reach AgentBridge on 127.0.0.1:\(port) (is the app running? ./appctl app launch): \(error)")
+        printError(Message.bridgeUnreachable(port: port, error: error))
         return RunStatus.internalError.rawValue
       }
     }
@@ -74,7 +74,7 @@
         print(response.body, terminator: response.body.hasSuffix("\n") ? "" : "\n")
         return response.exitCode
       } catch {
-        printError("cannot reach AgentBridge on 127.0.0.1:\(port) (is the app running? ./appctl app launch): \(error)")
+        printError(Message.bridgeUnreachable(port: port, error: error))
         return RunStatus.internalError.rawValue
       }
     }

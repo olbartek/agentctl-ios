@@ -74,7 +74,7 @@
       let existing = try? String(contentsOf: file, encoding: .utf8)
       if check {
         guard existing == generated else {
-          print("docs/agent-commands.md is stale. Run ./appctl docs.")
+          print(Message.staleDocs)
           return 1
         }
         print("docs/agent-commands.md is up to date.")
@@ -177,6 +177,23 @@
       }
       printError("cannot find the repo root (no \(marker) above \(FileManager.default.currentDirectoryPath))")
       return nil
+    }
+  }
+
+  /// The messages that name the CLI itself. They spell it with the host's own invocation, never `./appctl`:
+  /// a host's users are told to run a command that exists in their repo.
+  enum Message {
+    static func bridgeUnreachable(port: Int, error: any Error) -> String {
+      "cannot reach AgentBridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): \(error)"
+    }
+
+    static var staleDocs: String {
+      "docs/agent-commands.md is stale. Run \(help.invocation) docs."
+    }
+
+    /// The `check` ladder's one-column form of ``staleDocs``.
+    static var staleDocsDetail: String {
+      "stale: run \(help.invocation) docs"
     }
   }
 

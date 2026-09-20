@@ -497,17 +497,19 @@ asserted. A thin suite that touches everything once passes them.
 ## The in-app bridge
 
 `AgentCtlBridge` is `#if DEBUG` from end to end, so a Release build compiles it away, and its server listens on
-`127.0.0.1` only. The app shell's integration is one property, plus `await launch.start()` from the root view's
-`.task`:
+`127.0.0.1` only. The app shell holds one property:
 
 ```swift
 @State private var launch = AgentLaunch(config: MyAppConfig.appCtl)
 ```
 
+…builds its root view from `launch.store`, calls `await launch.start()` once from that view's `.task`, and shows
+a placeholder while `launch.isReady` is false, which is how a launch seed is applied before the first real frame.
+
 `AgentLaunch` reads the launch arguments the CLI's `app` subcommands pass: `-agent-port <n>` (default 8765),
 `-appctl-seed "<script>"` (commands applied before the first real frame, so the app opens already in that
-state), `-mock-latency <ms>` and `-clear-session`. `start()` applies the seed and only then starts listening, so
-the bridge's first answer means the app is ready.
+state), `-mock-latency <ms>` and `-clear-session`. `start()` applies the seed before it starts listening, so the
+bridge's first answer means the app is ready.
 
 The same scripts then run against the real app (`app run`), on the live clock and with real mock latency — which
 is why `advance` is rejected there.

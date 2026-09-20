@@ -1,0 +1,119 @@
+// The bridge is `#if DEBUG` from end to end, so its tests are too: in a release build there is nothing to test.
+#if DEBUG
+  @testable import AgentCtlBridge
+  import AgentCtlCore
+  import AgentCtlTCA
+  import ComposableArchitecture
+  import Foundation
+  import Testing
+  import TinyApp
+
+  extension AgentCtlSuite {
+    /// What this guards: the in-app bridge. The HTTP layer is exercised on the host (it builds on macOS too),
+    /// against a live store of the example app, and the central claim is the first test's: the same script
+    /// produces the same steps through the bridge as it does headlessly.
+    @MainActor
+    @Suite struct BridgeTests {
+      struct Bridge {
+        let server: BridgeServer
+        let port: UInt16
+      }
+
+      /// A live app with zero latency whose runner synthesizes appearance (there are no views in a test).
+      func startBridge() async throws -> Bridge {
+        let app = TinyAppConfig.live(latency: .zero)
+        let runner = app.makeRunner(synthesizesAppearance: true)
+        _ = await runner.launch()
+        let router = BridgeRouter(runner: runner, screensText: { ScreensRenderer.render(TinyAppConfig.screens) })
+        let server = BridgeServer { await router.handle($0) }
+        let port = try await server.start(port: 0)
+        return Bridge(server: server, port: port)
+      }
+
+      func request(
+        _ method: String,
+        _ path: String,
+        body: String = "",
+        port: UInt16
+      ) async throws -> (status: Int, body: String, exit: String?) {
+        var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(port)\(path)")))
+        request.httpMethod = method
+        if !body.isEmpty { request.httpBody = Data(body.utf8) }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let http = try #require(response as? HTTPURLResponse)
+        return (http.statusCode, String(decoding: data, as: UTF8.self), http.value(forHTTPHeaderField: "X-Appctl-Exit"))
+      }
+
+      /// The live store runs on real time, so this script stays well inside the cooldown it starts: the first
+      /// countdown tick is a second away, and a step settles in about a quarter of one. Popping the screen
+      /// cancels the countdown in both runs, so both end with no pending effect.
+      @Test func runReturnsTheSameStepsAsTheHeadlessRunner() async throws {
+        let script = "open 2; save; back"
+        let headless = await serially {
+          let runner = TinyAppConfig.headless().makeRunner()
+          _ = await runner.launch()
+          return StepFormatter.text(await runner.run(script).steps) + "\n"
+        }
+        let bridge = try await startBridge()
+        defer { bridge.server.stop() }
+        let response = try await request("POST", "/run", body: script, port: bridge.port)
+        #expect(response.status == 200)
+        #expect(response.exit == "0")
+        #expect(response.body == headless)
+      }
+
+      @Test func exitCodesTravelInAHeader() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.server.stop() }
+        #expect(try await request("POST", "/run", body: "expect screen=items", port: bridge.port).exit == "0")
+        #expect(try await request("POST", "/run", body: "expect screen=nope", port: bridge.port).exit == "1")
+        #expect(try await request("POST", "/run", body: "expect \"open", port: bridge.port).exit == "2")
+        let advance = try await request("POST", "/run", body: "advance 1s", port: bridge.port)
+        #expect(advance.exit == "2")
+        #expect(advance.body.contains("advance is only available headlessly"))
+      }
+
+      @Test func otherEndpoints() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.server.stop() }
+        let json = try await request("POST", "/run?format=json", body: "expect screen=items", port: bridge.port)
+        #expect(json.body.contains("\"screen\" : \"items\""))
+        #expect(try await request("GET", "/state", port: bridge.port).body.contains("TinyRoot.State"))
+        #expect(try await request("GET", "/screens", port: bridge.port).body.contains("items/<id>"))
+        #expect(try await request("GET", "/snapshot", port: bridge.port).body.contains("screen=items"))
+        #expect(try await request("GET", "/nope", port: bridge.port).status == 404)
+        #expect(try await request("GET", "/run", port: bridge.port).status == 405)
+      }
+
+      @Test func httpParsing() {
+        let request = "POST /run?format=json HTTP/1.1\r\nHost: x\r\nContent-Length: 6\r\n\r\nsubmit"
+        #expect(
+          HTTPParser.parse(Data(request.utf8))
+            == .request(BridgeRequest(method: "POST", path: "/run", query: ["format": "json"], body: "submit"))
+        )
+        #expect(HTTPParser.parse(Data("POST /run HTTP/1.1\r\nContent-Length: 6\r\n\r\nsub".utf8)) == .incomplete)
+        #expect(HTTPParser.parse(Data("GET /state HTTP/1.1\r\n".utf8)) == .incomplete)
+        #expect(HTTPParser.parse(Data("GARBAGE\r\n\r\n".utf8)) == .malformed)
+        #expect(HTTPParser.parse(Data("GET / HTTP/1.1\r\nContent-Length: -1\r\n\r\n".utf8)) == .malformed)
+        let response = String(
+          decoding: HTTPParser.serialize(BridgeResponse(status: 200, body: "ok", exitCode: 1)), as: UTF8.self
+        )
+        #expect(response.hasPrefix("HTTP/1.1 200 OK\r\n"))
+        #expect(response.contains("X-Appctl-Exit: 1\r\n"))
+        #expect(response.hasSuffix("\r\n\r\nok"))
+      }
+
+      @Test func launchArguments() {
+        let options = AgentLaunch<TinyRoot>.Options(arguments: [
+          "TinyApp", "-agent-port", "9000", "-appctl-seed", "open 2; save", "-mock-latency", "0",
+          "-clear-session",
+        ])
+        #expect(options.port == 9000)
+        #expect(options.seed == "open 2; save")
+        #expect(options.latency == .zero)
+        #expect(options.clearSession)
+        #expect(AgentLaunch<TinyRoot>.Options(arguments: ["TinyApp"]) == AgentLaunch<TinyRoot>.Options(arguments: []))
+      }
+    }
+  }
+#endif

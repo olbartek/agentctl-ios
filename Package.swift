@@ -54,11 +54,30 @@ let package = Package(
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]
     ),
+    // The example app, and its CLI. Targets of this package rather than a nested package: the tests below use
+    // TinyApp as their fixture, and a nested package depending on this one would be a dependency cycle.
+    // Neither target is a product, so a consumer of the libraries never builds them.
+    .target(
+      name: "TinyApp",
+      dependencies: [
+        "AgentCtlCore",
+        // AgentCtlTCA as well, because `TinyAppConfig` is an `AppCtlConfig` and builds the two hosts.
+        "AgentCtlTCA",
+        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+      ],
+      path: "Examples/TinyApp/Sources/TinyApp"
+    ),
+    .executableTarget(
+      name: "tinyctl",
+      dependencies: ["TinyApp", "AgentCtlTCA", "AgentCtlCLI"],
+      path: "Examples/TinyApp/Sources/tinyctl"
+    ),
     .testTarget(
       name: "AgentCtlTests",
       // AgentCtlCLI so the help pages and the messages that name the CLI can be rendered and asserted on;
-      // its files are `#if os(macOS)`, and so is the test that reads them.
-      dependencies: ["AgentCtlTCA", "AgentCtlCLI"]
+      // its files are `#if os(macOS)`, and so is the test that reads them. TinyApp is the fixture for every
+      // test that needs a real app to drive.
+      dependencies: ["AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "TinyApp"]
     ),
   ]
 )

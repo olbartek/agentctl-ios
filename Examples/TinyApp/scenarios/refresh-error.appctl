@@ -1,0 +1,9 @@
+# A forced failure: `mock` makes the next call to items.fetch throw, and the screen reports the error code.
+# The rows that were already loaded stay, the way a real list keeps its contents when a refresh fails.
+expect screen=items items=3 error=none
+mock items.fetch network
+refresh
+expect error=network items=3 loading=false call=items.fetch
+# The fault is one-shot: the next refresh succeeds again.
+refresh
+expect error=none items=3 call=items.fetch

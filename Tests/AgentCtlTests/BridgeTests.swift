@@ -24,7 +24,7 @@
         let app = TinyAppConfig.live(latency: .zero)
         let runner = app.makeRunner(synthesizesAppearance: true)
         _ = await runner.launch()
-        let router = BridgeRouter(runner: runner, screensText: { ScreensRenderer.render(TinyAppConfig.screens) })
+        let router = BridgeRouter(runner: runner, screensText: { ScreensRenderer.render(TinyAppConfig.screens, mockExample: TinyAppConfig.docsText.mockExample) })
         let server = BridgeServer { await router.handle($0) }
         let port = try await server.start(port: 0)
         return Bridge(server: server, port: port)

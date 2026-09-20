@@ -40,7 +40,7 @@ Scenarios in `Examples/TinyApp/scenarios/*.appctl` use the same syntax plus `exp
 |---|---|
 | `expect k=v [k=v …]` | Assert on screen, any summary key, call=<client.method> (called during the previous step), error=<code\|none> or pending=<n>. A failed assertion fails the script. |
 | `advance <duration>` | Advance the test clock, e.g. 500ms, 30s, 5m, 1h. Headless only. |
-| `mock <client.method> <error>` | Make the next call to that method fail, e.g. mock <client.method> <error>. |
+| `mock <client.method> <error>` | Make the next call to that method fail, e.g. mock items.fetch network. |
 
 ## Screens
 

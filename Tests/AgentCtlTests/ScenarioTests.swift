@@ -53,7 +53,7 @@ extension AgentCtlSuite {
     static var docsMarkdown: String {
       DocsRenderer.render(
         screens: TinyAppConfig.screens,
-        runtimeCommands: AgentRegistry.runtimeCommands,
+        runtimeCommands: AgentRegistry.runtimeCommands(mockExample: TinyAppConfig.docsText.mockExample),
         mockMethods: TinyAppConfig.mockMethods,
         text: TinyAppConfig.docsText
       )

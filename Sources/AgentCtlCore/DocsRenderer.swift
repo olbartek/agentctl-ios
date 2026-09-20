@@ -1,6 +1,7 @@
 import Foundation
 
-/// The host-written prose in `docs/agent-commands.md`: everything that is not generated from the registry.
+/// The host-written prose in the generated command reference: everything that is not generated from the
+/// registry. ``mockExample`` also reaches `<cli> screens`, which lists the same runtime commands.
 public struct DocsText: Sendable {
   public var title: String
   public var intro: String
@@ -18,6 +19,10 @@ public struct DocsText: Sendable {
   /// How the document names the scenario files, e.g. `scenarios/*.appctl`. A host whose app is not at the root of
   /// its repository points this at the app's own directory, so a reader is sent where the files really are.
   public var scenariosGlob: String
+  /// The example in the `mock` runtime command's help, e.g. `mock orders.fetchOrders network`. It names one of
+  /// the host's own clients, so it appears in both renderings of the runtime command list — the generated
+  /// document and `<cli> screens`. The default is a placeholder.
+  public var mockExample: String
   public var appendix: [String]
 
   public init(
@@ -28,6 +33,7 @@ public struct DocsText: Sendable {
     exampleCommand: String = "<command>",
     exampleStep: String = "screen=<path> <key>=<value> … calls=<client.method>,…",
     scenariosGlob: String = "scenarios/*.appctl",
+    mockExample: String = AgentRegistry.defaultMockExample,
     appendix: [String]
   ) {
     self.title = title
@@ -37,6 +43,7 @@ public struct DocsText: Sendable {
     self.exampleCommand = exampleCommand
     self.exampleStep = exampleStep
     self.scenariosGlob = scenariosGlob
+    self.mockExample = mockExample
     self.appendix = appendix
   }
 }

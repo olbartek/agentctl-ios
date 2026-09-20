@@ -10,7 +10,7 @@ import Testing
 @Suite
 struct DocsRendererTests {
   static func render(_ text: DocsText) -> String {
-    DocsRenderer.render(screens: [], runtimeCommands: AgentRegistry.runtimeCommands, mockMethods: [], text: text)
+    DocsRenderer.render(screens: [], runtimeCommands: AgentRegistry.runtimeCommands(mockExample: text.mockExample), mockMethods: [], text: text)
   }
 
   @Test
@@ -24,13 +24,17 @@ struct DocsRendererTests {
       .replacingOccurrences(of: ".appctl", with: "")
       .replacingOccurrences(of: "-appctl-seed", with: "")
     #expect(!stripped.contains("appctl"))
-    for word in ["alice", "login-as", "home/orders", "auth.login", "Alice Smith", "password \"", "> submit"] {
+    for word in [
+      "alice", "login-as", "home/orders", "auth.login", "Alice Smith", "password \"", "> submit",
+      "orders.fetchOrders",
+    ] {
       #expect(!markdown.contains(word), "the generated docs still name '\(word)'")
     }
     // Not vacuous: the host's invocation and the placeholder command really are rendered.
     #expect(markdown.contains("`xctl docs`"))
     #expect(markdown.contains("`xctl test`"))
     #expect(markdown.contains("  > <command>"))
+    #expect(markdown.contains("e.g. mock <client.method> <error>."))
   }
 
   /// The claim Task 14 depends on: a host that fills every field gets its own wording back byte for byte, so its
@@ -45,6 +49,7 @@ struct DocsRendererTests {
       invocation: "./appctl",
       exampleCommand: "submit",
       exampleStep: "screen=home/orders orders=3 loading=false calls=auth.login,session.save,orders.fetchOrders",
+      mockExample: "mock orders.fetchOrders network",
       appendix: []
     )
     let lines = Self.render(text).components(separatedBy: "\n")
@@ -61,5 +66,22 @@ struct DocsRendererTests {
         "Scenarios in `scenarios/*.appctl` use the same syntax plus `expect` lines; `./appctl test` runs them."
       )
     )
+    // The runtime command table names the host's own client, not a placeholder: `mock`'s example is the one
+    // line of that table a host has to fill in.
+    #expect(
+      lines.contains(
+        "| `mock <client.method> <error>` | Make the next call to that method fail, e.g. "
+          + "mock orders.fetchOrders network. |"
+      )
+    )
+  }
+
+  /// The same example reaches the other rendering of the runtime command list, `<cli> screens`, which a host's
+  /// agents read far more often than the committed document.
+  @Test
+  func theScreensListingCarriesTheHostsMockExample() {
+    let listing = ScreensRenderer.render([], mockExample: "mock orders.fetchOrders network")
+    #expect(listing.contains("Make the next call to that method fail, e.g. mock orders.fetchOrders network."))
+    #expect(!ScreensRenderer.render([]).contains("orders.fetchOrders"))
   }
 }

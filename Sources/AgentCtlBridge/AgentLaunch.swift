@@ -53,6 +53,8 @@
     @ObservationIgnored private let app: LiveHost<Root>
     /// The screens `GET /screens` renders, from the config; headlessly there is no registry to ask.
     @ObservationIgnored private let screens: [ScreenDoc]
+    /// The host's `mock` example, so the bridge's `/screens` lists the runtime commands exactly as the CLI does.
+    @ObservationIgnored private let mockExample: String
     @ObservationIgnored private var server: BridgeServer?
     @ObservationIgnored private var router: BridgeRouter<Root>?
 
@@ -63,6 +65,7 @@
       }
       self.options = options
       self.screens = config.screens
+      self.mockExample = config.docsText.mockExample
       self.app = config.makeLive(options.latency ?? .liveValue)
       self.store = app.store
       self.isReady = options.seed == nil
@@ -74,7 +77,7 @@
       guard server == nil else { return }
       let router = BridgeRouter(
         runner: app.makeRunner(synthesizesAppearance: false),
-        screensText: { [screens] in ScreensRenderer.render(screens) }
+        screensText: { [screens, mockExample] in ScreensRenderer.render(screens, mockExample: mockExample) }
       )
       let server = BridgeServer(handler: { await router.handle($0) })
       self.router = router

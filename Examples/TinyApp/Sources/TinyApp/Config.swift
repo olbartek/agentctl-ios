@@ -32,6 +32,7 @@ public enum TinyAppConfig {
     exampleCommand: "open 2",
     exampleStep: "screen=items/2 title=\"Second item\" saved=false cooldown=0",
     scenariosGlob: "Examples/TinyApp/scenarios/*.appctl",
+    mockExample: "mock items.fetch network",
     appendix: [
       "## The example's data",
       "",

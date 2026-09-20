@@ -5,7 +5,7 @@
   import Foundation
   import Observation
 
-  /// Starts AgentBridge in DEBUG builds of the app and applies launch seeding (spec §5.6).
+  /// Starts AgentBridge in DEBUG builds of the app and applies launch seeding.
   ///
   /// Everything app-specific comes from the ``AppCtlConfig`` the host hands it — the same value its CLI runs
   /// on — so the app shell's integration is one line:

@@ -11,7 +11,8 @@ public struct HeadlessEnvironment {
   public let tracker: EffectTracker
 }
 
-/// A real store running on the Mac with deterministic dependencies (spec §5.4): a `TestClock`, incrementing
+/// A real store running on the Mac with the deterministic dependencies CONTRACT.md §6 requires: a `TestClock`,
+/// incrementing
 /// UUIDs, a fixed date, zero mock latency and fresh mock backends.
 ///
 /// Run it with the main serial executor enabled (`Deterministic.isEnabled = true`).
@@ -148,7 +149,8 @@ where
     }
   }
 
-  /// Settles on real time: no mock call in flight and the state quiet for a moment (spec §5.6).
+  /// Settles on real time — no mock call in flight, and the state quiet for a moment — because a running app's
+  /// latency and timers are real, unlike the headless host's.
   public func settle() async -> SettleResult {
     await settleLive(
       state: { store.state },

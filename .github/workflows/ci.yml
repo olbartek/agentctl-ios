@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The package declares swift-tools-version 6.1, and its dependencies ship version-specific manifests
+      # (swift-composable-architecture has a Package@swift-6.1.swift), so it needs a recent toolchain. A runner
+      # image's *default* Xcode is not always the newest it has installed, and pinning one path breaks whenever
+      # the image drops that version — so pick the highest-versioned Xcode present instead.
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selected $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+          swift --version
+
+      - name: Build
+        run: swift build
+
+      # The vocabulary, the script parser, settling, the bridge router, the CLI's help pages, and the coverage
+      # guards — the last of these run against the example app below.
+      - name: Test
+        run: swift test
+
+      # The example app is also the package's end-to-end fixture: three scenario files driven through the real
+      # runner. `tinyctl` is TinyApp's CLI, built from the same AgentCtlCLI a host app would use.
+      - name: Example scenarios
+        run: swift run tinyctl test
+
+      # The example's committed command reference is generated from its +Agent.swift files; --check fails if a
+      # change to a screen's commands or summary keys never made it into the document.
+      - name: Generated command reference is current
+        run: swift run tinyctl docs --check

@@ -22,7 +22,7 @@ public struct RunnerEnvironment {
   }
 }
 
-/// Exit codes of spec §5.3.
+/// The exit codes of CONTRACT.md §5.
 public enum RunStatus: Int32, Sendable {
   case ok = 0
   /// A command or `expect` failed.
@@ -59,7 +59,7 @@ where
   let environment: RunnerEnvironment
   let pending: @MainActor () -> Int
   /// The methods `mock` accepts, supplied by the host that built this runner, since the app's clients — not
-  /// `AgentRuntime` — know which methods are mockable.
+  /// this package — know which methods are mockable.
   let mockMethods: [MockMethod]
   /// Adds a `customDump` diff of the root state to each step (`--diff`).
   public var recordsDiff = false
@@ -161,7 +161,7 @@ where
       return fail(line, status: .usage, "advance needs a duration such as 500ms, 30s, 5m or 1h")
     }
     guard let advanceClock = environment.advance else {
-      return fail(line, status: .usage, "advance is only available headlessly (appctl run), not in the running app")
+      return fail(line, status: .usage, "advance is only available headlessly, not in the running app")
     }
     let start = callLog.count
     let before = state

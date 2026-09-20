@@ -32,9 +32,9 @@ public struct BridgeResponse: Equatable, Sendable {
   }
 }
 
-/// AgentBridge's endpoints (spec §5.6), independent of the transport so they can be tested on the host:
+/// AgentBridge's endpoints, independent of the transport so they can be tested on the host:
 ///
-/// - `POST /run` (body: a script; `?format=json` for JSON): the same output as `appctl run`.
+/// - `POST /run` (body: a script; `?format=json` for JSON): the same output as the CLI's `run`.
 /// - `GET /state`: `customDump` of the root state.
 /// - `GET /screens`: every screen and its commands.
 /// - `GET /snapshot`: the current screen's summary line.

@@ -14,14 +14,15 @@ whatever commands the host app declares, how the three runtime commands (`expect
 that make a script's output reproducible. It does **not** define which screens, commands, summary
 keys or mock methods any particular app has — that vocabulary belongs to the app that embeds
 AgentCtl (declared however the host language expresses it: `AgentScreen`/`AgentCommand` in Swift, a
-Kotlin equivalent in a future port). Examples below use AgentShop's vocabulary (`auth/login`,
-`orders.fetchOrders`, …) only to show the mechanism, never as something a port must literally have.
+Kotlin equivalent in a future port). Examples below use the vocabulary of AgentShop, the app this
+implementation was extracted from (`auth/login`, `orders.fetchOrders`, …), only to show the
+mechanism, never as something a port must literally have.
 
-Where this document and the reference implementation's own docs (`appctl-guide.md`,
-`appctl-internals.md`, `agent-commands.md`) disagree, this document follows the reference
-**source code** (`ScriptParser.swift`, `Expectation.swift`, `StepRecord.swift`, `ScriptRunner.swift`),
-per the design spec's rule that code is authoritative. Three such gaps are called out inline and
-summarized in the extraction's report.
+Where this document and the prose documentation of that app disagree (its `appctl-guide.md`,
+`appctl-internals.md` and generated `agent-commands.md` — none of them part of this repository),
+this document follows the **source code** (`ScriptParser.swift`, `Expectation.swift`,
+`StepRecord.swift`, `ScriptRunner.swift`), which is authoritative. Three such gaps are called out
+inline.
 
 ## 1. Script language
 

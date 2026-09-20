@@ -33,7 +33,7 @@ public struct NoScenariosFound: Error, Equatable, Sendable, CustomStringConverti
 /// - ``unusedCommands()``: command names no scenario sends.
 /// - ``undocumentedSummaryKeys()``: summary keys a scenario run emits that no screen's `summaryKeys` lists.
 /// - ``unvisitedScreens()``: documented screen paths no scenario run visits. A pattern segment written
-///   `<id>` (e.g. `home/orders/<id>`) matches any concrete segment (`home/orders/1003`), so a screen with a
+///   `<id>` (e.g. `items/<id>`) matches any concrete segment (`items/2`), so a screen with a
 ///   variable path only needs one scenario to reach some instance of it, not every possible one.
 ///
 /// All three run the same fixed set of scenario files, read once when this value is constructed — later
@@ -114,7 +114,7 @@ where Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
     }
   }
 
-  /// `home/orders/<id>` matches `home/orders/1003`.
+  /// `items/<id>` matches `items/2`.
   public static func matches(pattern: String, path: String) -> Bool {
     let patternParts = pattern.split(separator: "/")
     let pathParts = path.split(separator: "/")

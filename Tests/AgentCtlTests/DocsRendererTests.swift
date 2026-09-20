@@ -37,9 +37,9 @@ struct DocsRendererTests {
     #expect(markdown.contains("e.g. mock <client.method> <error>."))
   }
 
-  /// The claim Task 14 depends on: a host that fills every field gets its own wording back byte for byte, so its
-  /// committed docs differ only where this package deliberately generalized the prose (the two script-syntax
-  /// bullets, which are placeholders on purpose).
+  /// The claim a host's committed command reference rests on: a host that fills every field gets its own wording
+  /// back byte for byte, so its docs differ from what it had before only where this package deliberately
+  /// generalized the prose (the two script-syntax bullets, which are placeholders on purpose).
   @Test
   func aHostRestoresItsOwnWording() {
     let text = DocsText(

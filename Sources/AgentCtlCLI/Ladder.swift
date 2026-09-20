@@ -2,7 +2,8 @@
   import AgentCtlTCA
   import Foundation
 
-  /// `appctl check`: the verification ladder of spec §6, one line per stage.
+  /// The CLI's `check`: the verification ladder — build, tests, scenarios and the generated docs, then the two
+  /// UI stages — cheapest first, one line per stage, stopping at the first failure.
   @MainActor
   struct Ladder {
     /// The packages L0 builds and L1 tests, in order.

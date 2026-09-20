@@ -60,3 +60,6 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# The CLI's working directory: logs, screenshots, snapshot failures and session files.
+.appctl/

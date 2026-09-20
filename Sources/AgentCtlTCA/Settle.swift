@@ -15,7 +15,8 @@ public struct SettleResult: Equatable, Sendable {
   }
 }
 
-/// Headless settling (spec §5.4): keep yielding until the state, the call log and the in-flight effect count
+/// Headless settling, which is what lets a step be read only once the app has gone quiet (CONTRACT.md §6):
+/// keep yielding until the state, the call log and the in-flight effect count
 /// have not changed for `stableRounds` rounds, or until `limit` of real time has passed. `pending` reports the
 /// sleeps waiting on the clock.
 ///
@@ -60,7 +61,7 @@ private struct SettleFingerprint<State: Equatable>: Equatable {
   var inFlight: Int
 }
 
-/// Live settling for the running app (spec §5.6): wait until no mock call is in flight and the state has not
+/// Live settling for the running app: wait until no mock call is in flight and the state has not
 /// changed for `quietWindow`, or until `limit`. Mock latency is real here, so this uses real time.
 @MainActor
 public func settleLive<State: Equatable>(

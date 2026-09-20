@@ -44,7 +44,7 @@ public struct StepRecord: Equatable, Sendable {
   }
 }
 
-/// Renders steps in the formats of spec §5.3.
+/// Renders steps in the text format of CONTRACT.md §3, and in the JSON form of its §3.5.
 public enum StepFormatter {
   /// ```text
   /// > submit

@@ -1,0 +1,24 @@
+#!/bin/sh
+# The wrapper every AgentCtl host copies to the root of its repository.
+#
+# It rebuilds the host's own CLI executable incrementally (about half a second when nothing changed) and then
+# execs it, so the CLI is always current and agents call `./appctl …` instead of `swift run`. `swift run` prints
+# its build log to stdout, interleaved with the step output a script is meant to be read from; here the build log
+# goes to stderr and a build failure exits 3, the CLI's "internal or build error" code.
+#
+# --- Change these three lines for your repo ------------------------------------------------------------------
+PACKAGE="Packages/AppCtl"   # the SwiftPM package that declares the executable, relative to this script
+PRODUCT="appctl"            # the executable product's name, as Package.swift spells it
+CONFIGURATION="debug"       # "release" builds slower but runs faster
+# ------------------------------------------------------------------------------------------------------------
+#
+# Name this file whatever your agents should type (`./appctl`, `./myappctl`) and set the same spelling as
+# `HelpExamples.invocation` in your AppCtlConfig, so the CLI's help pages name the command that exists here.
+#
+# APPCTL_ROOT tells the CLI where the repository root is, which is where `scenariosPath` and `docsPath` are
+# resolved from. Without it the CLI walks up from the working directory looking for the config's `rootMarker`
+# (by default its `.xcworkspace`/`.xcodeproj`), which also works but depends on where the command was run.
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" -q >&2 || exit 3
+APPCTL_ROOT="$ROOT" exec "$ROOT/$PACKAGE/.build/$CONFIGURATION/$PRODUCT" "$@"

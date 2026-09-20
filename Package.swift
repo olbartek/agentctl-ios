@@ -42,7 +42,10 @@ let package = Package(
       ]
     ),
     // The CLI as a library: a host's own executable is 4 lines that hand it an `AppCtlConfig`. It drives
-    // `xcodebuild`, `simctl` and SwiftPM, so it is built for the Mac, never for the app.
+    // `xcodebuild`, `simctl` and SwiftPM through `Process`, none of which exists on iOS, so every file is
+    // wrapped in `#if os(macOS)`: building this package for an iOS destination compiles the target to nothing
+    // instead of failing. SwiftPM has no per-target platform setting, which is why the guard lives in the
+    // sources.
     .target(
       name: "AgentCtlCLI",
       dependencies: [

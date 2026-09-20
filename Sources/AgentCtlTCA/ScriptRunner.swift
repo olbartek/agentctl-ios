@@ -173,7 +173,9 @@ where
   private func mock(_ line: ScriptLine) -> (step: StepRecord, status: RunStatus) {
     let tokens = ArgumentText.tokens(line.argument ?? "")
     guard tokens.count == 2 else {
-      return fail(line, status: .usage, "usage: mock <client.method> <error>, e.g. mock orders.fetchOrders network")
+      let names = mockMethods.map(\.name).joined(separator: ", ")
+      let mockable = names.isEmpty ? "" : "; mockable: \(names)"
+      return fail(line, status: .usage, "usage: mock <client.method> <error> — exactly two words\(mockable)")
     }
     let (name, code) = (tokens[0], tokens[1])
     guard let method = mockMethods.first(where: { $0.name == name }) else {

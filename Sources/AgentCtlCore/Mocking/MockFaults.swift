@@ -3,7 +3,7 @@ import Synchronization
 
 /// One-shot forced failures keyed by `"<client>.<method>"`.
 ///
-/// `mock orders.fetchOrders network` registers `network` for `orders.fetchOrders`; the next call to that
+/// `mock <client.method> <error>` registers `<error>` for `<client.method>`; the next call to that
 /// method throws the matching error and the fault is cleared.
 public final class MockFaults: Sendable {
   private let faults = Mutex([String: String]())

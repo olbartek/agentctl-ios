@@ -4,12 +4,12 @@ import PackageDescription
 let package = Package(
   name: "AgentCtl",
   platforms: [.iOS(.v18), .macOS(.v15)],
-  // Declare only the products whose targets exist: Task 13 adds the rest as it lands.
   products: [
     .library(name: "AgentCtlCore", targets: ["AgentCtlCore"]),
     .library(name: "AgentCtlTCA", targets: ["AgentCtlTCA"]),
     .library(name: "AgentCtlBridge", targets: ["AgentCtlBridge"]),
     .library(name: "AgentCtlCLI", targets: ["AgentCtlCLI"]),
+    .library(name: "AgentCtlTestSupport", targets: ["AgentCtlTestSupport"]),
   ],
   dependencies: [
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
@@ -54,6 +54,15 @@ let package = Package(
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]
     ),
+    // The coverage guards a host's test target depends on. A plain `.target`, not a `.testTarget`: it has no
+    // dependency on a testing framework, so a host writes its own `@Test`/`XCTestCase` around it.
+    .target(
+      name: "AgentCtlTestSupport",
+      dependencies: [
+        "AgentCtlCore",
+        "AgentCtlTCA",
+      ]
+    ),
     // The example app, and its CLI. Targets of this package rather than a nested package: the tests below use
     // TinyApp as their fixture, and a nested package depending on this one would be a dependency cycle.
     // Neither target is a product, so a consumer of the libraries never builds them.
@@ -76,8 +85,8 @@ let package = Package(
       name: "AgentCtlTests",
       // AgentCtlCLI so the help pages and the messages that name the CLI can be rendered and asserted on;
       // its files are `#if os(macOS)`, and so is the test that reads them. TinyApp is the fixture for every
-      // test that needs a real app to drive.
-      dependencies: ["AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "TinyApp"]
+      // test that needs a real app to drive. AgentCtlTestSupport is proved against that same fixture below.
+      dependencies: ["AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport", "TinyApp"]
     ),
   ]
 )

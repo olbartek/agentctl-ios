@@ -48,7 +48,7 @@ public struct StepRecord: Equatable, Sendable {
 public enum StepFormatter {
   /// ```text
   /// > submit
-  ///   screen=home/orders orders=3 loading=false calls=auth.login,session.save,orders.fetchOrders
+  ///   screen=<path> <key>=<value> … calls=<client.method>,…
   /// ```
   public static func text(_ step: StepRecord) -> String {
     var fields = ["screen=\(step.screen)"]

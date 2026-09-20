@@ -1,3 +1,5 @@
+import Foundation
+
 /// The host-written prose in `docs/agent-commands.md`: everything that is not generated from the registry.
 public struct DocsText: Sendable {
   public var title: String

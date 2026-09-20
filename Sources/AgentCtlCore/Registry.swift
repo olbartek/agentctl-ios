@@ -1,4 +1,3 @@
-
 /// The runtime commands available on every screen, independent of any specific app.
 public enum AgentRegistry {
   public static let runtimeCommands: [CommandDoc] = [
@@ -18,7 +17,7 @@ public enum AgentRegistry {
     CommandDoc(
       name: "mock",
       argument: "<client.method> <error>",
-      help: "Make the next call to that method fail, e.g. mock orders.fetchOrders network.",
+      help: "Make the next call to that method fail, e.g. mock <client.method> <error>.",
       source: "runtime"
     ),
   ]

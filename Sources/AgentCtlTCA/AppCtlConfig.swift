@@ -86,8 +86,9 @@ public struct HelpExamples: Sendable {
   }
 
   /// The name the CLI was invoked under, so a host's own executable (`tinyctl`) names itself in its examples.
+  /// The same rule as ``DocsText/invocation``'s default, so help and docs agree.
   public static var defaultInvocation: String {
-    URL(fileURLWithPath: CommandLine.arguments.first ?? "appctl").lastPathComponent
+    CLIName.current
   }
 
   /// The `run` script at `index`, or a placeholder if the host supplied fewer examples.

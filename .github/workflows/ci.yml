@@ -13,7 +13,7 @@ jobs:
   test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The package declares swift-tools-version 6.1, and its dependencies ship version-specific manifests
       # (swift-composable-architecture has a Package@swift-6.1.swift), so it needs a recent toolchain. A runner

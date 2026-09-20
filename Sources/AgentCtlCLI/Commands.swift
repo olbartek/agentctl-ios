@@ -162,12 +162,12 @@
 
   enum Repo {
     /// `$APPCTL_ROOT` (set by the wrapper), or the nearest ancestor of the working directory containing the
-    /// config's build target (its `.xcworkspace` or `.xcodeproj`).
+    /// config's root marker — by default its build target (the `.xcworkspace` or `.xcodeproj`).
     static func root() -> URL? {
       if let path = ProcessInfo.processInfo.environment["APPCTL_ROOT"], !path.isEmpty {
         return URL(fileURLWithPath: path)
       }
-      let marker = AgentCtl.runtime.target.path
+      let marker = AgentCtl.runtime.rootMarker
       var directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
       while directory.path != "/" {
         if FileManager.default.fileExists(atPath: directory.appending(path: marker).path) {

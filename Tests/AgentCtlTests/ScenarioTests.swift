@@ -60,6 +60,9 @@ extension AgentCtlSuite {
       #expect(markdown.contains("Summary keys: `title`, `saved`, `cooldown`."))
       #expect(markdown.contains("| `open <id>` |"))
       #expect(markdown.contains("| `refresh` |"))
+      // A gate is documented as the condition that closes it.
+      #expect(markdown.contains("*(disabled when items=0)*"))
+      #expect(markdown.contains("*(disabled when error=none)*"))
       #expect(markdown.contains("| `save` |"))
       // `back` is the container's command, inherited by the pushed screen.
       #expect(markdown.contains("| `back` | Go back to the list. | TinyRoot |"))

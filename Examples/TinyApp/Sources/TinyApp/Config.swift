@@ -42,18 +42,23 @@ public enum TinyAppConfig {
 
   /// The value `tinyctl` runs on.
   ///
-  /// `target`, `bundleID`, `packages` and the simulator names describe a real app being built, run on a
-  /// simulator and checked by the verification ladder. TinyApp has none of that — it is a package target with
-  /// no Xcode project, driven headlessly — so those fields are honest placeholders and `tinyctl app …`,
-  /// `tinyctl snapshots` and `tinyctl check` cannot work here. `target.path` is the one of them that is still
-  /// used headlessly: it marks the repo root, which is how `test` finds `scenariosPath`, so it names the file
-  /// that really does mark this package's root.
+  /// TinyApp is a package target driven headlessly: there is no Xcode project to build and no app bundle to
+  /// install, so `target`, `bundleID`, `packages` and the simulator names have nothing real to name here, and
+  /// `tinyctl app …`, `tinyctl snapshots` and `tinyctl check` cannot work. Everything the example does
+  /// demonstrate — `run`, `state`, `screens`, `docs`, `test` — needs none of them.
   @MainActor
   public static var appCtl: AppCtlConfig<TinyRoot> {
     AppCtlConfig(
       name: "TinyApp",
-      target: .project("Package.swift", scheme: "TinyApp"),
+      // A real host writes `.workspace("MyApp.xcworkspace", scheme: "MyApp")`, or `.project` for a project.
+      // There is nothing to build here, and a placeholder says so where a fake file name would not.
+      target: .project("<none: TinyApp has no Xcode project>", scheme: "TinyApp"),
+      // The CLI finds the repo root by walking up for a marker, and resolves `scenariosPath` and the generated
+      // docs against it. With no project to look for, name the file that really does mark this package's root.
+      // A host with an Xcode project omits this: the marker is its `target` path.
+      rootMarker: "Package.swift",
       bundleID: "com.example.TinyApp",
+      // `check` builds and tests `Packages/<name>` for each of these, a layout the example does not have.
       packages: ["TinyApp"],
       simulatorName: "iPhone 17 Pro",
       snapshotRuntimeMajor: 18,

@@ -22,11 +22,25 @@ extension Items: AgentScreen {
   /// Headlessly there is no view to send this, so the runtime sends it when the screen becomes active.
   public static let onAppear: Action? = .onAppear
 
+  /// A `gate:` mirrors a button that is disabled: instead of sending an action that could only do nothing, the
+  /// runner refuses the command and tells the agent which condition closed it — `open is disabled here
+  /// (items=0)`. The hint reads as the reason, and the generated docs show it as "disabled when items=0".
   public static let commands: [AgentCommand<State, Action>] = [
-    .parsing("open", argument: "<id>", help: "Open an item, e.g. open 2.") { text throws(AgentCommandError) in
+    .parsing(
+      "open",
+      argument: "<id>",
+      help: "Open an item, e.g. open 2.",
+      gate: CommandGate(hint: "items=0") { !$0.items.isEmpty }
+    ) { text throws(AgentCommandError) in
       guard let id = Int(text) else { throw .invalidArgument("expected an item id such as 2") }
       return .openTapped(id)
     },
     .action("refresh", help: "Load the list again.", .refresh),
+    .action(
+      "retry",
+      help: "Load the list again after a failure.",
+      gate: CommandGate(hint: "error=none") { $0.error != nil },
+      .retry
+    ),
   ]
 }

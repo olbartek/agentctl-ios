@@ -69,6 +69,33 @@ extension AgentCtlSuite {
       #expect(await run("advance soon").result.status == .usage)
     }
 
+    /// A gate mirrors a disabled button: the command is refused with the gate's hint and no action is sent, so
+    /// an agent is told which condition closed it instead of watching a command quietly do nothing.
+    @Test func gatedCommandsAreRefusedWithTheirHint() async {
+      let (_, refused) = await run("retry")
+      #expect(refused.status == .failed)
+      #expect(refused.steps.last?.message == "retry is disabled here (error=none)")
+      // Nothing was sent: the list is untouched and no call was made.
+      #expect(refused.steps.last?.calls == [])
+      // The gate opens once there is a failure to retry.
+      #expect(await run("mock items.fetch network; refresh; retry; expect error=none items=3").result.status == .ok)
+    }
+
+    /// `open` is gated on there being rows to open. The fetch at launch is the only one a script cannot reach,
+    /// so this test makes it fail on the host before launching, which is the one way to see the list empty.
+    @Test func openIsRefusedWhileTheListIsEmpty() async {
+      let (launch, result) = await serially {
+        let app = TinyAppConfig.headless()
+        app.faults.set("items.fetch", code: "network")
+        let runner = app.makeRunner()
+        return (await runner.launch(), await runner.run("open 2"))
+      }
+      #expect(launch.summary.contains(SummaryItem("items", 0)))
+      #expect(launch.error == "network")
+      #expect(result.status == .failed)
+      #expect(result.steps.last?.message == "open is disabled here (items=0)")
+    }
+
     /// A disabled command is refused before it reaches the app: `save` only exists on the detail screen.
     @Test func commandsOfAnotherScreenAreRefused() async {
       let (_, result) = await run("save")

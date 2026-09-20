@@ -18,6 +18,8 @@ public struct Items {
   public enum Action: Sendable {
     case onAppear
     case refresh
+    /// The error state's "Try again": the same load, offered only while there is a failure to clear.
+    case retry
     case response(Result<[Item], ItemsError>)
     case openTapped(Int)
     case delegate(Delegate)
@@ -38,7 +40,7 @@ public struct Items {
   public var body: some ReducerOf<Self> {
     Reduce { state, action in
       switch action {
-      case .onAppear, .refresh:
+      case .onAppear, .refresh, .retry:
         state.isLoading = true
         state.error = nil
         return .run { [client] send in

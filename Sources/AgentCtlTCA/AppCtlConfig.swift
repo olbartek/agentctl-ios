@@ -121,6 +121,13 @@ where
   /// The app's name, as it appears in the CLI's help.
   public var name: String
   public var target: BuildTarget
+  /// The file or directory whose presence marks the repo root, relative to it. `nil` uses ``target``'s path,
+  /// which is what an app with an Xcode project wants: the `.xcworkspace` or `.xcodeproj` sits at the root.
+  ///
+  /// A host with nothing to build — a package driven headlessly, say — names a file that really is at its root
+  /// (`Package.swift`) instead of pointing ``target`` at something that does not exist. The root is where
+  /// ``scenariosPath`` and `docs/agent-commands.md` are resolved from.
+  public var rootMarker: String?
   public var bundleID: String
   /// SwiftPM packages built and tested by `check` (L0, L1).
   public var packages: [String]
@@ -149,9 +156,11 @@ where
   /// - Parameters:
   ///   - snapshotPackages: defaults to `packages`.
   ///   - snapshotSimulatorName: defaults to `simulatorName`.
+  ///   - rootMarker: defaults to `target`'s path.
   public init(
     name: String,
     target: BuildTarget,
+    rootMarker: String? = nil,
     bundleID: String,
     packages: [String],
     snapshotPackages: [String]? = nil,
@@ -170,6 +179,7 @@ where
   ) {
     self.name = name
     self.target = target
+    self.rootMarker = rootMarker
     self.bundleID = bundleID
     self.packages = packages
     self.snapshotPackages = snapshotPackages ?? packages
@@ -197,6 +207,8 @@ where
 public protocol AppCtlRuntime: AnyObject, Sendable {
   var name: String { get }
   var target: BuildTarget { get }
+  /// What the CLI walks up the directory tree for to find the repo root. Defaults to ``target``'s path.
+  var rootMarker: String { get }
   var bundleID: String { get }
   var packages: [String] { get }
   var snapshotPackages: [String] { get }
@@ -214,6 +226,11 @@ public protocol AppCtlRuntime: AnyObject, Sendable {
   @MainActor func makeRunner() -> any ScriptRunning
   /// Runs each scenario file against its own fresh runner.
   @MainActor func runScenarios(_ files: [URL]) async -> [ScenarioResult]
+}
+
+extension AppCtlRuntime {
+  /// An app with an Xcode project is marked by it, so a host that sets no marker of its own needs no code.
+  public var rootMarker: String { target.path }
 }
 
 /// What the CLI does with a runner, without naming the root reducer.
@@ -242,6 +259,7 @@ where
 
   public var name: String { config.name }
   public var target: BuildTarget { config.target }
+  public var rootMarker: String { config.rootMarker ?? config.target.path }
   public var bundleID: String { config.bundleID }
   public var packages: [String] { config.packages }
   public var snapshotPackages: [String] { config.snapshotPackages }

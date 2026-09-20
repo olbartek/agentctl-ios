@@ -34,13 +34,79 @@ public struct AppCheck: Sendable {
   public var seed: String?
   /// The scenario to send through the bridge, without its extension. `nil` uses the first scenario file.
   public var scenario: String?
-  /// The screen the app must be on afterwards, e.g. `home/orders`. `nil` skips that assertion.
+  /// The screen path the app must be on afterwards, e.g. `<area>/<screen>`. `nil` skips that assertion.
   public var expectScreen: String?
 
   public init(seed: String? = nil, scenario: String? = nil, expectScreen: String? = nil) {
     self.seed = seed
     self.scenario = scenario
     self.expectScreen = expectScreen
+  }
+}
+
+/// The example commands printed in the CLI's help pages.
+///
+/// The defaults are placeholders (`<command>`, `<path>`) that hold for every host, so a published CLI never
+/// advertises another app's screens. A host that fills them in gets help written in its own vocabulary; the
+/// flags, subcommand names and abstracts are the same either way.
+public struct HelpExamples: Sendable {
+  /// How the examples spell the CLI, e.g. `./appctl` for a repo whose wrapper script rebuilds it first.
+  /// Defaults to the executable's own name, as it was invoked.
+  public var invocation: String
+  /// An extra paragraph for the top-level help, printed above the command reference — for instance how the
+  /// host's wrapper should be called. `nil` prints none.
+  public var note: String?
+  /// The scripts in the three `run` examples: a plain run, a `--session` run, and a `--json` run.
+  public var runScripts: [String]
+  /// The `--session` file in the `run` and `state` examples.
+  public var sessionPath: String
+  /// The scenario file in the `test` example. `nil` uses `<scenariosPath>/<name>.appctl`.
+  public var scenarioPath: String?
+  /// The seeds in the two `app launch` examples: a plain seed, and one for `--no-build`.
+  public var appSeeds: [String]
+  /// The scripts in the two `app run` examples: a plain run, and a `--json` run.
+  public var appScripts: [String]
+
+  public init(
+    invocation: String = HelpExamples.defaultInvocation,
+    note: String? = nil,
+    runScripts: [String] = ["<command>; <command>", "<command>", "expect screen=<path>"],
+    sessionPath: String = ".appctl/s1.session",
+    scenarioPath: String? = nil,
+    appSeeds: [String] = ["<command>", "<command>; <command>"],
+    appScripts: [String] = ["<command>; expect <key>=<value>", "<command>"]
+  ) {
+    self.invocation = invocation
+    self.note = note
+    self.runScripts = runScripts
+    self.sessionPath = sessionPath
+    self.scenarioPath = scenarioPath
+    self.appSeeds = appSeeds
+    self.appScripts = appScripts
+  }
+
+  /// The name the CLI was invoked under, so a host's own executable (`tinyctl`) names itself in its examples.
+  public static var defaultInvocation: String {
+    URL(fileURLWithPath: CommandLine.arguments.first ?? "appctl").lastPathComponent
+  }
+
+  /// The `run` script at `index`, or a placeholder if the host supplied fewer examples.
+  public func runScript(_ index: Int) -> String {
+    Self.element(runScripts, index)
+  }
+
+  /// The `app launch --seed` value at `index`, or a placeholder.
+  public func appSeed(_ index: Int) -> String {
+    Self.element(appSeeds, index)
+  }
+
+  /// The `app run` script at `index`, or a placeholder.
+  public func appScript(_ index: Int) -> String {
+    Self.element(appScripts, index)
+  }
+
+  private static func element(_ examples: [String], _ index: Int) -> String {
+    index < examples.count ? examples[index] : "<command>"
   }
 }
 
@@ -68,6 +134,8 @@ where
   /// Where `test` and `check` look for `*.appctl` files, relative to the repo root.
   public var scenariosPath: String
   public var appCheck: AppCheck
+  /// The example commands in the CLI's help pages.
+  public var help: HelpExamples
   public var mockMethods: [MockMethod]
   public var docsText: DocsText
   public var screens: [ScreenDoc]
@@ -91,6 +159,7 @@ where
     snapshotRuntimeMajor: Int,
     scenariosPath: String = "scenarios",
     appCheck: AppCheck = AppCheck(),
+    help: HelpExamples = HelpExamples(),
     mockMethods: [MockMethod],
     docsText: DocsText,
     screens: [ScreenDoc],
@@ -108,6 +177,7 @@ where
     self.snapshotRuntimeMajor = snapshotRuntimeMajor
     self.scenariosPath = scenariosPath
     self.appCheck = appCheck
+    self.help = help
     self.mockMethods = mockMethods
     self.docsText = docsText
     self.screens = screens
@@ -134,6 +204,7 @@ public protocol AppCtlRuntime: AnyObject, Sendable {
   var snapshotRuntimeMajor: Int { get }
   var scenariosPath: String { get }
   var appCheck: AppCheck { get }
+  var help: HelpExamples { get }
   var screens: [ScreenDoc] { get }
   var mockMethods: [MockMethod] { get }
   var docsText: DocsText { get }
@@ -178,6 +249,7 @@ where
   public var snapshotRuntimeMajor: Int { config.snapshotRuntimeMajor }
   public var scenariosPath: String { config.scenariosPath }
   public var appCheck: AppCheck { config.appCheck }
+  public var help: HelpExamples { config.help }
   public var screens: [ScreenDoc] { config.screens }
   public var mockMethods: [MockMethod] { config.mockMethods }
   public var docsText: DocsText { config.docsText }

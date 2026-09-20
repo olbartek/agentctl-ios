@@ -44,11 +44,16 @@
         return (http.statusCode, String(decoding: data, as: UTF8.self), http.value(forHTTPHeaderField: "X-Appctl-Exit"))
       }
 
-      /// The live store runs on real time, so this script stays well inside the cooldown it starts: the first
-      /// countdown tick is a second away, and a step settles in about a quarter of one. Popping the screen
-      /// cancels the countdown in both runs, so both end with no pending effect.
+      /// The claim this suite exists for: a script produces the same steps through the bridge as it does
+      /// headlessly.
+      ///
+      /// The script must not start anything that waits on the clock. The headless run is on a `TestClock` and
+      /// the live run is on real time, so a countdown would print the same number in both only while no tick has
+      /// fired yet — a race between a 250 ms settle plus an HTTP round-trip and a 1-second tick, which a loaded
+      /// machine loses. `save` is therefore covered by ``poppingTheScreenCancelsTheCountdown`` below, which
+      /// asserts the effect rather than the bytes. Do not merge the two back together.
       @Test func runReturnsTheSameStepsAsTheHeadlessRunner() async throws {
-        let script = "open 2; save; back"
+        let script = "open 2; back"
         let headless = await serially {
           let runner = TinyAppConfig.headless().makeRunner()
           _ = await runner.launch()
@@ -60,6 +65,23 @@
         #expect(response.status == 200)
         #expect(response.exit == "0")
         #expect(response.body == headless)
+      }
+
+      /// The `save` half of the script above, asserted in a way that real time cannot upset: `pending=1` holds
+      /// for the whole three-second cooldown, and popping the screen cancels the effect, after which no step
+      /// prints `pending` at all. Neither assertion depends on how far the countdown has got.
+      @Test func poppingTheScreenCancelsTheCountdown() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.server.stop() }
+        let saved = try await request("POST", "/run", body: "open 2; save", port: bridge.port)
+        #expect(saved.exit == "0")
+        #expect(saved.body.contains("screen=items/2"))
+        #expect(saved.body.contains("saved=true"))
+        #expect(saved.body.contains("pending=1"))
+        let popped = try await request("POST", "/run", body: "back", port: bridge.port)
+        #expect(popped.exit == "0")
+        #expect(popped.body.contains("screen=items"))
+        #expect(!popped.body.contains("pending="), "the countdown outlived the screen: \(popped.body)")
       }
 
       @Test func exitCodesTravelInAHeader() async throws {

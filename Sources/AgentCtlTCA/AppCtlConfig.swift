@@ -126,7 +126,7 @@ where
   ///
   /// A host with nothing to build — a package driven headlessly, say — names a file that really is at its root
   /// (`Package.swift`) instead of pointing ``target`` at something that does not exist. The root is where
-  /// ``scenariosPath`` and `docs/agent-commands.md` are resolved from.
+  /// ``scenariosPath`` and ``docsPath`` are resolved from.
   public var rootMarker: String?
   public var bundleID: String
   /// SwiftPM packages built and tested by `check` (L0, L1).
@@ -141,6 +141,10 @@ where
   public var snapshotRuntimeMajor: Int
   /// Where `test` and `check` look for `*.appctl` files, relative to the repo root.
   public var scenariosPath: String
+  /// Where `docs` writes the generated command reference, relative to the repo root. A host whose app is not at
+  /// the root of its repository — an example inside a package, say — points this inside the app's own directory,
+  /// so the file lives next to the app it documents.
+  public var docsPath: String
   public var appCheck: AppCheck
   /// The example commands in the CLI's help pages.
   public var help: HelpExamples
@@ -168,6 +172,7 @@ where
     snapshotSimulatorName: String? = nil,
     snapshotRuntimeMajor: Int,
     scenariosPath: String = "scenarios",
+    docsPath: String = "docs/agent-commands.md",
     appCheck: AppCheck = AppCheck(),
     help: HelpExamples = HelpExamples(),
     mockMethods: [MockMethod],
@@ -187,6 +192,7 @@ where
     self.snapshotSimulatorName = snapshotSimulatorName ?? simulatorName
     self.snapshotRuntimeMajor = snapshotRuntimeMajor
     self.scenariosPath = scenariosPath
+    self.docsPath = docsPath
     self.appCheck = appCheck
     self.help = help
     self.mockMethods = mockMethods
@@ -216,6 +222,8 @@ public protocol AppCtlRuntime: AnyObject, Sendable {
   var snapshotSimulatorName: String { get }
   var snapshotRuntimeMajor: Int { get }
   var scenariosPath: String { get }
+  /// Where the generated command reference is written, relative to the repo root.
+  var docsPath: String { get }
   var appCheck: AppCheck { get }
   var help: HelpExamples { get }
   var screens: [ScreenDoc] { get }
@@ -231,6 +239,8 @@ public protocol AppCtlRuntime: AnyObject, Sendable {
 extension AppCtlRuntime {
   /// An app with an Xcode project is marked by it, so a host that sets no marker of its own needs no code.
   public var rootMarker: String { target.path }
+  /// Where an app at the root of its own repository keeps its generated command reference.
+  public var docsPath: String { "docs/agent-commands.md" }
 }
 
 /// What the CLI does with a runner, without naming the root reducer.
@@ -267,6 +277,7 @@ where
   public var snapshotSimulatorName: String { config.snapshotSimulatorName }
   public var snapshotRuntimeMajor: Int { config.snapshotRuntimeMajor }
   public var scenariosPath: String { config.scenariosPath }
+  public var docsPath: String { config.docsPath }
   public var appCheck: AppCheck { config.appCheck }
   public var help: HelpExamples { config.help }
   public var screens: [ScreenDoc] { config.screens }

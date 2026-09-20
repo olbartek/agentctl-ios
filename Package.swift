@@ -78,7 +78,8 @@ let package = Package(
     ),
     .executableTarget(
       name: "tinyctl",
-      dependencies: ["TinyApp", "AgentCtlTCA", "AgentCtlCLI"],
+      // AgentCtlTCA comes through TinyApp, which is what `main.swift` imports alongside the CLI.
+      dependencies: ["TinyApp", "AgentCtlCLI"],
       path: "Examples/TinyApp/Sources/tinyctl"
     ),
     .testTarget(

@@ -96,11 +96,21 @@ extension AgentCtlSuite {
       #expect(result.steps.last?.message == "open is disabled here (items=0)")
     }
 
-    /// A disabled command is refused before it reaches the app: `save` only exists on the detail screen.
+    /// A leaf command is not offered on another screen: `save` belongs to the detail screen, so on the list it
+    /// is an unknown command — a different refusal from a `gate:`, which is asserted above.
     @Test func commandsOfAnotherScreenAreRefused() async {
       let (_, result) = await run("save")
       #expect(result.status == .failed)
       #expect(result.steps.last?.message?.contains("unknown command 'save' on \(firstScreen)") == true)
+    }
+
+    /// An `open` that names no existing item answers with an error code instead of a successful no-op.
+    @Test func unknownIdsReportAnError() async {
+      let (_, result) = await run("open 99; expect error=notFound screen=items items=3")
+      #expect(result.status == .ok)
+      #expect(result.steps.first?.error == "notFound")
+      // The error clears as soon as an id that exists is opened.
+      #expect(await run("open 99; open 2; expect screen=items/2 error=none").result.status == .ok)
     }
 
     @Test func jsonOutput() async throws {

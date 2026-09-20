@@ -15,6 +15,9 @@ public struct DocsText: Sendable {
   /// `screen=<path> <key>=<value> … calls=<client.method>,…`. Hosts should supply one of their own,
   /// built from a real screen, in place of the generic default.
   public var exampleStep: String
+  /// How the document names the scenario files, e.g. `scenarios/*.appctl`. A host whose app is not at the root of
+  /// its repository points this at the app's own directory, so a reader is sent where the files really are.
+  public var scenariosGlob: String
   public var appendix: [String]
 
   public init(
@@ -24,6 +27,7 @@ public struct DocsText: Sendable {
     invocation: String = CLIName.current,
     exampleCommand: String = "<command>",
     exampleStep: String = "screen=<path> <key>=<value> … calls=<client.method>,…",
+    scenariosGlob: String = "scenarios/*.appctl",
     appendix: [String]
   ) {
     self.title = title
@@ -32,6 +36,7 @@ public struct DocsText: Sendable {
     self.invocation = invocation
     self.exampleCommand = exampleCommand
     self.exampleStep = exampleStep
+    self.scenariosGlob = scenariosGlob
     self.appendix = appendix
   }
 }
@@ -79,7 +84,7 @@ public enum DocsRenderer {
     out.append("```")
     out.append("")
     out.append(
-      "Scenarios in `scenarios/*.appctl` use the same syntax plus `expect` lines; `\(text.invocation) test` runs them."
+      "Scenarios in `\(text.scenariosGlob)` use the same syntax plus `expect` lines; `\(text.invocation) test` runs them."
     )
     out.append("")
     out.append("## Runtime commands (every screen)")

@@ -64,7 +64,13 @@ public struct Items {
         return .none
 
       case let .openTapped(id):
-        guard let item = state.items.first(where: { $0.id == id }) else { return .none }
+        // Never silently do nothing: an agent that asks for an item the list does not have is told so, the same
+        // way a person would see it. A no-op would report a successful step and no error at all.
+        guard let item = state.items.first(where: { $0.id == id }) else {
+          state.error = .notFound
+          return .none
+        }
+        state.error = nil
         return .send(.delegate(.open(item)))
 
       case .delegate:

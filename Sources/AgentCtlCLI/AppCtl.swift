@@ -11,7 +11,7 @@
       // If there is no argv[0] at all, fall back to how the host spells the CLI in its examples.
       commandName: URL(fileURLWithPath: CommandLine.arguments.first ?? help.invocation).lastPathComponent,
       abstract: "Drive \(AgentCtl.runtime.name) headlessly, run its scenarios and check the verification ladder.",
-      discussion: [help.note, "Command reference: docs/agent-commands.md (or \(help.invocation) screens)."]
+      discussion: [help.note, "Command reference: \(AgentCtl.runtime.docsPath) (or \(help.invocation) screens)."]
         .compactMap { $0 }
         .joined(separator: "\n"),
       subcommands: [
@@ -81,7 +81,7 @@
 
   struct Docs: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-      abstract: "Write docs/agent-commands.md from the command registry.",
+      abstract: "Write \(AgentCtl.runtime.docsPath) from the command registry.",
       discussion: """
         Examples:
           \(help.invocation) docs           # after changing any +Agent.swift

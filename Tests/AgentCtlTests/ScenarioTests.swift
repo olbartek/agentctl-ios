@@ -42,17 +42,27 @@ extension AgentCtlSuite {
       }
     }
 
-    /// In a host repo this test asserted that the committed `docs/agent-commands.md` was fresh, which is what
-    /// `check` does there with `docs --check`. This package commits no generated docs for the example, so what
-    /// is left to guard is the step before that: the document really is rendered from the app's own registry,
-    /// mock methods and prose, and nothing in the pipeline drops a screen, a command or a summary key.
-    @Test func docsAreRenderedFromTheAppsRegistry() {
-      let markdown = DocsRenderer.render(
+    /// The example's committed command reference is up to date — the same guard a host gets from `docs --check`,
+    /// which is part of its `check` ladder. `tinyctl docs` regenerates the file.
+    @Test func docsAreUpToDate() throws {
+      let file = PackageRoot.url.appending(path: TinyAppConfig.appCtl.docsPath)
+      let existing = try String(contentsOf: file, encoding: .utf8)
+      #expect(existing == Self.docsMarkdown, "\(TinyAppConfig.appCtl.docsPath) is stale. Run tinyctl docs.")
+    }
+
+    static var docsMarkdown: String {
+      DocsRenderer.render(
         screens: TinyAppConfig.screens,
         runtimeCommands: AgentRegistry.runtimeCommands,
         mockMethods: TinyAppConfig.mockMethods,
         text: TinyAppConfig.docsText
       )
+    }
+
+    /// What the file above must contain: the document really is rendered from the app's own registry, mock
+    /// methods and prose, and nothing in the pipeline drops a screen, a command, a gate or a summary key.
+    @Test func docsAreRenderedFromTheAppsRegistry() {
+      let markdown = Self.docsMarkdown
       #expect(markdown.contains("# TinyApp agent commands"))
       #expect(markdown.contains("### `items`"))
       #expect(markdown.contains("### `items/<id>`"))

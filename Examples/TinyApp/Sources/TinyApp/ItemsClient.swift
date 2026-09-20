@@ -19,13 +19,16 @@ public struct Item: Equatable, Identifiable, Sendable {
   ]
 }
 
-/// Everything ``ItemsClient`` can fail with.
+/// Everything the list can report as `error=<code>`.
 ///
-/// The raw values are the codes an agent sees as `error=<code>` and can force with
-/// `mock items.fetch <code>`, so they are part of the app's agent surface: keep them short and stable.
-public enum ItemsError: String, Error, CaseIterable, Equatable, Sendable {
+/// The raw values are what an agent sees and asserts on, so keep them short and stable. Two of them are what
+/// ``ItemsClient/fetch`` can throw and `mock items.fetch <code>` can force; `notFound` is the screen's own, for
+/// an `open <id>` that names an item the list does not have. That is why ``ItemsClient/fetchErrors`` lists the
+/// client's codes explicitly instead of taking every case: `mock items.fetch notFound` is rightly rejected.
+public enum ItemsError: String, Error, Equatable, Sendable {
   case network
   case timeout
+  case notFound
 
   /// Anything else becomes `network`, so `error=` is always one of the documented codes.
   public init(_ error: any Error) {
@@ -49,10 +52,13 @@ extension ItemsClient: DependencyKey {
 
   public static let testValue = ItemsClient()
 
+  /// What a fetch can throw — not every ``ItemsError``, because `notFound` is the screen's, not the client's.
+  public static let fetchErrors: [ItemsError] = [.network, .timeout]
+
   /// The methods `mock <method> <error>` accepts, with the errors each one can be made to throw. The CLI and
   /// the generated docs list exactly these.
   public static let mockMethods: [MockMethod] = [
-    MockMethod("items.fetch", errorCodes: ItemsError.allCases.map(\.rawValue))
+    MockMethod("items.fetch", errorCodes: fetchErrors.map(\.rawValue))
   ]
 }
 

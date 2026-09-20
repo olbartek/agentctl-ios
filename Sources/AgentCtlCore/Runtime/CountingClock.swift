@@ -3,9 +3,9 @@ import Synchronization
 
 /// Wraps a clock and counts the sleeps currently waiting on it.
 ///
-/// The count is `pending` in step summaries: effects waiting for time to pass, such as the OTP resend
-/// countdown. Headlessly, `advance` releases them. Counting sleeps (rather than all in-flight effects) keeps
-/// long-lived effects that TCA starts for navigation out of the number.
+/// The count is `pending` in step summaries: effects waiting for time to pass, such as a countdown before a
+/// button becomes available again. Headlessly, `advance` releases them. Counting sleeps (rather than all
+/// in-flight effects) keeps long-lived effects that TCA starts for navigation out of the number.
 public struct CountingClock<Base: Clock>: Clock where Base.Duration == Duration {
   public typealias Instant = Base.Instant
 

@@ -146,7 +146,7 @@
 
     private func docs() -> Bool {
       let start = ContinuousClock.now
-      let file = root.appending(path: "docs/agent-commands.md")
+      let file = root.appending(path: AgentCtl.runtime.docsPath)
       let upToDate = (try? String(contentsOf: file, encoding: .utf8)) == Commands.docsMarkdown
       report("docs", ok: upToDate, detail: upToDate ? "up to date" : Message.staleDocsDetail, since: start)
       return upToDate

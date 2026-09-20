@@ -17,7 +17,8 @@ public struct SummaryItem: Codable, Equatable, Hashable, Sendable {
   }
 }
 
-/// A leaf screen (Login, OTPLogin, OrdersList, …). Conformance lives in `<Screen>+Agent.swift`.
+/// One screen of an app, described for agents: its path, its summary, its error code and its commands.
+/// Conformance lives beside the reducer, in `<Screen>+Agent.swift`; `Examples/TinyApp` has two of them.
 ///
 /// The associated types are named `AgentState`/`AgentAction` rather than `State`/`Action` so that a TCA
 /// reducer can conform without making `Root.State` ambiguous in generic code; conformances infer them.
@@ -139,7 +140,7 @@ public struct ActiveScreen<Action> {
   }
 }
 
-/// A command as documented by `appctl screens` and `docs/agent-commands.md`.
+/// A command as documented by the CLI's `screens` command and the generated command reference.
 public struct CommandDoc: Codable, Equatable, Hashable, Sendable {
   public var name: String
   public var argument: String?

@@ -57,7 +57,7 @@
       print(ScreensRenderer.render(AgentCtl.runtime.screens))
     }
 
-    /// `docs/agent-commands.md` as it should be, rendered from the config.
+    /// The generated command reference as it should be, rendered from the config.
     static var docsMarkdown: String {
       DocsRenderer.render(
         screens: AgentCtl.runtime.screens,
@@ -69,7 +69,8 @@
 
     static func docs(check: Bool) -> Int32 {
       guard let root = Repo.root() else { return RunStatus.internalError.rawValue }
-      let file = root.appending(path: "docs/agent-commands.md")
+      let path = AgentCtl.runtime.docsPath
+      let file = root.appending(path: path)
       let generated = docsMarkdown
       let existing = try? String(contentsOf: file, encoding: .utf8)
       if check {
@@ -77,7 +78,7 @@
           print(Message.staleDocs)
           return 1
         }
-        print("docs/agent-commands.md is up to date.")
+        print("\(path) is up to date.")
         return 0
       }
       do {
@@ -87,7 +88,7 @@
         printError("cannot write \(file.path): \(error)")
         return RunStatus.internalError.rawValue
       }
-      print(existing == generated ? "docs/agent-commands.md was already up to date." : "Wrote docs/agent-commands.md.")
+      print(existing == generated ? "\(path) was already up to date." : "Wrote \(path).")
       return 0
     }
 
@@ -188,7 +189,7 @@
     }
 
     static var staleDocs: String {
-      "docs/agent-commands.md is stale. Run \(help.invocation) docs."
+      "\(AgentCtl.runtime.docsPath) is stale. Run \(help.invocation) docs."
     }
 
     /// The `check` ladder's one-column form of ``staleDocs``.

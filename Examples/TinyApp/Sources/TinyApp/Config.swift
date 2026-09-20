@@ -31,12 +31,14 @@ public enum TinyAppConfig {
     invocation: "swift run tinyctl",
     exampleCommand: "open 2",
     exampleStep: "screen=items/2 title=\"Second item\" saved=false cooldown=0",
+    scenariosGlob: "Examples/TinyApp/scenarios/*.appctl",
     appendix: [
       "## The example's data",
       "",
       "`items.fetch` always returns three items: `First item`, `Second item` and `Third item`.",
       "A `save` starts a \(ItemDetail.cooldownSeconds)-second cooldown; saving again before it runs out reports",
       "`error=cooldown`. Headlessly, `advance \(ItemDetail.cooldownSeconds)s` runs the countdown out at once.",
+      "`open <id>` with an id the list does not have reports `error=notFound` instead of doing nothing.",
     ]
   )
 
@@ -63,6 +65,9 @@ public enum TinyAppConfig {
       simulatorName: "iPhone 17 Pro",
       snapshotRuntimeMajor: 18,
       scenariosPath: "Examples/TinyApp/scenarios",
+      // The app is not at the root of its repository, so its command reference lives beside it rather than in
+      // the package's own `docs/`. `tinyctl docs` writes it; `tinyctl docs --check` fails when it is stale.
+      docsPath: "Examples/TinyApp/agent-commands.md",
       help: HelpExamples(
         invocation: "swift run tinyctl",
         note: "TinyApp is this repository's example app; it runs headlessly, with no simulator.",

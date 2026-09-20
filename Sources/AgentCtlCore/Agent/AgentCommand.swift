@@ -34,7 +34,7 @@ public struct CommandGate<State>: Sendable {
 /// One command an agent can send on a screen. Conformances live in `<Screen>+Agent.swift`.
 public struct AgentCommand<State, Action>: Sendable {
   public var name: String
-  /// Describes the argument, e.g. `"<text>"` or `"<orders|profile>"`; `nil` if the command takes none.
+  /// Describes the argument, e.g. `"<text>"` or `"<on|off>"`; `nil` if the command takes none.
   public var argument: String?
   /// One line, shown by `appctl screens` and in the generated docs.
   public var help: String

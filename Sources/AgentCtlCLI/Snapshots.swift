@@ -73,7 +73,7 @@
       return Int(match.1) ?? 0
     }
 
-    /// `✘ Test ordersLoaded() failed…` plus the reference and failure image paths that follow each mismatch.
+    /// `✘ Test <name>() failed…` plus the reference and failure image paths that follow each mismatch.
     private static func failureLines(in output: String) -> [String] {
       var lines: [String] = []
       for line in output.split(separator: "\n") {

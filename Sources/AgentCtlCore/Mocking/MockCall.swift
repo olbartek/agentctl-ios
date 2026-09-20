@@ -6,7 +6,7 @@ import Dependencies
 /// throws a fault registered in ``MockFaults`` if there is one, and otherwise runs `body`.
 ///
 /// - Parameters:
-///   - name: `"<client>.<method>"`, e.g. `auth.login`.
+///   - name: `"<client>.<method>"`, e.g. `items.fetch`.
 ///   - makeError: Turns a fault code (e.g. `network`) into the client's typed error.
 public func mockCall<T: Sendable>(
   _ name: String,

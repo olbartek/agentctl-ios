@@ -45,7 +45,7 @@
       if let seed { arguments += ["-appctl-seed", seed] }
       if let latency { arguments += ["-mock-latency", String(latency)] }
       if clearSession { arguments.append("-clear-session") }
-      let log = root.appending(path: ".appctl/logs/app-launch.log")
+      let log = Layout(root: root).logs.appending(path: "app-launch.log")
       if build {
         try sim.buildAndRun(on: device, launchArguments: arguments, log: log)
       } else {

@@ -31,9 +31,10 @@ PASS save-cooldown (13 steps, 20 ms)
 
 (The step counts are fixed — scenario output is deterministic — the millisecond timings are not.)
 
-TinyApp has no Xcode project and no app bundle, so `tinyctl app …`, `tinyctl snapshots` and `tinyctl check` have
-nothing to build and cannot work here; `Config.swift` says so where their settings would go. Everything else —
-`run`, `state`, `screens`, `docs`, `test` — needs none of them.
+TinyApp has no Xcode project and no app bundle, so `tinyctl app …`, `tinyctl snapshots` and `tinyctl check --ui`
+have nothing to build and cannot work here; `Config.swift` says so where their settings would go. Plain
+`swift run tinyctl check` works: its config's `packages: ["."]` is the package at the repository root, so L0 and L1
+build and test that, then L2 runs these scenarios and the docs check runs.
 
 ## What each file demonstrates
 

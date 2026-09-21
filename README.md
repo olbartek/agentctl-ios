@@ -64,11 +64,11 @@ client that is also this package's test fixture.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.2.0"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.3.0"),
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](#status)); `from: "0.2.0"` admits every later
+Until 1.0, a minor version may change the API (see [Status](#status)); `from: "0.3.0"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`, and it exposes five products. Take only what each target needs:
@@ -224,7 +224,7 @@ public static var appCtl: AppCtlConfig<TinyRoot> {
     // `target`'s path is the marker.
     rootMarker: "Package.swift",
     bundleID: "com.example.TinyApp",
-    packages: ["TinyApp"],   // L0 builds and L1 tests `Packages/<name>` for each of these
+    packages: ["."],         // paths from the root that L0 builds and L1 tests; "." is the package at the root
     simulatorName: "iPhone 17 Pro",
     snapshotRuntimeMajor: 18,
     scenariosPath: "Examples/TinyApp/scenarios",
@@ -449,36 +449,44 @@ built on `Locale.current`, say) is not pinned at all.
 
 | Rung | What runs |
 |---|---|
-| L0 | `swift build` for each package in `packages` |
+| L0 | `swift build` for each package path in `packages` |
 | L1 | `swift test` for each of those that has a `Tests` directory |
 | L2 | every scenario file, in-process |
 | docs | `docs --check`: the generated command reference is not stale |
-| L3 (`--ui`) | the `*SnapshotTests` of each package in `snapshotPackages`, on an iOS simulator |
+| L3 (`--ui`) | the `*SnapshotTests` of each package path in `snapshotPackages`, on an iOS simulator |
 | L4 (`--ui`) | the real app: built, launched seeded on a simulator, one scenario sent through the bridge, one screenshot |
 
 The rule that makes this pay off: **verify at the cheapest rung that proves the change.** Logic and flows are
 L1/L2 and take milliseconds; only a view change needs L3, and only the app shell, the bridge or navigation needs
-L4. Logs go to `.appctl/logs/`, and snapshot failure images to `.appctl/snapshot-failures/`.
+L4. Everything the CLI writes goes under the config's `outputPath`, `.appctl/` by default: `logs/`,
+`screenshots/`, `snapshot-failures/`, and `DerivedData/` for builds without XcodeBuildMCP. Keep it out of version
+control.
 
-**`check` and `snapshots` assume a repository layout** — the one they were extracted from. They are the only
-part of the package that does:
+**AgentCtl assumes no repository layout.** It finds the root by walking up from the working directory for the
+config's `rootMarker` (your `.xcworkspace` or `.xcodeproj` unless you name another file), and every other path
+comes from the config, relative to that root:
 
-- L0 and L1 run `swift build` / `swift test` with `--package-path Packages/<name>` for each name in `packages`,
-  so those packages must live at `Packages/<name>/`; L1 runs only where `Packages/<name>/Tests` exists.
-- L3 runs `xcodebuild test -scheme <name> -only-testing:<name>SnapshotTests` inside `Packages/<name>/` for each
-  name in `snapshotPackages`, and expects reference images under
-  `Packages/*/Tests/*SnapshotTests/__Snapshots__/`, recorded on `snapshotSimulatorName` at
-  `snapshotRuntimeMajor` (a reference image only compares on the device and iOS version it was recorded on). It
-  drives recording and artifact collection through
+- `packages` and `snapshotPackages` are package paths, such as `Packages/Features/Auth`, or `.` for a package at
+  the root. A package is named by its path's last component in reports and log file names. That is also its
+  SwiftPM identity, so it is unique within one build graph.
+- L0 and L1 run `swift build` / `swift test --package-path <path>` for each path in `packages`, and L1 runs only
+  where `<path>/Tests` exists.
+- L3 runs `xcodebuild test -scheme <name> -only-testing:<name>SnapshotTests` inside `<path>` for each path in
+  `snapshotPackages`, so each needs a scheme named after its directory and a `<name>SnapshotTests` target.
+  Reference images live in `<path>/Tests/<name>SnapshotTests/__Snapshots__/`, recorded on
+  `snapshotSimulatorName` at `snapshotRuntimeMajor` (a reference image only compares on the device and iOS
+  version it was recorded on). It drives recording and artifact collection through
   [swift-snapshot-testing](https://github.com/pointfreeco/swift-snapshot-testing)'s
   `TEST_RUNNER_SNAPSHOT_TESTING_RECORD` and `TEST_RUNNER_SNAPSHOT_ARTIFACTS`.
 - L4 needs a real Xcode `target` and `bundleID`, and takes its seed, its scenario and the screen the app must
   end on from the config's `appCheck`.
 
-An app laid out differently can still use everything else — `run`, `state`, `screens`, `docs` and `test` need
-none of it — and run its own build and test steps its own way. The example app in this repository is exactly
-that case: a package target with no Xcode project, so `app`, `snapshots` and `check` cannot work there, and they
-are therefore the parts of the CLI this repository does not exercise end to end.
+- `scenariosPath`, `docsPath` and `outputPath` default to `scenarios`, `docs/agent-commands.md` and `.appctl`.
+
+The example app in this repository shows the headless end of this: TinyApp is a target of the package at the
+root, so its config lists `packages: ["."]`, and `swift run tinyctl check` builds and tests this whole package,
+runs TinyApp's scenarios and checks its docs. It has no Xcode project, so `app`, `snapshots` and `check --ui`
+cannot work there; they are the parts of the CLI this repository does not exercise end to end.
 
 ## The coverage guards
 
@@ -591,5 +599,5 @@ swift test          # this package's own suite, driven against TinyApp
 
 ## Status
 
-Version 0.2, extracted from the app it was built for. The example app in this repository is the only integration
+Version 0.3, extracted from the app it was built for. The example app in this repository is the only integration
 CI exercises, and the API may still change between minor versions before 1.0. MIT licensed.

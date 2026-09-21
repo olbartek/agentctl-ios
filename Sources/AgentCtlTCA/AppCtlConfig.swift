@@ -129,9 +129,15 @@ where
   /// ``scenariosPath`` and ``docsPath`` are resolved from.
   public var rootMarker: String?
   public var bundleID: String
-  /// SwiftPM packages built and tested by `check` (L0, L1).
+  /// The SwiftPM packages `check` builds (L0) and tests (L1): paths relative to the repo root, such as
+  /// `Packages/Features/Auth`, or `.` for a package at the root. The CLI assumes no layout; these paths are the only
+  /// place it learns where packages are.
+  ///
+  /// A package is named by the last component of its path in reports and log file names. That is also its SwiftPM
+  /// identity, so it is unique within one build graph.
   public var packages: [String]
-  /// Packages whose `*SnapshotTests` run in `snapshots` (L3).
+  /// The packages whose snapshot tests `snapshots` (L3) runs, as paths like ``packages``. For each one it runs
+  /// `xcodebuild test -scheme <name> -only-testing:<name>SnapshotTests` inside that directory.
   public var snapshotPackages: [String]
   /// The simulator `app launch` and `check --ui` use by default.
   public var simulatorName: String
@@ -145,6 +151,9 @@ where
   /// the root of its repository — an example inside a package, say — points this inside the app's own directory,
   /// so the file lives next to the app it documents.
   public var docsPath: String
+  /// Where the CLI writes what it produces, relative to the repo root: `logs/`, `screenshots/`,
+  /// `snapshot-failures/` and the `DerivedData/` of builds without XcodeBuildMCP. Keep it out of version control.
+  public var outputPath: String
   public var appCheck: AppCheck
   /// The example commands in the CLI's help pages.
   public var help: HelpExamples
@@ -158,7 +167,8 @@ where
   public var clearSession: @Sendable () -> Void
 
   /// - Parameters:
-  ///   - snapshotPackages: defaults to `packages`.
+  ///   - packages: paths relative to the repo root.
+  ///   - snapshotPackages: paths relative to the repo root; defaults to `packages`.
   ///   - snapshotSimulatorName: defaults to `simulatorName`.
   ///   - rootMarker: defaults to `target`'s path.
   public init(
@@ -173,6 +183,7 @@ where
     snapshotRuntimeMajor: Int,
     scenariosPath: String = "scenarios",
     docsPath: String = "docs/agent-commands.md",
+    outputPath: String = ".appctl",
     appCheck: AppCheck = AppCheck(),
     help: HelpExamples = HelpExamples(),
     mockMethods: [MockMethod],
@@ -193,6 +204,7 @@ where
     self.snapshotRuntimeMajor = snapshotRuntimeMajor
     self.scenariosPath = scenariosPath
     self.docsPath = docsPath
+    self.outputPath = outputPath
     self.appCheck = appCheck
     self.help = help
     self.mockMethods = mockMethods
@@ -227,6 +239,8 @@ package protocol AppCtlRuntime: AnyObject, Sendable {
   var scenariosPath: String { get }
   /// Where the generated command reference is written, relative to the repo root.
   var docsPath: String { get }
+  /// Where the CLI writes logs, screenshots and build products, relative to the repo root.
+  var outputPath: String { get }
   var appCheck: AppCheck { get }
   var help: HelpExamples { get }
   var screens: [ScreenDoc] { get }
@@ -244,6 +258,7 @@ extension AppCtlRuntime {
   package var rootMarker: String { target.path }
   /// Where an app at the root of its own repository keeps its generated command reference.
   package var docsPath: String { "docs/agent-commands.md" }
+  package var outputPath: String { ".appctl" }
 }
 
 /// What the CLI does with a runner, without naming the root reducer.
@@ -281,6 +296,7 @@ where
   package var snapshotRuntimeMajor: Int { config.snapshotRuntimeMajor }
   package var scenariosPath: String { config.scenariosPath }
   package var docsPath: String { config.docsPath }
+  package var outputPath: String { config.outputPath }
   package var appCheck: AppCheck { config.appCheck }
   package var help: HelpExamples { config.help }
   package var screens: [ScreenDoc] { config.screens }

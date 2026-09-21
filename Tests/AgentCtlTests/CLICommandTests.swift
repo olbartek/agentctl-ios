@@ -77,6 +77,12 @@
         )
       }
 
+      @Test func ladderCountsAreSingularForOne() {
+        #expect(Ladder.count(1, "package") == "1 package")
+        #expect(Ladder.count(6, "package") == "6 packages")
+        #expect(Ladder.count(0, "test") == "0 tests")
+      }
+
       @Test func zeroScenariosFailTestAndTheLadder() async throws {
         AgentCtl.install(StubRuntime.restless)
         let root = try Self.temporaryDirectory()

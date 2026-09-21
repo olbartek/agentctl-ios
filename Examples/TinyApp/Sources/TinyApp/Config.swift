@@ -46,9 +46,9 @@ public enum TinyAppConfig {
   /// The value `tinyctl` runs on.
   ///
   /// TinyApp is a package target driven headlessly: there is no Xcode project to build and no app bundle to
-  /// install, so `target`, `bundleID`, `packages` and the simulator names have nothing real to name here, and
-  /// `tinyctl app …`, `tinyctl snapshots` and `tinyctl check` cannot work. Everything the example does
-  /// demonstrate — `run`, `state`, `screens`, `docs`, `test` — needs none of them.
+  /// install, so `target`, `bundleID` and the simulator names have nothing real to name here, and
+  /// `tinyctl app …`, `tinyctl snapshots` and `tinyctl check --ui` cannot work. Everything else — `run`, `state`,
+  /// `screens`, `docs`, `test` and a plain `check` of the package at the root — works.
   @MainActor
   public static var appCtl: AppCtlConfig<TinyRoot> {
     AppCtlConfig(
@@ -61,8 +61,9 @@ public enum TinyAppConfig {
       // A host with an Xcode project omits this: the marker is its `target` path.
       rootMarker: "Package.swift",
       bundleID: "com.example.TinyApp",
-      // `check` builds and tests `Packages/<name>` for each of these, a layout the example does not have.
-      packages: ["TinyApp"],
+      // `check` builds and tests each of these paths, relative to the root. TinyApp is a target of the package at
+      // the root, so that is the one package to build and test.
+      packages: ["."],
       simulatorName: "iPhone 17 Pro",
       snapshotRuntimeMajor: 18,
       scenariosPath: "Examples/TinyApp/scenarios",

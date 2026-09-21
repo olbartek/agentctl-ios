@@ -17,8 +17,10 @@
     let name = "StubApp"
     let target = BuildTarget.project("StubApp.xcodeproj", scheme: "StubApp")
     let bundleID = "com.example.stub"
-    let packages = ["Stub"]
-    let snapshotPackages = ["Stub"]
+    // Paths in a layout unlike any real host's, so a test can tell a configured path from an assumed one.
+    let packages = ["Modules/Core/StubKit", "Modules/Features/StubFeature"]
+    let snapshotPackages = ["Modules/Features/StubFeature"]
+    let outputPath = ".xctl"
     let simulatorName = "iPhone 17 Pro"
     let snapshotSimulatorName = "iPhone 17 Pro"
     let snapshotRuntimeMajor = 18

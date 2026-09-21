@@ -4,11 +4,12 @@
 
   /// L3: the view snapshot tests (swift-snapshot-testing) in the feature packages, run on the iOS Simulator.
   ///
-  /// References live in `Packages/*/Tests/*SnapshotTests/__Snapshots__/` and are recorded on the config's
+  /// References live in each snapshot package's `Tests/<name>SnapshotTests/__Snapshots__/` and are recorded on the config's
   /// `snapshotSimulatorName`, on its `snapshotRuntimeMajor` runtime: a reference image is only comparable on the
   /// device and iOS version it was recorded on, which is why `resolve` below insists on that major version.
   enum SnapshotRunner {
-    /// The packages whose `*SnapshotTests` run, and the iOS major version their references were recorded on.
+    /// The packages whose `*SnapshotTests` run (paths relative to the root), and the iOS major version their
+    /// references were recorded on.
     static var packages: [String] { AgentCtl.runtime.snapshotPackages }
     static var runtimeMajor: Int { AgentCtl.runtime.snapshotRuntimeMajor }
 
@@ -31,18 +32,20 @@
       var details: [String] = []
       var ok = true
       // Failure images (actual + difference) go here instead of the simulator's temporary directory.
-      let artifacts = root.appending(path: ".appctl/snapshot-failures")
+      let layout = Layout(root: root)
+      let artifacts = layout.snapshotFailures
       try? FileManager.default.removeItem(at: artifacts)
       try? FileManager.default.createDirectory(at: artifacts, withIntermediateDirectories: true)
-      for package in packages {
-        let log = root.appending(path: ".appctl/logs/L3-snapshots-\(package).log")
+      for path in packages {
+        let package = layout.name(ofPackage: path)
+        let log = layout.logs.appending(path: "L3-snapshots-\(package).log")
         var arguments = [
           "xcodebuild", "test", "-scheme", package, "-destination", "id=\(device.udid)", "-skipMacroValidation",
           "-only-testing:\(package)SnapshotTests", "-parallel-testing-enabled", "NO",
         ]
         arguments.insert("TEST_RUNNER_SNAPSHOT_ARTIFACTS=\(artifacts.path)", at: 0)
         if record { arguments.insert("TEST_RUNNER_SNAPSHOT_TESTING_RECORD=all", at: 0) }
-        let exitStatus = Shell.runWatched(arguments, in: root.appending(path: "Packages/\(package)"), log: log) {
+        let exitStatus = Shell.runWatched(arguments, in: layout.directory(ofPackage: path), log: log) {
           $0.contains("Test run with") && ($0.contains(" passed after ") || $0.contains(" failed after "))
         }
         let output = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
@@ -66,6 +69,20 @@
         }
       }
       return Result(ok: ok, tests: tests, device: device, details: details)
+    }
+
+    /// The snapshot packages' paths, for the help text.
+    static var packageList: String {
+      packages.isEmpty ? "no package (the config's snapshotPackages is empty)" : packages.joined(separator: ", ")
+    }
+
+    /// Where each snapshot package keeps its snapshot tests and their reference images, as paths relative to the
+    /// root: what to review after recording.
+    static var testDirectories: [String] {
+      packages.map { path in
+        let trimmed = path.hasSuffix("/") ? String(path.dropLast()) : path
+        return trimmed == "." || trimmed.isEmpty ? "Tests/*SnapshotTests" : "\(trimmed)/Tests/*SnapshotTests"
+      }
     }
 
     private static func testCount(in output: String) -> Int {

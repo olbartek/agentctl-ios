@@ -15,8 +15,10 @@
     /// install a stub host whose invocation is `xctl` and whose commands are `refresh`/`open <id>`, then read the
     /// real `CommandConfiguration`s back and fail on any `appctl` spelling or PoC vocabulary that survived.
     ///
-    /// What it does not guard: the CLI's behaviour (no command is executed here), the repo-layout strings
-    /// (`Packages/…`, `docs/agent-commands.md`), or anything the host itself puts in `HelpExamples`.
+    /// It also guards that the help pages take every directory from the config rather than assuming a layout.
+    ///
+    /// What it does not guard: the CLI's behaviour (no command is executed here), or anything the host itself puts
+    /// in `HelpExamples`.
     @MainActor
     @Suite
     struct CLIHelpTests {
@@ -91,13 +93,26 @@
         #expect(all.components(separatedBy: "xctl ").count - 1 >= 15)
       }
 
+      /// The pages that name a directory name the one the config gives: the snapshot packages' paths and the output
+      /// directory. None falls back to the layout AgentCtl was extracted from.
+      @Test
+      func helpPagesTakeDirectoriesFromTheConfig() {
+        let pages = Dictionary(uniqueKeysWithValues: Self.pages.map { ($0.name, $0.text) })
+        #expect(pages["snapshots"]?.contains("Tests/*SnapshotTests/__Snapshots__/ of Modules/Features/StubFeature") == true)
+        #expect(pages["check"]?.contains("Full logs: .xctl/logs/") == true)
+        for (name, text) in pages {
+          #expect(!text.contains("Packages/"), "the '\(name)' help page assumes a Packages/ directory")
+        }
+        #expect(SnapshotRunner.testDirectories == ["Modules/Features/StubFeature/Tests/*SnapshotTests"])
+      }
+
       /// The help pages and ``Message`` are rendered surfaces; this one covers the rest of the target, so a new
       /// literal anywhere in the CLI — a `print`, an error, a report column — is caught too. It reads the sources
       /// next to this file, and fails loudly if it cannot find them rather than passing on an empty list.
       @Test
       func noCLISourceSpellsTheCLIsOwnName() throws {
         let files = try Self.cliCodeWithoutComments()
-        #expect(files.count == 7, "expected the seven CLI files, found \(files.map(\.name).sorted())")
+        #expect(files.count == 8, "expected the eight CLI files, found \(files.map(\.name).sorted())")
         for file in files {
           // The booleans are named so a failure reads as the file's name, not as a dump of the whole file.
           let length = file.text.count

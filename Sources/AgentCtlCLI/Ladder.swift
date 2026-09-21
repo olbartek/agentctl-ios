@@ -7,13 +7,14 @@
   /// UI stages — cheapest first, one line per stage, stopping at the first failure.
   @MainActor
   struct Ladder {
-    /// The packages L0 builds and L1 tests, in order.
+    /// The packages L0 builds and L1 tests, in order: paths relative to the root.
     var packages: [String] { AgentCtl.runtime.packages }
 
     let root: URL
     var ui = false
     var simulator = AgentCtl.runtime.simulatorName
-    var logs: URL { root.appending(path: ".appctl/logs") }
+    var layout: Layout { Layout(root: root) }
+    var logs: URL { layout.logs }
 
     func run() async -> Int32 {
       try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
@@ -73,7 +74,7 @@
           }
         }
         let stamp = Int(Date().timeIntervalSince1970)
-        let screenshot = root.appending(path: ".appctl/screenshots/check-ui-\(stamp).png")
+        let screenshot = layout.screenshots.appending(path: "check-ui-\(stamp).png")
         try Simulator(root: root).screenshot(on: device, to: screenshot, log: logs.appending(path: "L4-screenshot.log"))
         report("L4 app", ok: true, detail: "\(scenario) via the agent bridge", since: start)
         print("  \(device.label), screenshot: \(screenshot.path(percentEncoded: false))")
@@ -89,9 +90,10 @@
     private func build() -> Bool {
       let start = ContinuousClock.now
       var retried: [String] = []
-      for package in packages {
+      for path in packages {
+        let package = layout.name(ofPackage: path)
         let log = logs.appending(path: "L0-build-\(package).log")
-        let status = shellWithRetry(["swift", "build", "--package-path", "Packages/\(package)", "-q"], log: log) {
+        let status = shellWithRetry(["swift", "build", "--package-path", path, "-q"], log: log) {
           retried.append(package)
         }
         guard status == 0 else {
@@ -100,7 +102,7 @@
           return false
         }
       }
-      report("L0 build", ok: true, detail: "\(packages.count) packages", since: start)
+      report("L0 build", ok: true, detail: Self.count(packages.count, "package"), since: start)
       printRetries(retried)
       return true
     }
@@ -111,11 +113,12 @@
       var total = 0
       var tested = 0
       var retried: [String] = []
-      for package in packages {
-        let testsDirectory = root.appending(path: "Packages/\(package)/Tests")
+      for path in packages {
+        let package = layout.name(ofPackage: path)
+        let testsDirectory = layout.directory(ofPackage: path).appending(path: "Tests")
         guard FileManager.default.fileExists(atPath: testsDirectory.path) else { continue }
         let log = logs.appending(path: "L1-test-\(package).log")
-        let status = shellWithRetry(["swift", "test", "--package-path", "Packages/\(package)"], log: log) {
+        let status = shellWithRetry(["swift", "test", "--package-path", path], log: log) {
           retried.append(package)
         }
         guard status == 0 else {
@@ -126,7 +129,7 @@
         tested += 1
         total += testCount(in: log)
       }
-      report("L1 test", ok: true, detail: "\(tested) packages, \(total) tests", since: start)
+      report("L1 test", ok: true, detail: "\(Self.count(tested, "package")), \(Self.count(total, "test"))", since: start)
       printRetries(retried)
       return true
     }
@@ -208,6 +211,11 @@
       let elapsed = start.duration(to: .now).components
       let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
       print(Self.row(stage: stage, ok: ok, detail: detail, seconds: seconds))
+    }
+
+    /// "1 package", "6 packages".
+    static func count(_ number: Int, _ noun: String) -> String {
+      "\(number) \(noun)\(number == 1 ? "" : "s")"
     }
 
     /// One line of the ladder's report. Columns are padded to line up but never truncated: the detail can name a

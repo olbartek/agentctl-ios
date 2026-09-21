@@ -61,7 +61,7 @@
           throw AppCtlError("build-and-run failed; log: \(log.path(percentEncoded: false))")
         }
       } else {
-        let derivedData = root.appending(path: ".appctl/DerivedData")
+        let derivedData = Layout(root: root).derivedData
         let status = Shell.run(
           ["xcodebuild"] + Self.target.xcodebuildArguments + [
             "-destination", "id=\(device.udid)", "-derivedDataPath", derivedData.path, "-skipMacroValidation", "-quiet",

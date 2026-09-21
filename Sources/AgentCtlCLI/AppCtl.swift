@@ -123,7 +123,8 @@
       abstract: "Run the L3 view snapshot tests on an iOS \(AgentCtl.runtime.snapshotRuntimeMajor) simulator "
         + "(or re-record the reference images).",
       discussion: """
-        Each screen is rendered in fixed states and compared with Packages/*/Tests/*SnapshotTests/__Snapshots__/.
+        Each screen is rendered in fixed states and compared with its reference images, in \
+        Tests/*SnapshotTests/__Snapshots__/ of \(SnapshotRunner.packageList).
         A failure prints the reference and actual image paths; look at both before deciding.
         Examples:
           \(help.invocation) snapshots             # after a view change (~45 s)
@@ -147,7 +148,7 @@
     static let configuration = CommandConfiguration(
       abstract: "Run the verification ladder: L0 build, L1 tests, L2 scenarios, docs check (--ui adds L3 and L4).",
       discussion: """
-        Prints one line per stage and stops at the first failing stage. Full logs: .appctl/logs/.
+        Prints one line per stage and stops at the first failing stage. Full logs: \(AgentCtl.runtime.outputPath)/logs/.
         Examples:
           \(help.invocation) check          # before every commit (~1 min)
           \(help.invocation) check --ui     # also L3 view snapshots and L4: the app on a simulator, a scenario via its agent bridge

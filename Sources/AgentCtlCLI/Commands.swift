@@ -130,7 +130,7 @@
       }
       result.details.forEach { print($0) }
       if record, result.ok {
-        print("Review the changes: git status --short Packages/*/Tests/*SnapshotTests")
+        print("Review the changes: git status --short \(SnapshotRunner.testDirectories.joined(separator: " "))")
       }
       return result.ok ? 0 : 1
     }

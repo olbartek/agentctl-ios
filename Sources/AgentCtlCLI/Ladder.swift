@@ -205,15 +205,23 @@
     }
 
     private func report(_ stage: String, ok: Bool, detail: String, since start: ContinuousClock.Instant) {
-      let seconds = Double(start.duration(to: .now).components.attoseconds) / 1e18
-        + Double(start.duration(to: .now).components.seconds)
-      let columns = [
-        stage.padding(toLength: 13, withPad: " ", startingAt: 0),
-        (ok ? "ok" : "FAIL").padding(toLength: 5, withPad: " ", startingAt: 0),
-        detail.padding(toLength: 28, withPad: " ", startingAt: 0),
+      let elapsed = start.duration(to: .now).components
+      let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+      print(Self.row(stage: stage, ok: ok, detail: detail, seconds: seconds))
+    }
+
+    /// One line of the ladder's report. Columns are padded to line up but never truncated: the detail can name a
+    /// host's scenario, whose length the ladder does not control.
+    static func row(stage: String, ok: Bool, detail: String, seconds: Double) -> String {
+      func padded(_ text: String, to width: Int) -> String {
+        text + String(repeating: " ", count: max(0, width - text.count))
+      }
+      return [
+        padded(stage, to: 13),
+        padded(ok ? "ok" : "FAIL", to: 5),
+        padded(detail, to: 28),
         String(format: "%.1fs", seconds),
-      ]
-      print(columns.joined(separator: " "))
+      ].joined(separator: " ")
     }
 
     private func printFailure(log: URL) {

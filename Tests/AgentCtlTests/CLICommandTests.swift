@@ -64,6 +64,19 @@
       }
 
       /// "0 passed, 0 failed" is not a pass: with no files named and none found, `test` and L2 fail.
+      /// The ladder's columns line up, and a detail longer than its column is kept whole rather than cut off.
+      @Test func ladderRowsPadButNeverTruncate() {
+        #expect(
+          Ladder.row(stage: "L2 scenarios", ok: true, detail: "21/21 scenarios", seconds: 0.4)
+            == "L2 scenarios  ok    21/21 scenarios              0.4s"
+        )
+        let detail = "order-cancel via the app's agent bridge"
+        #expect(
+          Ladder.row(stage: "L4 app", ok: true, detail: detail, seconds: 12.34)
+            == "L4 app        ok    \(detail) 12.3s"
+        )
+      }
+
       @Test func zeroScenariosFailTestAndTheLadder() async throws {
         AgentCtl.install(StubRuntime.restless)
         let root = try Self.temporaryDirectory()

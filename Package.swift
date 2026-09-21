@@ -13,7 +13,6 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
-    .package(url: "https://github.com/pointfreeco/swift-clocks", from: "1.0.6"),
     .package(url: "https://github.com/pointfreeco/swift-composable-architecture", from: "1.26.2"),
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.2"),
   ],
@@ -22,7 +21,6 @@ let package = Package(
       name: "AgentCtlCore",
       dependencies: [
         .product(name: "Dependencies", package: "swift-dependencies"),
-        .product(name: "Clocks", package: "swift-clocks"),
       ]
     ),
     .target(
@@ -51,6 +49,9 @@ let package = Package(
       dependencies: [
         "AgentCtlCore",
         "AgentCtlTCA",
+        // `AgentCtl.run(config:)` is generic over the host's root reducer, and its constraints name TCA's
+        // `Reducer` and `ObservableState`.
+        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]
     ),
@@ -61,6 +62,8 @@ let package = Package(
       dependencies: [
         "AgentCtlCore",
         "AgentCtlTCA",
+        // `AgentCoverage` is generic over the host's root reducer, like the runner it drives.
+        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
       ]
     ),
     // The example app, and its CLI. Targets of this package rather than a nested package: the tests below use

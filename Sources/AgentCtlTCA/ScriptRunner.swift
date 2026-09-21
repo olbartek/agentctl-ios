@@ -1,6 +1,5 @@
 import AgentCtlCore
 import ComposableArchitecture
-import CustomDump
 
 /// How a ``ScriptRunner`` waits for the app and whether it can control time.
 @MainActor

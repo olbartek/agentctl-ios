@@ -88,7 +88,7 @@ public enum TinyAppConfig {
     )
   }
 
-  /// A deterministic store on the Mac: a `TestClock`, incrementing UUIDs, a fixed date and zero mock latency.
+  /// A deterministic store on the Mac: a `TestClock`, a fixed date, and everything else `HeadlessHost` pins.
   /// `tinyctl run`, `tinyctl test` and the package's own tests all run against this.
   @MainActor
   public static func headless() -> HeadlessHost<TinyRoot> {

@@ -62,13 +62,14 @@ client that is also this package's test fixture.
 
 ### 1. Add the dependency
 
-No version is tagged yet, so pin the branch (or a commit) for now:
-
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", branch: "main"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.2.0"),
 ],
 ```
+
+Until 1.0, a minor version may change the API (see [Status](#status)); `from: "0.2.0"` admits every later
+`0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`, and it exposes five products. Take only what each target needs:
 
@@ -239,7 +240,7 @@ public static var appCtl: AppCtlConfig<TinyRoot> {
   )
 }
 
-/// A deterministic store on the Mac: a `TestClock`, incrementing UUIDs, a fixed date and zero mock latency.
+/// A deterministic store on the Mac: a `TestClock`, a fixed date, and everything else `HeadlessHost` pins.
 @MainActor
 public static func headless() -> HeadlessHost<TinyRoot> {
   HeadlessHost(initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, mockMethods: mockMethods) { deps, _ in
@@ -306,7 +307,7 @@ SUBCOMMANDS:
   check                   Run the verification ladder: L0 build, L1 tests, L2
                           scenarios, docs check (--ui adds L3 and L4).
   app                     Launch the app on a simulator and drive it through
-                          AgentBridge.
+                          its agent bridge.
 
   See 'tinyctl help <subcommand>' for detailed help.
 ```
@@ -409,21 +410,38 @@ exit=1
 | `state` | The full root state, `customDump`ed, after replaying an optional session file. |
 | `screens` | Every screen path with its commands, arguments, help and summary keys — as above. |
 | `docs` | Write the generated command reference (`docsPath`) from the registry. `--check` exits 1 when it is stale, which is what keeps it honest in CI. |
-| `test [files…]` | Run `*.appctl` scenario files (by default all of `scenariosPath`), one PASS/FAIL line each. |
+| `test [files…]` | Run `*.appctl` scenario files (by default all of `scenariosPath`), one PASS/FAIL line each. Finding no scenario files to run is a failure, not "0 passed". |
 | `snapshots` | The view snapshot tests, on an iOS simulator; `--record` re-records the reference images. |
 | `check` | The verification ladder below; `--ui` adds its last two rungs. |
 | `app launch` / `app run` / `app state` / `app screens` | The same commands, against the real app on a simulator, through the in-app bridge. |
 
-Exit codes are part of the contract: `0` everything ran and every `expect` passed, `1` a command or an `expect`
-failed, `2` a usage or parse error, `3` an internal or build error.
+Exit codes are part of the contract: `0` everything ran and every `expect` passed; `1` a command or an `expect`
+failed, or a step — `(launch)` included — did not settle; `2` a usage or parse error, the CLI's own command line
+included; `3` an internal or environment error — a scenario file that does not exist, no scenario files to run,
+no repo root, a build that failed.
 
 Three runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (headless only — a
 running app's timers are real, so `advance` is rejected there rather than silently slept), and
 `mock <client.method> <error>`.
 
-Headless runs are deterministic by construction — a `TestClock`, incrementing UUIDs, a fixed date, zero mock
-latency, fresh in-memory backends and a serial executor — so the same script always prints the same bytes. That
-is what makes step output usable as a committed fixture.
+Headless runs are deterministic by construction, so the same script always prints the same bytes — which is what
+makes step output usable as a committed fixture. `HeadlessHost` runs everything on one serial executor and pins
+exactly these dependencies of your store:
+
+| Dependency | Headless value |
+|---|---|
+| `\.continuousClock` | a `TestClock` that only `advance` moves (counting its sleeps for `pending=`) |
+| `\.uuid` | `.incrementing` |
+| `\.date` | 2026-01-01T09:00:00Z, on every read |
+| `\.withRandomNumberGenerator` | a SplitMix64 generator with a fixed seed |
+| `\.timeZone`, `\.locale`, `\.calendar` | UTC, `en_US_POSIX`, and the Gregorian calendar in UTC |
+| `\.mockLatency` | zero |
+| `\.mockCallLog`, `\.mockFaults` | fresh for every run |
+
+**Nothing else is pinned.** If your app uses `\.mainQueue`, `\.suspendingClock` or any other source of time, pin
+it yourself in the closure you pass `HeadlessHost` — it runs after the table above, so it can override any of
+it too — and give your mock backends fresh state there. Anything read around the dependency system (a formatter
+built on `Locale.current`, say) is not pinned at all.
 
 ## The verification ladder
 
@@ -497,29 +515,66 @@ asserted. A thin suite that touches everything once passes them.
 ## The in-app bridge
 
 `AgentCtlBridge` is `#if DEBUG` from end to end, so a Release build compiles it away, and its server listens on
-`127.0.0.1` only. The app shell holds one property:
+`127.0.0.1` only. Your app shell therefore uses it inside `#if DEBUG` too — importing it or naming `AgentLaunch`
+outside one breaks your Release build. Everything below is the shell's whole integration: in DEBUG it builds the
+root view from `launch.store`, calls `await launch.start()` once from that view's `.task`, and shows a
+placeholder while `launch.isReady` is false, which is how a launch seed is applied before the first real frame.
 
 ```swift
-@State private var launch = AgentLaunch(config: MyAppConfig.appCtl)
+import ComposableArchitecture
+import SwiftUI
+
+#if DEBUG
+  import AgentCtlBridge
+  import MyAppCtl   // the target that holds MyAppConfig
+#endif
+
+@main
+struct MyApp: App {
+  #if DEBUG
+    @State private var launch = AgentLaunch(config: MyAppConfig.appCtl)
+  #else
+    let store = Store(initialState: MyRoot.State()) { MyRoot() }
+  #endif
+
+  var body: some Scene {
+    WindowGroup {
+      #if DEBUG
+        Group {
+          if launch.isReady {
+            RootView(store: launch.store)
+          } else {
+            ProgressView()
+          }
+        }
+        .task { await launch.start() }
+      #else
+        RootView(store: store)
+      #endif
+    }
+  }
+}
 ```
 
-…builds its root view from `launch.store`, calls `await launch.start()` once from that view's `.task`, and shows
-a placeholder while `launch.isReady` is false, which is how a launch seed is applied before the first real frame.
-
-`AgentLaunch` reads the launch arguments the CLI's `app` subcommands pass: `-agent-port <n>` (default 8765),
-`-appctl-seed "<script>"` (commands applied before the first real frame, so the app opens already in that
-state), `-mock-latency <ms>` and `-clear-session`. `start()` applies the seed before it starts listening, so the
-bridge's first answer means the app is ready.
+A Release build never names `AgentCtlBridge` or the config's target. `AgentLaunch` reads the launch arguments the
+CLI's `app` subcommands pass: `-agent-port <n>` (default `BridgeDefaults.port`, 8765, which is also where the CLI
+connects), `-appctl-seed "<script>"` (commands applied before the first real frame, so the app opens already in
+that state), `-mock-latency <ms>` and `-clear-session`. `start()` applies the seed before it starts listening, so
+the bridge's first answer means the app is ready. A seed is a script and fails like one — at its first failing
+step, or at a `(launch)` that did not settle — and the app logs `AgentCtlBridge: seed applied` or
+`AgentCtlBridge: seed FAILED (exit <code>)` with its steps.
 
 The same scripts then run against the real app (`app run`), on the live clock and with real mock latency — which
-is why `advance` is rejected there.
+is why `advance` is rejected there. The wire protocol — routes, the `X-Appctl-Exit` header, the JSON form, the
+launch arguments — is [CONTRACT.md §8](CONTRACT.md#8-the-in-app-bridge).
 
 ## The contract
 
 [`CONTRACT.md`](CONTRACT.md) specifies the engine independently of Swift: the script language and its quoting,
 command resolution, the three runtime commands, the exact step output format, `expect` semantics and failure
-text, the exit codes, and the determinism requirements. It is what a port in another language implements, and it
-is a more precise description of the behaviour summarized above.
+text, the exit codes, the determinism requirements, and the in-app bridge's wire protocol. It is what a port in
+another language implements, and it is a more precise description of the behaviour summarized above. Its
+examples are TinyApp's, and their output is real.
 
 ## The example app
 
@@ -536,5 +591,5 @@ swift test          # this package's own suite, driven against TinyApp
 
 ## Status
 
-Version 0.1, extracted from the app it was built for. The example app in this repository is the only integration
-CI exercises, and the API may change. MIT licensed.
+Version 0.2, extracted from the app it was built for. The example app in this repository is the only integration
+CI exercises, and the API may still change between minor versions before 1.0. MIT licensed.

@@ -75,15 +75,32 @@ public enum StepFormatter {
 
   /// A JSON array of `{command, screen, summary, calls, error, pending, ok, …}` with sorted keys.
   public static func json(_ steps: [StepRecord]) -> String {
+    encode(steps.map(JSONStep.init)) ?? "[]"
+  }
+
+  /// The JSON form of a whole run: ``json(_:)``'s array — unless the run failed with a message that belongs to
+  /// no step (a script that did not parse), which the array has no place for. Then it is an object that carries
+  /// the message beside the steps: `{"error": "parse error: …", "steps": []}`.
+  public static func json(_ steps: [StepRecord], error: String?) -> String {
+    guard let error else { return json(steps) }
+    return encode(JSONRunFailure(error: error, steps: steps.map(JSONStep.init))) ?? "[]"
+  }
+
+  private static func encode(_ value: some Encodable) -> String? {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-    guard let data = try? encoder.encode(steps.map(JSONStep.init)) else { return "[]" }
+    guard let data = try? encoder.encode(value) else { return nil }
     return String(decoding: data, as: UTF8.self)
   }
 
   private static func quoted(_ value: String) -> String {
     value.contains(where: \.isWhitespace) || value.isEmpty ? "\"\(value)\"" : value
   }
+}
+
+private struct JSONRunFailure: Encodable {
+  var error: String
+  var steps: [JSONStep]
 }
 
 private struct JSONStep: Encodable {

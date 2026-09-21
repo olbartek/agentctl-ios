@@ -34,7 +34,9 @@ public struct BridgeResponse: Equatable, Sendable {
 
 /// AgentBridge's endpoints, independent of the transport so they can be tested on the host:
 ///
-/// - `POST /run` (body: a script; `?format=json` for JSON): the same output as the CLI's `run`.
+/// - `POST /run` (body: a script; `?format=json` for JSON): the same output as the CLI's `run`, with what `run`
+///   prints to stderr — a script's parse error — in the body too: after the steps as `error: …` in the text
+///   form, and as `{"error": …, "steps": […]}` in place of the steps array in the JSON form.
 /// - `GET /state`: `customDump` of the root state.
 /// - `GET /screens`: every screen and its commands.
 /// - `GET /snapshot`: the current screen's summary line.
@@ -59,7 +61,7 @@ where
       if request.query["format"] == "json" {
         return BridgeResponse(
           status: 200,
-          body: StepFormatter.json(result.steps),
+          body: StepFormatter.json(result.steps, error: result.message),
           contentType: "application/json",
           exitCode: result.status.rawValue
         )

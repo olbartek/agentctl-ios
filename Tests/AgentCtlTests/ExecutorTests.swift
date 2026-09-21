@@ -68,6 +68,15 @@ extension AgentCtlSuite {
     @Test func advanceValidation() async {
       #expect(await run("advance 5m").result.status == .ok)
       #expect(await run("advance soon").result.status == .usage)
+      // Too large to represent: a usage error with the usual message, not a crash.
+      let overflow = await run("advance 9999999999999999h").result
+      #expect(overflow.status == .usage)
+      #expect(overflow.steps.last?.message == "advance needs a duration such as 500ms, 30s, 5m or 1h")
+      // Each duration fits, but together they would overflow the clock: the second is refused before it moves.
+      let cumulative = await run("advance \(Int.max)s; advance 1s").result
+      #expect(cumulative.status == .usage)
+      #expect(cumulative.steps.count == 2)
+      #expect(cumulative.steps.last?.message == "advance would take the clock past \(Int.max) seconds")
     }
 
     /// A gate mirrors a disabled button: the command is refused with the gate's hint and no action is sent, so

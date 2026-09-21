@@ -53,13 +53,26 @@ struct ScriptParserTests {
   }
 
   @Test func durations() {
-    #expect(parseDuration("500ms") == .milliseconds(500))
-    #expect(parseDuration("30s") == .seconds(30))
-    #expect(parseDuration("5m") == .seconds(300))
-    #expect(parseDuration("1h") == .seconds(3600))
-    #expect(parseDuration("s") == nil)
-    #expect(parseDuration("1.5s") == nil)
-    #expect(parseDuration("10") == nil)
-    #expect(parseDuration("-1s") == nil)
+    #expect(ScriptParser.parseDuration("500ms") == .milliseconds(500))
+    #expect(ScriptParser.parseDuration("30s") == .seconds(30))
+    #expect(ScriptParser.parseDuration("5m") == .seconds(300))
+    #expect(ScriptParser.parseDuration("1h") == .seconds(3600))
+    #expect(ScriptParser.parseDuration("s") == nil)
+    #expect(ScriptParser.parseDuration("1.5s") == nil)
+    #expect(ScriptParser.parseDuration("10") == nil)
+    #expect(ScriptParser.parseDuration("-1s") == nil)
+  }
+
+  /// `9999999999999999h` fits in an `Int` but not once converted to seconds; it used to trap in the conversion,
+  /// crashing the CLI (exit 133) and, through `app run`, the app. A number too large for an `Int` at all was
+  /// already rejected.
+  @Test func durationsTooLargeToRepresentAreRejected() {
+    #expect(ScriptParser.parseDuration("9999999999999999h") == nil)
+    #expect(ScriptParser.parseDuration("9223372036854775807m") == nil)
+    #expect(ScriptParser.parseDuration("99999999999999999999s") == nil)
+    // The largest values that do fit are still accepted.
+    #expect(ScriptParser.parseDuration("\(Int.max)s") == .seconds(Int.max))
+    #expect(ScriptParser.parseDuration("\(Int.max / 3600)h") == .seconds(Int.max / 3600 * 3600))
+    #expect(ScriptParser.parseDuration("\(Int.max)ms") == .milliseconds(Int.max))
   }
 }

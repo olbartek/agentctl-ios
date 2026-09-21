@@ -64,6 +64,13 @@ where
   public var recordsDiff = false
   private var lastIdentity: String?
   private var lastCalls: [String] = []
+  /// How far `advance` has moved the clock so far.
+  private var advanced: Duration = .zero
+
+  /// The furthest `advance` moves the clock in one run, in total. A virtual clock's instant traps when it
+  /// overflows, somewhere past 10^20 seconds; stopping at `Int.max` seconds keeps a script from crashing the
+  /// process that way and leaves the app's own sleeps ample room beyond it.
+  static var advanceLimit: Duration { .seconds(Int.max) }
 
   public init(
     store: Store<Root.State, Root.Action>,
@@ -161,12 +168,16 @@ where
   }
 
   private func advance(_ line: ScriptLine) async -> (step: StepRecord, status: RunStatus) {
-    guard let argument = line.argument, let duration = parseDuration(ArgumentText.unquoted(argument)) else {
+    guard let argument = line.argument, let duration = ScriptParser.parseDuration(ArgumentText.unquoted(argument)) else {
       return fail(line, status: .usage, "advance needs a duration such as 500ms, 30s, 5m or 1h")
     }
     guard let advanceClock = environment.advance else {
       return fail(line, status: .usage, "advance is only available headlessly, not in the running app")
     }
+    guard duration <= Self.advanceLimit - advanced else {
+      return fail(line, status: .usage, "advance would take the clock past \(Int.max) seconds")
+    }
+    advanced += duration
     let start = callLog.count
     let before = state
     await advanceClock(duration)

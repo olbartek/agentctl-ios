@@ -156,20 +156,25 @@ public enum ArgumentText {
   }
 }
 
-/// Parses durations such as `500ms`, `30s`, `5m`, `1h`.
-public func parseDuration(_ text: String) -> Duration? {
-  let units: [(suffix: String, make: (Int) -> Duration)] = [
-    ("ms", { .milliseconds($0) }),
-    ("s", { .seconds($0) }),
-    ("m", { .seconds($0 * 60) }),
-    ("h", { .seconds($0 * 3600) }),
-  ]
-  for unit in units where text.hasSuffix(unit.suffix) {
-    let number = text.dropLast(unit.suffix.count)
-    guard !number.isEmpty, number.allSatisfy(\.isASCIIDigit), let value = Int(number) else { return nil }
-    return unit.make(value)
+extension ScriptParser {
+  /// Parses the argument of `advance`: an unsigned integer immediately followed by one unit — `ms`, `s`, `m` or
+  /// `h` (`500ms`, `30s`, `5m`, `1h`; CONTRACT.md §2.2).
+  ///
+  /// Returns `nil` for anything else, including a number too large to represent, whether as an `Int` or once
+  /// converted to seconds: `advance` reports every `nil` as a usage error (exit 2), never a crash.
+  public static func parseDuration(_ text: String) -> Duration? {
+    // The multiplier to seconds; `nil` for milliseconds, which `Duration` takes as they are. `ms` is tried
+    // before `s` and `m`, which are its suffix and its first letter.
+    let units: [(suffix: String, seconds: Int?)] = [("ms", nil), ("s", 1), ("m", 60), ("h", 3600)]
+    for unit in units where text.hasSuffix(unit.suffix) {
+      let number = text.dropLast(unit.suffix.count)
+      guard !number.isEmpty, number.allSatisfy(\.isASCIIDigit), let value = Int(number) else { return nil }
+      guard let multiplier = unit.seconds else { return .milliseconds(value) }
+      let (seconds, overflow) = value.multipliedReportingOverflow(by: multiplier)
+      return overflow ? nil : .seconds(seconds)
+    }
+    return nil
   }
-  return nil
 }
 
 extension StringProtocol {

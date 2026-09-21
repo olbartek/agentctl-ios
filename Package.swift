@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-  name: "AgentCtl",
+  name: "agent-ctl",
   platforms: [.iOS(.v18), .macOS(.v15)],
   products: [
     .library(name: "AgentCtlCore", targets: ["AgentCtlCore"]),

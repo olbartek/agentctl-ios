@@ -83,11 +83,7 @@
       self.router = router
       self.server = server
       if let seed = options.seed {
-        let seeder = app.makeRunner(synthesizesAppearance: true)
-        var steps = [await seeder.launch()]
-        let result = await seeder.run(seed)
-        steps += result.steps
-        print("AgentBridge: seed\n" + StepFormatter.text(steps))
+        print(await Self.applySeed(seed, with: app.makeRunner(synthesizesAppearance: true)).log)
         isReady = true
       }
       do {
@@ -96,6 +92,28 @@
       } catch {
         print("AgentBridge: could not listen on port \(options.port): \(error)")
       }
+    }
+
+    /// Applies a launch seed: the `(launch)` step, then the seed's commands. A seed is a script, so it fails the
+    /// way a script does (CONTRACT.md §5): it stops at its first failing step, and a launch that did not settle
+    /// fails it before its first command runs (§3.4). Returns that status and the block the app logs.
+    static func applySeed(_ seed: String, with runner: ScriptRunner<Root>) async -> (status: RunStatus, log: String) {
+      let launch = await runner.launch()
+      var steps = [launch.step]
+      var status = launch.status
+      var message: String?
+      if launch.status == .ok {
+        let result = await runner.run(seed)
+        steps += result.steps
+        status = result.status
+        message = result.message
+      }
+      let outcome = status == .ok ? "applied" : "FAILED (exit \(status.rawValue))"
+      var log = "AgentCtlBridge: seed \(outcome)\n" + StepFormatter.text(steps)
+      if let message {
+        log += "\nerror: \(message)"
+      }
+      return (status, log)
     }
   }
 #endif

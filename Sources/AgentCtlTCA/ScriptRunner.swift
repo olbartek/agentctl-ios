@@ -85,12 +85,17 @@ where
 
   public var state: Root.State { store.state }
 
-  /// Settles the initial state (sending the first screen's appearance) and returns the `(launch)` step.
-  public func launch() async -> StepRecord {
+  /// Settles the initial state (sending the first screen's appearance) and returns the `(launch)` step with its
+  /// status.
+  ///
+  /// The status is `.failed` when the app did not settle — a `settled=false` step fails like any other
+  /// (CONTRACT.md §3.1, §5). A caller must then not run a script: its first line would be evaluated against a
+  /// starting state that is not known (§3.4).
+  public func launch() async -> (step: StepRecord, status: RunStatus) {
     let start = callLog.count
     let before = state
     let settle = await settleAndAppear()
-    return finish(command: "(launch)", callStart: start, settle: settle, before: before).step
+    return finish(command: "(launch)", callStart: start, settle: settle, before: before)
   }
 
   /// Parses and runs a script, stopping at the first failure.

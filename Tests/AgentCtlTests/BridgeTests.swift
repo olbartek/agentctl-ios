@@ -125,6 +125,33 @@
         #expect(response.hasSuffix("\r\n\r\nok"))
       }
 
+      /// A launch seed is a script, so a launch that never settles fails it before its first command — and the
+      /// app's log says so, rather than printing the steps as if the seed had been applied.
+      @Test func aSeedStopsWhenTheLaunchDoesNotSettle() async {
+        let seed = await serially {
+          await AgentLaunch<Restless>.applySeed("expect screen=restless", with: Restless.makeRunner())
+        }
+        #expect(seed.status == .failed)
+        #expect(seed.log.hasPrefix("AgentCtlBridge: seed FAILED (exit 1)\n> (launch)"), "\(seed.log)")
+        #expect(seed.log.contains("settled=false"))
+        #expect(!seed.log.contains("> expect"), "the seed ran on a launch that did not settle:\n\(seed.log)")
+      }
+
+      @Test func aSeedRunsAfterASettledLaunch() async {
+        let applied = await AgentLaunch<TinyRoot>.applySeed(
+          "open 2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
+        )
+        #expect(applied.status == .ok)
+        #expect(applied.log.hasPrefix("AgentCtlBridge: seed applied\n> (launch)"), "\(applied.log)")
+        #expect(applied.log.contains("> open 2\n  screen=items/2"))
+        // A seed that does not parse fails with its reason, as `run` does.
+        let unparsed = await AgentLaunch<TinyRoot>.applySeed(
+          "open \"2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
+        )
+        #expect(unparsed.status == .usage)
+        #expect(unparsed.log.hasSuffix("error: parse error: line 1, column 6: unterminated quote"), "\(unparsed.log)")
+      }
+
       @Test func launchArguments() {
         let options = AgentLaunch<TinyRoot>.Options(arguments: [
           "TinyApp", "-agent-port", "9000", "-appctl-seed", "open 2; save", "-mock-latency", "0",

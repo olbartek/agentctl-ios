@@ -11,6 +11,11 @@
       Deterministic.isEnabled = true
       let runner = AgentCtl.runtime.makeRunner()
       let launch = await runner.launch()
+      // A launch that did not settle fails the run before the script (or a session replay) starts.
+      guard launch.status == .ok else {
+        print(json ? StepFormatter.json([launch.step]) : StepFormatter.text(launch.step))
+        return launch.status.rawValue
+      }
       var steps: [StepRecord] = []
       if let sessionPath {
         let replay = await runner.run(Session.load(sessionPath))
@@ -19,7 +24,7 @@
           return RunStatus.failed.rawValue
         }
       } else {
-        steps.append(launch)
+        steps.append(launch.step)
       }
       runner.recordsDiff = diff
       let result = await runner.run(script)
@@ -41,7 +46,11 @@
     static func state(sessionPath: String?) async -> Int32 {
       Deterministic.isEnabled = true
       let runner = AgentCtl.runtime.makeRunner()
-      _ = await runner.launch()
+      let launch = await runner.launch()
+      guard launch.status == .ok else {
+        printError("the app did not settle at launch\n" + StepFormatter.text(launch.step))
+        return launch.status.rawValue
+      }
       if let sessionPath {
         let replay = await runner.run(Session.load(sessionPath))
         guard replay.status == .ok else {
@@ -92,15 +101,21 @@
       return 0
     }
 
+    /// Exit codes (CONTRACT.md §5): 0 when every scenario passed; 1 when one failed; 3 when there was nothing to
+    /// run or a file could not be read — no scenario files where the config says they are, a scenario file named
+    /// on the command line that does not exist, or no repo root to look in.
     static func test(paths: [String]) async -> Int32 {
       Deterministic.isEnabled = true
-      guard let files = scenarioFiles(paths) else { return RunStatus.usage.rawValue }
+      guard let files = scenarioFiles(paths) else { return RunStatus.internalError.rawValue }
       let results = await AgentCtl.runtime.runScenarios(files)
       for result in results {
         print(result.report)
       }
       let failed = results.filter { !$0.passed }.count
       print("\(results.count - failed) passed, \(failed) failed")
+      if results.contains(where: { $0.status == .internalError }) {
+        return RunStatus.internalError.rawValue
+      }
       return failed == 0 ? 0 : RunStatus.failed.rawValue
     }
 
@@ -128,12 +143,21 @@
 
     // MARK: - Shared helpers
 
+    /// The files named on the command line, or else every scenario in the config's `scenariosPath`. `nil`, with
+    /// the reason printed, when there is no repo root or that directory holds no scenario files: a run that
+    /// checked nothing must not report success.
     static func scenarioFiles(_ paths: [String]) -> [URL]? {
       guard paths.isEmpty else {
         return paths.map { URL(fileURLWithPath: $0) }
       }
       guard let root = Repo.root() else { return nil }
-      return ScenarioRunner.files(in: root.appending(path: AgentCtl.runtime.scenariosPath))
+      let directory = root.appending(path: AgentCtl.runtime.scenariosPath)
+      let files = ScenarioRunner.files(in: directory)
+      guard !files.isEmpty else {
+        printError(Message.noScenarios(in: directory))
+        return nil
+      }
+      return files
     }
   }
 
@@ -186,6 +210,12 @@
   enum Message {
     static func bridgeUnreachable(port: Int, error: any Error) -> String {
       "cannot reach AgentBridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): \(error)"
+    }
+
+    /// `test` and L2 with nothing to run. Zero scenarios passing is not a pass.
+    static func noScenarios(in directory: URL) -> String {
+      "no scenario files (*.appctl) in \(directory.path(percentEncoded: false)): check the config's scenariosPath, "
+        + "or name the files to run"
     }
 
     static var staleDocs: String {

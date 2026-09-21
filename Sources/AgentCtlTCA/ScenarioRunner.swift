@@ -42,10 +42,21 @@ public enum ScenarioRunner {
     let start = clock.now
     let runner = make()
     let launch = await runner.launch()
+    // An app that never settled at launch fails the scenario before its first line runs.
+    guard launch.status == .ok else {
+      return ScenarioResult(
+        name: name,
+        steps: [launch.step],
+        status: launch.status,
+        failedLine: nil,
+        message: nil,
+        duration: start.duration(to: clock.now)
+      )
+    }
     let result = await runner.run(source)
     return ScenarioResult(
       name: name,
-      steps: [launch] + result.steps,
+      steps: [launch.step] + result.steps,
       status: result.status,
       failedLine: result.failedLine,
       message: result.message,
@@ -62,9 +73,11 @@ public enum ScenarioRunner {
     Root.AgentState == Root.State, Root.AgentAction == Root.Action
   {
     let name = file.deletingPathExtension().lastPathComponent
+    // A missing or unreadable file is an environment problem, not a script's: exit code 3 (CONTRACT.md §5).
     guard let source = try? String(contentsOf: file, encoding: .utf8) else {
       return ScenarioResult(
-        name: name, steps: [], status: .usage, failedLine: nil, message: "cannot read \(file.path)", duration: .zero
+        name: name, steps: [], status: .internalError, failedLine: nil, message: "cannot read \(file.path)",
+        duration: .zero
       )
     }
     return await run(name: name, source: source, make: make)

@@ -18,7 +18,7 @@ extension AgentCtlSuite {
         let app = TinyAppConfig.headless()
         let runner = app.makeRunner()
         let launch = await runner.launch()
-        return (launch, await runner.run(script))
+        return (launch.step, await runner.run(script))
       }
     }
 
@@ -26,6 +26,7 @@ extension AgentCtlSuite {
       let (launch, result) = await run("expect screen=\(firstScreen) call=items.fetch pending=0")
       #expect(launch.command == "(launch)")
       #expect(launch.calls == ["items.fetch"])
+      #expect(launch.settled && launch.ok)
       #expect(result.status == .ok)
     }
 
@@ -88,7 +89,7 @@ extension AgentCtlSuite {
         let app = TinyAppConfig.headless()
         app.faults.set("items.fetch", code: "network")
         let runner = app.makeRunner()
-        return (await runner.launch(), await runner.run("open 2"))
+        return (await runner.launch().step, await runner.run("open 2"))
       }
       #expect(launch.summary.contains(SummaryItem("items", 0)))
       #expect(launch.error == "network")

@@ -130,12 +130,18 @@
       return true
     }
 
-    /// L2: every scenario, in-process.
-    private func scenarios() async -> Bool {
+    /// L2: every scenario, in-process. Internal rather than private so a test can run this rung on its own.
+    func scenarios() async -> Bool {
       let start = ContinuousClock.now
       Deterministic.isEnabled = true
       defer { Deterministic.isEnabled = false }
-      let files = ScenarioRunner.files(in: root.appending(path: AgentCtl.runtime.scenariosPath))
+      let directory = root.appending(path: AgentCtl.runtime.scenariosPath)
+      let files = ScenarioRunner.files(in: directory)
+      guard !files.isEmpty else {
+        report("L2 scenarios", ok: false, detail: "no scenario files", since: start)
+        print("  \(Message.noScenarios(in: directory))")
+        return false
+      }
       let results = await AgentCtl.runtime.runScenarios(files)
       let failures = results.filter { !$0.passed }
       report("L2 scenarios", ok: failures.isEmpty, detail: "\(results.count - failures.count)/\(results.count) scenarios", since: start)

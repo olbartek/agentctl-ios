@@ -248,7 +248,7 @@ extension AppCtlRuntime {
 public protocol ScriptRunning: AnyObject {
   var recordsDiff: Bool { get set }
   var stateDump: String { get }
-  func launch() async -> StepRecord
+  func launch() async -> (step: StepRecord, status: RunStatus)
   func run(_ source: String) async -> RunResult
   func snapshot(command: String) -> StepRecord
 }

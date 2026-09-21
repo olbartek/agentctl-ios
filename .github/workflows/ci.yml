@@ -45,3 +45,49 @@ jobs:
       # change to a screen's commands or summary keys never made it into the document.
       - name: Generated command reference is current
         run: swift run tinyctl docs --check
+
+  # The package's two advertised properties that the host-side steps above never exercise, each in its own job so
+  # they run alongside the tests.
+
+  # The libraries support iOS (only AgentCtlCLI is macOS-only, and compiles to nothing there). Build every target of
+  # the package for the iOS Simulator, the way a host app's Xcode build does.
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selected $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+          swift --version
+
+      # `-skipMacroValidation`: TCA and swift-dependencies use Swift macros, which Xcode otherwise asks to trust.
+      - name: Build for the iOS Simulator
+        run: |
+          set -euo pipefail
+          xcodebuild -list
+          xcodebuild build -quiet -scheme agent-ctl-Package -destination 'generic/platform=iOS Simulator' \
+            -skipMacroValidation
+
+  # AgentCtlBridge is `#if DEBUG` from end to end, so a host's Release build compiles it away. A Release build of
+  # the package is what proves nothing outside it depends on it.
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selected $latest"
+          sudo xcode-select -s "$latest"
+          xcodebuild -version
+          swift --version
+
+      - name: Build in release
+        run: swift build -c release

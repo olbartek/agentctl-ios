@@ -23,8 +23,11 @@ public struct SettleResult: Equatable, Sendable {
 ///
 /// Must run with the main serial executor enabled, so that every task (including actor jobs) runs in order
 /// on the main thread and yielding lets them all make progress.
+///
+/// `package` access, like ``settleLive``: a host settles through `HeadlessHost.settle()` and
+/// `LiveHost.settle()`, which choose the thresholds.
 @MainActor
-public func settleHeadless<State: Equatable>(
+package func settleHeadless<State: Equatable>(
   state: () -> State,
   callLog: MockCallLog,
   tracker: EffectTracker,
@@ -65,7 +68,7 @@ private struct SettleFingerprint<State: Equatable>: Equatable {
 /// Live settling for the running app: wait until no mock call is in flight and the state has not
 /// changed for `quietWindow`, or until `limit`. Mock latency is real here, so this uses real time.
 @MainActor
-public func settleLive<State: Equatable>(
+package func settleLive<State: Equatable>(
   state: () -> State,
   callLog: MockCallLog,
   pending: () -> Int,

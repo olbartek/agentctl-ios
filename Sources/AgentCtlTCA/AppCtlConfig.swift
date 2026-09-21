@@ -210,7 +210,10 @@ where
 /// The facts are `nonisolated` on purpose: ArgumentParser builds `CommandConfiguration`s and option defaults
 /// outside any actor, and the simulator helpers are plain structs. Everything that touches a store is
 /// `@MainActor`.
-public protocol AppCtlRuntime: AnyObject, Sendable {
+///
+/// `package` access, like ``ScriptRunning`` and ``ErasedConfig``: this is AgentCtlCLI's plumbing, not API. A host
+/// hands the CLI an ``AppCtlConfig`` and never sees the erased form.
+package protocol AppCtlRuntime: AnyObject, Sendable {
   var name: String { get }
   var target: BuildTarget { get }
   /// What the CLI walks up the directory tree for to find the repo root. Defaults to ``target``'s path.
@@ -238,14 +241,14 @@ public protocol AppCtlRuntime: AnyObject, Sendable {
 
 extension AppCtlRuntime {
   /// An app with an Xcode project is marked by it, so a host that sets no marker of its own needs no code.
-  public var rootMarker: String { target.path }
+  package var rootMarker: String { target.path }
   /// Where an app at the root of its own repository keeps its generated command reference.
-  public var docsPath: String { "docs/agent-commands.md" }
+  package var docsPath: String { "docs/agent-commands.md" }
 }
 
 /// What the CLI does with a runner, without naming the root reducer.
 @MainActor
-public protocol ScriptRunning: AnyObject {
+package protocol ScriptRunning: AnyObject {
   var recordsDiff: Bool { get set }
   var stateDump: String { get }
   func launch() async -> (step: StepRecord, status: RunStatus)
@@ -256,45 +259,45 @@ public protocol ScriptRunning: AnyObject {
 extension ScriptRunner: ScriptRunning {}
 
 /// Holds a typed ``AppCtlConfig`` behind ``AppCtlRuntime``: the one place the root reducer's type is erased.
-public final class ErasedConfig<Root: Reducer & AgentContainer>: AppCtlRuntime
+package final class ErasedConfig<Root: Reducer & AgentContainer>: AppCtlRuntime
 where
   Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
   Root.AgentState == Root.State, Root.AgentAction == Root.Action
 {
   let config: AppCtlConfig<Root>
 
-  public init(config: AppCtlConfig<Root>) {
+  package init(config: AppCtlConfig<Root>) {
     self.config = config
   }
 
-  public var name: String { config.name }
-  public var target: BuildTarget { config.target }
-  public var rootMarker: String { config.rootMarker ?? config.target.path }
-  public var bundleID: String { config.bundleID }
-  public var packages: [String] { config.packages }
-  public var snapshotPackages: [String] { config.snapshotPackages }
-  public var simulatorName: String { config.simulatorName }
-  public var snapshotSimulatorName: String { config.snapshotSimulatorName }
-  public var snapshotRuntimeMajor: Int { config.snapshotRuntimeMajor }
-  public var scenariosPath: String { config.scenariosPath }
-  public var docsPath: String { config.docsPath }
-  public var appCheck: AppCheck { config.appCheck }
-  public var help: HelpExamples { config.help }
-  public var screens: [ScreenDoc] { config.screens }
-  public var mockMethods: [MockMethod] { config.mockMethods }
-  public var docsText: DocsText { config.docsText }
+  package var name: String { config.name }
+  package var target: BuildTarget { config.target }
+  package var rootMarker: String { config.rootMarker ?? config.target.path }
+  package var bundleID: String { config.bundleID }
+  package var packages: [String] { config.packages }
+  package var snapshotPackages: [String] { config.snapshotPackages }
+  package var simulatorName: String { config.simulatorName }
+  package var snapshotSimulatorName: String { config.snapshotSimulatorName }
+  package var snapshotRuntimeMajor: Int { config.snapshotRuntimeMajor }
+  package var scenariosPath: String { config.scenariosPath }
+  package var docsPath: String { config.docsPath }
+  package var appCheck: AppCheck { config.appCheck }
+  package var help: HelpExamples { config.help }
+  package var screens: [ScreenDoc] { config.screens }
+  package var mockMethods: [MockMethod] { config.mockMethods }
+  package var docsText: DocsText { config.docsText }
 
-  public func clearSession() {
+  package func clearSession() {
     config.clearSession()
   }
 
   @MainActor
-  public func makeRunner() -> any ScriptRunning {
+  package func makeRunner() -> any ScriptRunning {
     config.makeHeadless().makeRunner()
   }
 
   @MainActor
-  public func runScenarios(_ files: [URL]) async -> [ScenarioResult] {
+  package func runScenarios(_ files: [URL]) async -> [ScenarioResult] {
     var results: [ScenarioResult] = []
     for file in files {
       results.append(await ScenarioRunner.run(file: file, make: { [config] in config.makeHeadless().makeRunner() }))

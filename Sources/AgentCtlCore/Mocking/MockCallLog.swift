@@ -4,7 +4,7 @@ import Synchronization
 /// Records every mock call as `"<client>.<method>"`, e.g. `items.fetch`, and how many are still running.
 ///
 /// Agents see the entries as `calls=` in step summaries and assert on them with `expect call=…`.
-/// AgentBridge waits for `inFlight == 0` when settling a step in the running app.
+/// The agent bridge waits for `inFlight == 0` when settling a step in the running app.
 public final class MockCallLog: Sendable {
   private struct Storage {
     var entries: [String] = []

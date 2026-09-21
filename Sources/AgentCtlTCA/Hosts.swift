@@ -100,7 +100,7 @@ public struct LiveEnvironment {
   public let latency: MockLatency
 }
 
-/// The app's store as AgentBridge runs it in DEBUG builds: real time and real mock latency, plus the hooks the
+/// The app's store as AgentCtlBridge runs it in DEBUG builds: real time and real mock latency, plus the hooks the
 /// agent runtime needs (call log, faults, effect tracking and a clock that counts pending sleeps).
 @MainActor
 public final class LiveHost<Root: Reducer & AgentContainer>

@@ -33,7 +33,7 @@ public struct ScriptError: Error, Equatable, Sendable {
   public var description: String { "line \(line), column \(column): \(message)" }
 }
 
-/// Parses the script language shared by `appctl run`, scenarios, `-appctl-seed` and AgentBridge.
+/// Parses the script language shared by the CLI's `run`, scenarios, `-appctl-seed` and the agent bridge.
 ///
 /// - Commands are separated by `;` or newlines.
 /// - `#` starts a comment that runs to the end of the line.

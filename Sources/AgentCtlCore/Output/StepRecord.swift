@@ -1,6 +1,6 @@
 import Foundation
 
-/// The outcome of one script command, as printed by `appctl run` and returned by AgentBridge.
+/// The outcome of one script command, as printed by the CLI's `run` and returned by the agent bridge.
 public struct StepRecord: Equatable, Sendable {
   public var command: String
   public var screen: String

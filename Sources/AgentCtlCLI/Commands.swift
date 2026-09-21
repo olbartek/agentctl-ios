@@ -209,7 +209,8 @@
   /// a host's users are told to run a command that exists in their repo.
   enum Message {
     static func bridgeUnreachable(port: Int, error: any Error) -> String {
-      "cannot reach AgentBridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): \(error)"
+      "cannot reach the app's agent bridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): "
+        + "\(error)"
     }
 
     /// `test` and L2 with nothing to run. Zero scenarios passing is not a pass.

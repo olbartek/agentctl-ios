@@ -145,7 +145,7 @@
     }
   }
 
-  /// Talks to AgentBridge in the running app over loopback HTTP.
+  /// Talks to the agent bridge (AgentCtlBridge) in the running app over loopback HTTP.
   struct BridgeClient {
     let port: Int
 
@@ -179,7 +179,7 @@
         }
         try await Task.sleep(for: .milliseconds(100))
       }
-      throw AppCtlError("AgentBridge did not answer on 127.0.0.1:\(port) within \(timeout)")
+      throw AppCtlError("the app's agent bridge did not answer on 127.0.0.1:\(port) within \(timeout)")
     }
   }
 

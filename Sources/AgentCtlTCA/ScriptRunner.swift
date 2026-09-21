@@ -42,7 +42,7 @@ public struct RunResult: Sendable {
   public var message: String?
 }
 
-/// Runs script commands against a `Store<Root>`, headlessly (`appctl`) or in the app (AgentBridge).
+/// Runs script commands against a `Store<Root>`, headlessly (the CLI) or in the app (AgentCtlBridge).
 @MainActor
 public final class ScriptRunner<Root: Reducer & AgentContainer>
 where

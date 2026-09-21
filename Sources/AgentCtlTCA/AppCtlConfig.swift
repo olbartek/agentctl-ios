@@ -28,7 +28,7 @@ public enum BuildTarget: Sendable {
   }
 }
 
-/// L4 of `check --ui`: the app is launched on a simulator, seeded, then one scenario runs through AgentBridge.
+/// L4 of `check --ui`: the app is launched on a simulator, seeded, then one scenario runs through its agent bridge.
 public struct AppCheck: Sendable {
   /// Commands to seed the app with before the scenario (`-appctl-seed`).
   public var seed: String?
@@ -152,7 +152,7 @@ where
   public var docsText: DocsText
   public var screens: [ScreenDoc]
   public var makeHeadless: @MainActor @Sendable () -> HeadlessHost<Root>
-  /// The app's store for AgentBridge (real clock, real mock latency).
+  /// The app's store behind its agent bridge, AgentCtlBridge (real clock, real mock latency).
   public var makeLive: @MainActor @Sendable (MockLatency) -> LiveHost<Root>
   /// Called for `-clear-session` before the app launches.
   public var clearSession: @Sendable () -> Void

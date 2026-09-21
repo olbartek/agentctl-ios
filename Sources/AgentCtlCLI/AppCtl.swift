@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AgentCtlCore
   import AgentCtlTCA
   import ArgumentParser
   import Foundation
@@ -149,14 +150,14 @@
         Prints one line per stage and stops at the first failing stage. Full logs: .appctl/logs/.
         Examples:
           \(help.invocation) check          # before every commit (~1 min)
-          \(help.invocation) check --ui     # also L3 view snapshots and L4: the app on a simulator, a scenario via AgentBridge
+          \(help.invocation) check --ui     # also L3 view snapshots and L4: the app on a simulator, a scenario via its agent bridge
         """
     )
 
     @Flag(
       help: ArgumentHelp(
         "Add L3 (view snapshots on an iOS \(AgentCtl.runtime.snapshotRuntimeMajor) simulator) and L4 "
-          + "(seeded app, a scenario through AgentBridge, a screenshot)."
+          + "(seeded app, a scenario through its agent bridge, a screenshot)."
       )
     )
     var ui = false
@@ -170,18 +171,18 @@
     }
   }
 
-  /// `appctl app …`: the same commands, sent to the running app through AgentBridge.
+  /// `appctl app …`: the same commands, sent to the running app through its agent bridge (AgentCtlBridge).
   struct AppCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "app",
-      abstract: "Launch the app on a simulator and drive it through AgentBridge.",
+      abstract: "Launch the app on a simulator and drive it through its agent bridge.",
       subcommands: [AppLaunch.self, AppRun.self, AppState.self, AppScreens.self]
     )
   }
 
   struct BridgeOptions: ParsableArguments {
-    @Option(help: "AgentBridge port (the app's -agent-port).")
-    var port: Int = 8765
+    @Option(help: "The port of the app's agent bridge (the app's -agent-port).")
+    var port: Int = Int(BridgeDefaults.port)
   }
 
   struct AppLaunch: AsyncParsableCommand {
@@ -249,7 +250,7 @@
     static let configuration = CommandConfiguration(
       commandName: "state",
       abstract: "Print the running app's root state.",
-      discussion: "Example: \(help.invocation) app state --port 8765"
+      discussion: "Example: \(help.invocation) app state --port \(BridgeDefaults.port)"
     )
 
     @OptionGroup var bridge: BridgeOptions

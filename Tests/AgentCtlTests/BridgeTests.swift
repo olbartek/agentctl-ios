@@ -162,6 +162,8 @@
         #expect(options.latency == .zero)
         #expect(options.clearSession)
         #expect(AgentLaunch<TinyRoot>.Options(arguments: ["TinyApp"]) == AgentLaunch<TinyRoot>.Options(arguments: []))
+        // With no `-agent-port`, the app listens where the CLI connects by default.
+        #expect(AgentLaunch<TinyRoot>.Options(arguments: []).port == BridgeDefaults.port)
       }
     }
   }

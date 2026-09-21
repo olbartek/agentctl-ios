@@ -5,7 +5,7 @@
   import Foundation
   import Observation
 
-  /// Starts AgentBridge in DEBUG builds of the app and applies launch seeding.
+  /// Starts the agent bridge in DEBUG builds of the app and applies launch seeding.
   ///
   /// Everything app-specific comes from the ``AppCtlConfig`` the host hands it — the same value its CLI runs
   /// on — so the app shell's integration is one line:
@@ -15,7 +15,7 @@
   /// ```
   ///
   /// Launch arguments:
-  /// - `-agent-port <n>`: the bridge port (default 8765).
+  /// - `-agent-port <n>`: the bridge port (default ``BridgeDefaults/port``, 8765).
   /// - `-appctl-seed "<script>"`: commands run before the first real frame; the app shows a splash until then.
   /// - `-mock-latency <ms>`: fixed mock latency (default: the config's live latency).
   /// - `-clear-session`: `config.clearSession()` before the app launches.
@@ -27,7 +27,7 @@
     Root.AgentState == Root.State, Root.AgentAction == Root.Action
   {
     public struct Options: Equatable, Sendable {
-      public var port: UInt16 = 8765
+      public var port: UInt16 = BridgeDefaults.port
       public var seed: String?
       public var latency: MockLatency?
       public var clearSession = false
@@ -88,9 +88,9 @@
       }
       do {
         let port = try await server.start(port: options.port)
-        print("AgentBridge: listening on 127.0.0.1:\(port)")
+        print("AgentCtlBridge: listening on 127.0.0.1:\(port)")
       } catch {
-        print("AgentBridge: could not listen on port \(options.port): \(error)")
+        print("AgentCtlBridge: could not listen on port \(options.port): \(error)")
       }
     }
 

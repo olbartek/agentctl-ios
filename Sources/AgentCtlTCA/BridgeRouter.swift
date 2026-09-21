@@ -2,7 +2,7 @@ import AgentCtlCore
 import ComposableArchitecture
 import Foundation
 
-/// An HTTP request as AgentBridge sees it.
+/// An HTTP request as the agent bridge sees it.
 public struct BridgeRequest: Equatable, Sendable {
   public var method: String
   public var path: String
@@ -32,7 +32,7 @@ public struct BridgeResponse: Equatable, Sendable {
   }
 }
 
-/// AgentBridge's endpoints, independent of the transport so they can be tested on the host:
+/// The agent bridge's endpoints (CONTRACT.md §8), independent of the transport so they can be tested on the host:
 ///
 /// - `POST /run` (body: a script; `?format=json` for JSON): the same output as the CLI's `run`, with what `run`
 ///   prints to stderr — a script's parse error — in the body too: after the steps as `error: …` in the text

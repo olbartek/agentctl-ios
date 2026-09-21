@@ -26,7 +26,8 @@
       }
     }
 
-    /// Builds (unless `build` is false) and launches the app, waits for AgentBridge, and returns a one-line report.
+    /// Builds (unless `build` is false) and launches the app, waits for its agent bridge, and returns a one-line
+    /// report.
     static func launchApp(
       root: URL,
       seed: String?,

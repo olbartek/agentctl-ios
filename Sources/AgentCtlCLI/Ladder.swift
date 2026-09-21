@@ -1,4 +1,5 @@
 #if os(macOS)
+  import AgentCtlCore
   import AgentCtlTCA
   import Foundation
 
@@ -36,11 +37,11 @@
       return result.ok
     }
 
-    /// L4: the real app. Launch it seeded on a simulator, run a scenario through AgentBridge, check the state,
+    /// L4: the real app. Launch it seeded on a simulator, run a scenario through its agent bridge, check the state,
     /// save one screenshot.
     private func app() async -> Bool {
       let start = ContinuousClock.now
-      let port = 8765
+      let port = Int(BridgeDefaults.port)
       let check = AgentCtl.runtime.appCheck
       let scenarios = root.appending(path: AgentCtl.runtime.scenariosPath)
       guard
@@ -74,7 +75,7 @@
         let stamp = Int(Date().timeIntervalSince1970)
         let screenshot = root.appending(path: ".appctl/screenshots/check-ui-\(stamp).png")
         try Simulator(root: root).screenshot(on: device, to: screenshot, log: logs.appending(path: "L4-screenshot.log"))
-        report("L4 app", ok: true, detail: "\(scenario) via AgentBridge", since: start)
+        report("L4 app", ok: true, detail: "\(scenario) via the agent bridge", since: start)
         print("  \(device.label), screenshot: \(screenshot.path(percentEncoded: false))")
         return true
       } catch {

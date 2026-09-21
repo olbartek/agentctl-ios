@@ -1,9 +1,11 @@
 import ComposableArchitecture
 
-/// Counts effects that have started but not finished. The count is `pending` in step summaries.
+/// Counts effects that have started but not finished. Headless settling waits for this count to stop changing,
+/// along with the state and the call log (see `settleHeadless`).
 ///
-/// Effects suspended on a `TestClock` stay counted until the clock is advanced far enough, which is how
-/// `appctl` reports a running countdown as `pending=1`.
+/// It is not the `pending` a step prints. An effect suspended on the clock stays counted here until the clock is
+/// advanced far enough, but so do long-lived effects TCA starts for navigation, which `advance` would never
+/// release. `pending` is ``CountingClock/activeSleeps`` instead: only the sleeps waiting on the clock.
 @MainActor
 public final class EffectTracker {
   public private(set) var inFlight = 0

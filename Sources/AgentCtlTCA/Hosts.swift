@@ -2,18 +2,52 @@ import AgentCtlCore
 import ComposableArchitecture
 import Foundation
 
-/// The deterministic pieces `HeadlessHost` owns, handed to the app so it can bind its own backends to them.
+/// The deterministic pieces `HeadlessHost` owns, handed to the host's `configure` closure so it can bind its own
+/// backends to them.
+///
+/// The two clocks are one clock seen two ways:
+/// - ``clock`` is the `TestClock` itself. Only `advance` moves it, so no time passes in a headless run unless a
+///   script says so.
+/// - ``countingClock`` is ``clock`` with the sleeps currently waiting on it counted. It is what the app sees as
+///   `\.continuousClock`, and its count of active sleeps is the `pending` a step prints (CONTRACT.md §3.1): the
+///   effects `advance` would release, such as a countdown.
+///
+/// A backend that only reads the time (a code's expiry, say) can be given either. One that sleeps should be given
+/// ``countingClock``, so that its sleeps show up in `pending` like the app's own.
 public struct HeadlessEnvironment {
+  /// The virtual clock `advance` moves.
   public let clock: TestClock<Duration>
+  /// ``clock``, with the sleeps waiting on it counted: the app's `\.continuousClock`, and the source of `pending`.
   public let countingClock: CountingClock<TestClock<Duration>>
+  /// Every mock call, in order: what a step prints as `calls=`.
   public let callLog: MockCallLog
+  /// The one-shot failures `mock` arms.
   public let faults: MockFaults
+  /// Effects started and not yet finished. Settling waits for this count to stop changing, along with the state
+  /// and the call log. It is not `pending`, which counts only sleeps on the clock.
   public let tracker: EffectTracker
 }
 
-/// A real store running on the Mac with the deterministic dependencies CONTRACT.md §6 requires: a `TestClock`,
-/// incrementing
-/// UUIDs, a fixed date, zero mock latency and fresh mock backends.
+/// A real store running on the Mac with the deterministic dependencies CONTRACT.md §6 requires.
+///
+/// It pins exactly these dependencies, then calls the host's `configure` closure:
+///
+/// | Dependency | Headless value |
+/// |---|---|
+/// | `\.continuousClock` | ``countingClock``: a `TestClock` that only `advance` moves |
+/// | `\.uuid` | `.incrementing` |
+/// | `\.date` | ``fixedDate``, 2026-01-01T09:00:00Z, for every call |
+/// | `\.withRandomNumberGenerator` | a generator seeded with ``randomSeed`` |
+/// | `\.timeZone` | ``fixedTimeZone``, UTC |
+/// | `\.locale` | ``fixedLocale``, `en_US_POSIX` |
+/// | `\.calendar` | ``fixedCalendar``, Gregorian in UTC |
+/// | `\.mockLatency` | `.zero` |
+/// | `\.mockCallLog`, `\.mockFaults` | fresh, per host |
+///
+/// Nothing else is pinned. In particular `\.mainQueue`, `\.suspendingClock` and any other source of time keep
+/// their defaults, which are real (or, in a test process, unimplemented). A host whose app uses one must pin it in
+/// `configure` — for a scheduler, with one it can advance deterministically. `configure` runs last, so what it
+/// sets overrides everything in the table.
 ///
 /// Run it with the main serial executor enabled (`Deterministic.isEnabled = true`).
 @MainActor
@@ -22,8 +56,21 @@ where
   Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
   Root.AgentState == Root.State, Root.AgentAction == Root.Action
 {
-  /// 2026-01-01T09:00:00Z.
+  /// 2026-01-01T09:00:00Z: `\.date`.
   public static var fixedDate: Date { Date(timeIntervalSince1970: 1_767_258_000) }
+  /// The seed of `\.withRandomNumberGenerator`: every headless run draws the same numbers in the same order.
+  public static var randomSeed: UInt64 { 0 }
+  /// UTC (which Foundation names `GMT`): `\.timeZone`, and the time zone of ``fixedCalendar``.
+  public static var fixedTimeZone: TimeZone { TimeZone(identifier: "UTC") ?? .gmt }
+  /// `en_US_POSIX`, the locale that does not follow user settings: `\.locale`.
+  public static var fixedLocale: Locale { Locale(identifier: "en_US_POSIX") }
+  /// The Gregorian calendar in ``fixedTimeZone``: `\.calendar`.
+  public static var fixedCalendar: Calendar {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = fixedTimeZone
+    calendar.locale = fixedLocale
+    return calendar
+  }
 
   public let store: Store<Root.State, Root.Action>
   public let clock: TestClock<Duration>
@@ -63,9 +110,14 @@ where
       $0.continuousClock = countingClock
       $0.uuid = .incrementing
       $0.date = .constant(Self.fixedDate)
+      $0.withRandomNumberGenerator = WithRandomNumberGenerator(SeededRandomNumberGenerator(seed: Self.randomSeed))
+      $0.timeZone = Self.fixedTimeZone
+      $0.locale = Self.fixedLocale
+      $0.calendar = Self.fixedCalendar
       $0.mockLatency = .zero
       $0.mockCallLog = callLog
       $0.mockFaults = faults
+      // Last, so the host can override any of the above, and pin what the list leaves out.
       configure(&$0, environment)
     }
   }
@@ -88,6 +140,23 @@ where
       ),
       mockMethods: mockMethods
     )
+  }
+}
+
+/// A random number generator whose sequence is fixed by its seed, on every run and every platform: SplitMix64.
+struct SeededRandomNumberGenerator: RandomNumberGenerator, Sendable {
+  private var state: UInt64
+
+  init(seed: UInt64) {
+    state = seed
+  }
+
+  mutating func next() -> UInt64 {
+    state &+= 0x9E37_79B9_7F4A_7C15
+    var z = state
+    z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+    z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+    return z ^ (z >> 31)
   }
 }
 

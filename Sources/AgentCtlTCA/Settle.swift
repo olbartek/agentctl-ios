@@ -6,7 +6,8 @@ import Foundation
 public struct SettleResult: Equatable, Sendable {
   /// `false` when the real-time limit was reached before the app went quiet.
   public var settled: Bool
-  /// Effects waiting on the clock (e.g. a countdown). Headlessly, `advance` releases them.
+  /// Sleeps waiting on the clock (e.g. a countdown), from ``CountingClock/activeSleeps``. Headlessly, `advance`
+  /// releases them.
   public var pending: Int
 
   public init(settled: Bool, pending: Int) {

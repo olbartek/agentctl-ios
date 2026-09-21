@@ -19,7 +19,8 @@ public struct StepSnapshot: Equatable, Sendable {
 /// `expect k=v [k=v …]`.
 ///
 /// Keys: `screen`, any summary key, `call` (repeatable; the method was called during the previous step),
-/// `error` (`none` = no error) and `pending` (effects still in flight).
+/// `error` (`none` = no error) and `pending` (sleeps waiting on the clock, such as a countdown — see
+/// ``CountingClock/activeSleeps``).
 public struct Expectation: Equatable, Sendable {
   public struct Pair: Equatable, Sendable {
     public var key: String

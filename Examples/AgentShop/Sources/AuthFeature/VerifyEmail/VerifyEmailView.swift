@@ -23,9 +23,9 @@ public struct VerifyEmailView: View {
         Text("Enter Code")
           .font(Typography.sectionLabel)
           .foregroundStyle(Palette.textSubtle)
-        CodeInputField(code: $store.code, identifier: "verify.code")
+        CodeInputField(code: $store.code, identifier: "VerifyEmail.code")
         if let error = store.error {
-          InlineError(error.message)
+          InlineError(error.message, code: error.rawValue)
         }
       }
       .padding(.top, 64)
@@ -34,7 +34,7 @@ public struct VerifyEmailView: View {
         "Create Account",
         isLoading: store.isLoading,
         isEnabled: store.canVerify,
-        identifier: "verify.submit"
+        identifier: "VerifyEmail.verify"
       ) {
         store.send(.verifyTapped)
       }
@@ -47,12 +47,13 @@ public struct VerifyEmailView: View {
         linkFont: Typography.bodyMedium,
         underlined: true,
         isEnabled: store.resendIn == 0 && !store.isLoading,
-        identifier: "verify.resend"
+        identifier: "VerifyEmail.resend"
       ) {
         store.send(.resendTapped)
       }
       .padding(.top, Metrics.sectionSpacing)
     }
+    .screenIdentifier(VerifyEmail.screenPath(store.state))
     .onAppear { store.send(.onAppear) }
   }
 }

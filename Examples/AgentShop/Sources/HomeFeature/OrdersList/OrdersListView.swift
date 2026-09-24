@@ -12,7 +12,21 @@ public struct OrdersListView: View {
 
   public var body: some View {
     content
+      .safeAreaInset(edge: .top) {
+        // How many orders there are, in words; UI tests read it as `OrdersList.orders`.
+        Text(verbatim: store.orders.count == 1 ? "1 order" : "\(store.orders.count) orders")
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal)
+          .summaryValue("OrdersList.orders", "\(store.orders.count)")
+      }
+      .toolbar {
+        Button("Refresh", systemImage: "arrow.clockwise") { store.send(.refresh) }
+          .accessibilityIdentifier("OrdersList.refresh")
+      }
       .navigationTitle("Orders")
+      .screenIdentifier(OrdersList.screenPath(store.state))
       .task { store.send(.onAppear) }
   }
 
@@ -22,13 +36,17 @@ public struct OrdersListView: View {
     case .loading:
       LoadingView("Loading orders…")
     case .failed:
-      ErrorView(store.error?.message ?? "") { store.send(.retry) }
+      ErrorView(store.error?.message ?? "", code: store.error?.rawValue, retryIdentifier: "OrdersList.retry") {
+        store.send(.retry)
+      }
     case .empty:
       EmptyStateView("No orders yet", message: "Orders you place will show up here.", systemImage: "bag")
     case .loaded:
       List {
         if let error = store.error {
-          InlineError(error.message)
+          InlineError(error.message, code: error.rawValue)
+          Button("Try again") { store.send(.retry) }
+            .accessibilityIdentifier("OrdersList.retry")
         }
         ForEach(store.orders) { order in
           Button {
@@ -37,7 +55,7 @@ public struct OrdersListView: View {
             OrderRow(order: order)
           }
           .buttonStyle(.plain)
-          .accessibilityIdentifier("orders.row.\(order.id)")
+          .accessibilityIdentifier("OrdersList.open.\(order.id)")
         }
       }
       .refreshable { await store.send(.refresh).finish() }

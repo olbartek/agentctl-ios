@@ -62,6 +62,7 @@ public struct Checkbox<Label: View>: View {
     }
     .buttonStyle(.plain)
     .accessibilityAddTraits(isOn ? .isSelected : [])
+    .accessibilityValue(isOn ? "on" : "off")
     .accessibilityIdentifierIfPresent(identifier)
   }
 }

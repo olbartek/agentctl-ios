@@ -14,6 +14,7 @@ public struct OrderDetailView: View {
     content
       .navigationTitle(Text(verbatim: "Order #\(store.orderID)"))
       .inlineNavigationTitle()
+      .screenIdentifier(OrderDetail.screenPath(store.state))
       .task { store.send(.onAppear) }
   }
 
@@ -23,7 +24,7 @@ public struct OrderDetailView: View {
       List {
         Section {
           LabeledContent("Status", value: order.status.rawValue.capitalized)
-            .accessibilityIdentifier("detail.status")
+            .summaryValue("OrderDetail.status", order.status.rawValue)
           LabeledContent("Placed on", value: formatDay(order.placedOn))
         }
         Section("Items") {
@@ -32,9 +33,10 @@ public struct OrderDetailView: View {
           }
           LabeledContent("Total", value: formatCents(order.totalCents))
             .font(.headline)
+            .summaryValue("OrderDetail.total", formatCents(order.totalCents))
         }
         if let error = store.error {
-          InlineError(error.message)
+          InlineError(error.message, code: error.rawValue)
         }
         if order.isCancellable {
           Section {
@@ -42,7 +44,7 @@ public struct OrderDetailView: View {
               "Cancel order",
               isLoading: store.isCancelling,
               isEnabled: store.canCancel,
-              identifier: "detail.cancel"
+              identifier: "OrderDetail.cancel"
             ) {
               store.send(.cancelTapped)
             }
@@ -50,7 +52,7 @@ public struct OrderDetailView: View {
         }
       }
     } else if let error = store.error {
-      ErrorView(error.message) { store.send(.retry) }
+      ErrorView(error.message, code: error.rawValue, retryIdentifier: "OrderDetail.retry") { store.send(.retry) }
     } else {
       LoadingView("Loading order…")
     }

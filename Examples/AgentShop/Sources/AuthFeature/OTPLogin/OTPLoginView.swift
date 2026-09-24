@@ -20,11 +20,11 @@ public struct OTPLoginView: View {
         ) {
           store.send(.backTapped)
         }
-        FormField("Email Address", error: store.error?.message) {
-          ASTextField("name@example.com", text: $store.email, kind: .email, identifier: "otp.email")
+        FormField("Email Address", error: store.error?.message, errorCode: store.error?.rawValue) {
+          ASTextField("name@example.com", text: $store.email, kind: .email, identifier: "OTPLogin.email")
         }
         .padding(.top, 64)
-        PrimaryButton("Send Code", isLoading: store.isLoading, isEnabled: store.canSend, identifier: "otp.send") {
+        PrimaryButton("Send Code", isLoading: store.isLoading, isEnabled: store.canSend, identifier: "OTPLogin.send") {
           store.send(.sendTapped)
         }
         .padding(.top, Metrics.sectionSpacing)
@@ -33,7 +33,7 @@ public struct OTPLoginView: View {
           link: "Login with password",
           promptColor: Palette.textSecondary,
           linkFont: Typography.body,
-          identifier: "otp.password"
+          identifier: "OTPLogin.password-login"
         ) {
           store.send(.backTapped)
         }
@@ -50,16 +50,16 @@ public struct OTPLoginView: View {
           Text("Enter Code")
             .font(Typography.sectionLabel)
             .foregroundStyle(Palette.textSubtle)
-          CodeInputField(code: $store.code, identifier: "otp.code")
+          CodeInputField(code: $store.code, identifier: "OTPLogin.code")
           if let error = store.error {
-            InlineError(error.message)
+            InlineError(error.message, code: error.rawValue)
           }
           if store.attemptsLeft == 0 {
             InlineError("Too many wrong codes. Request a new one.")
           }
         }
         .padding(.top, 64)
-        PrimaryButton("Login", isLoading: store.isLoading, isEnabled: store.canVerify, identifier: "otp.verify") {
+        PrimaryButton("Login", isLoading: store.isLoading, isEnabled: store.canVerify, identifier: "OTPLogin.verify") {
           store.send(.verifyTapped)
         }
         .padding(.top, Metrics.sectionSpacing)
@@ -70,13 +70,14 @@ public struct OTPLoginView: View {
           linkFont: Typography.bodyMedium,
           underlined: true,
           isEnabled: store.resendIn == 0 && !store.isLoading,
-          identifier: "otp.resend"
+          identifier: "OTPLogin.resend"
         ) {
           store.send(.resendTapped)
         }
         .padding(.top, Metrics.sectionSpacing)
       }
     }
+    .screenIdentifier(OTPLogin.screenPath(store.state))
   }
 }
 

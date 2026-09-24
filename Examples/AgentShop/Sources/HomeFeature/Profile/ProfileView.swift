@@ -14,18 +14,19 @@ public struct ProfileView: View {
     List {
       Section {
         LabeledContent("Name", value: store.user.name)
-          .accessibilityIdentifier("profile.name")
+          .summaryValue("Profile.name", store.user.name)
         LabeledContent("Email", value: store.user.email)
-          .accessibilityIdentifier("profile.email")
+          .summaryValue("Profile.email", store.user.email)
       }
       Section {
         Button("Log out", role: .destructive) {
           store.send(.logoutTapped)
         }
-        .accessibilityIdentifier("profile.logout")
+        .accessibilityIdentifier("Profile.logout")
       }
     }
     .navigationTitle("Profile")
+    .screenIdentifier(Profile.screenPath(store.state))
     .alert($store.scope(state: \.alert, action: \.alert))
   }
 }

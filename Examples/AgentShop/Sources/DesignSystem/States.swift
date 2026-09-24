@@ -16,10 +16,17 @@ public struct LoadingView: View {
 /// A full-screen error with an optional retry action.
 public struct ErrorView: View {
   let message: String
+  let code: String?
+  let retryIdentifier: String
   let retry: (() -> Void)?
 
-  public init(_ message: String, retry: (() -> Void)? = nil) {
+  /// - Parameters:
+  ///   - code: the screen's `error=<code>`; the message gets the identifier `error:<code>`.
+  ///   - retryIdentifier: the retry button's identifier, `<Screen>.retry` by the UI tests' convention.
+  public init(_ message: String, code: String? = nil, retryIdentifier: String = "error.retry", retry: (() -> Void)? = nil) {
     self.message = message
+    self.code = code
+    self.retryIdentifier = retryIdentifier
     self.retry = retry
   }
 
@@ -28,11 +35,12 @@ public struct ErrorView: View {
       Label("Something went wrong", systemImage: "exclamationmark.triangle")
     } description: {
       Text(message)
+        .accessibilityIdentifier(code.map { "error:\($0)" } ?? "error.message")
     } actions: {
       if let retry {
         Button("Try again", action: retry)
           .buttonStyle(.borderedProminent)
-          .accessibilityIdentifier("error.retry")
+          .accessibilityIdentifier(retryIdentifier)
       }
     }
   }
@@ -57,9 +65,13 @@ public struct EmptyStateView: View {
 /// A short error line under a field or form: the design's warning icon and 12 pt red text.
 public struct InlineError: View {
   let message: String
+  let code: String?
 
-  public init(_ message: String) {
+  /// - Parameter code: the error code the screen reports as `error=<code>`. It becomes the view's
+  ///   accessibility identifier, `error:<code>`, which is how a UI test asserts on the same error a script does.
+  public init(_ message: String, code: String? = nil) {
     self.message = message
+    self.code = code
   }
 
   public var body: some View {
@@ -76,7 +88,7 @@ public struct InlineError: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .accessibilityElement(children: .combine)
-    .accessibilityIdentifier("inline.error")
+    .accessibilityIdentifier(code.map { "error:\($0)" } ?? "inline.error")
   }
 }
 

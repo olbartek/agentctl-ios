@@ -1,0 +1,149 @@
+{
+  "scenarios": {
+    "auth-forgot-password": {
+      "assertions_checked_in_ui": 15,
+      "assertions_headless_only": 3,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 25,
+      "uitest": "AgentShopUITests/AuthUITests/test_forgot_password"
+    },
+    "auth-google-sign-in": {
+      "assertions_checked_in_ui": 8,
+      "assertions_headless_only": 4,
+      "comparable": true,
+      "faults": [
+        "auth.signInWithGoogle#3=network"
+      ],
+      "group": "auth",
+      "steps": 16,
+      "uitest": "AgentShopUITests/AuthUITests/test_google_sign_in"
+    },
+    "auth-keep-signed-in": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 14
+    },
+    "auth-launch": {
+      "assertions_checked_in_ui": 2,
+      "assertions_headless_only": 2,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 1,
+      "uitest": "AgentShopUITests/AuthUITests/test_launch"
+    },
+    "auth-login-happy-path": {
+      "assertions_checked_in_ui": 6,
+      "assertions_headless_only": 5,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 9,
+      "uitest": "AgentShopUITests/AuthUITests/test_login_happy_path"
+    },
+    "auth-login-locked": {
+      "assertions_checked_in_ui": 6,
+      "assertions_headless_only": 0,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 17,
+      "uitest": "AgentShopUITests/AuthUITests/test_login_locked"
+    },
+    "auth-login-wrong-password": {
+      "assertions_checked_in_ui": 7,
+      "assertions_headless_only": 2,
+      "comparable": true,
+      "faults": [
+        "auth.login#2=network"
+      ],
+      "group": "auth",
+      "steps": 11,
+      "uitest": "AgentShopUITests/AuthUITests/test_login_wrong_password"
+    },
+    "auth-logout": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 8
+    },
+    "auth-otp-code-expired": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 11
+    },
+    "auth-otp-happy-path": {
+      "assertions_checked_in_ui": 7,
+      "assertions_headless_only": 7,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 9,
+      "uitest": "AgentShopUITests/AuthUITests/test_otp_happy_path"
+    },
+    "auth-otp-resend-countdown": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 12
+    },
+    "auth-otp-wrong-code-3x": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 20
+    },
+    "auth-register-happy-path": {
+      "assertions_checked_in_ui": 7,
+      "assertions_headless_only": 5,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 14,
+      "uitest": "AgentShopUITests/AuthUITests/test_register_happy_path"
+    },
+    "auth-register-validation": {
+      "assertions_checked_in_ui": 8,
+      "assertions_headless_only": 9,
+      "comparable": true,
+      "faults": [],
+      "group": "auth",
+      "steps": 27,
+      "uitest": "AgentShopUITests/AuthUITests/test_register_validation"
+    },
+    "auth-register-verify-errors": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 34
+    },
+    "auth-session-restore": {
+      "comparable": false,
+      "group": "auth",
+      "steps": 6
+    },
+    "shop-order-cancel": {
+      "comparable": false,
+      "group": "shop",
+      "steps": 10
+    },
+    "shop-order-detail-errors": {
+      "comparable": false,
+      "group": "shop",
+      "steps": 14
+    },
+    "shop-orders-empty": {
+      "comparable": false,
+      "group": "shop",
+      "steps": 4
+    },
+    "shop-orders-error-retry": {
+      "comparable": false,
+      "group": "shop",
+      "steps": 8
+    },
+    "shop-profile": {
+      "comparable": false,
+      "group": "shop",
+      "steps": 9
+    }
+  }
+}

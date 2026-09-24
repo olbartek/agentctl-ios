@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// What a text field holds. Drives keyboard, autofill and capitalization on iOS.
@@ -19,17 +20,21 @@ public enum SecureFieldKind: Sendable {
 public struct FormField<Accessory: View, Input: View>: View {
   let label: String
   let error: String?
+  let errorCode: String?
   let accessory: Accessory
   let input: Input
 
+  /// - Parameter errorCode: the screen's `error=<code>` when `error` shows it (see ``InlineError``).
   public init(
     _ label: String,
     error: String? = nil,
+    errorCode: String? = nil,
     @ViewBuilder accessory: () -> Accessory,
     @ViewBuilder input: () -> Input
   ) {
     self.label = label
     self.error = error
+    self.errorCode = errorCode
     self.accessory = accessory()
     self.input = input()
   }
@@ -45,15 +50,15 @@ public struct FormField<Accessory: View, Input: View>: View {
       }
       input
       if let error {
-        InlineError(error)
+        InlineError(error, code: errorCode)
       }
     }
   }
 }
 
 extension FormField where Accessory == EmptyView {
-  public init(_ label: String, error: String? = nil, @ViewBuilder input: () -> Input) {
-    self.init(label, error: error, accessory: { EmptyView() }, input: input)
+  public init(_ label: String, error: String? = nil, errorCode: String? = nil, @ViewBuilder input: () -> Input) {
+    self.init(label, error: error, errorCode: errorCode, accessory: { EmptyView() }, input: input)
   }
 }
 
@@ -90,19 +95,23 @@ public struct ASSecureField: View {
   @Binding var isRevealed: Bool
   let kind: SecureFieldKind
   let identifier: String?
+  let revealIdentifier: String?
 
+  /// - Parameter revealIdentifier: the show/hide button's identifier; `<identifier>.reveal` when omitted.
   public init(
     _ placeholder: String = "••••••••",
     text: Binding<String>,
     isRevealed: Binding<Bool>,
     kind: SecureFieldKind = .password,
-    identifier: String? = nil
+    identifier: String? = nil,
+    revealIdentifier: String? = nil
   ) {
     self.placeholder = placeholder
     self._text = text
     self._isRevealed = isRevealed
     self.kind = kind
     self.identifier = identifier
+    self.revealIdentifier = revealIdentifier ?? identifier.map { "\($0).reveal" }
   }
 
   public var body: some View {
@@ -141,7 +150,8 @@ public struct ASSecureField: View {
       }
       .buttonStyle(.plain)
       .accessibilityLabel(isRevealed ? "Hide password" : "Show password")
-      .accessibilityIdentifierIfPresent(identifier.map { "\($0).reveal" })
+      .accessibilityValue(isRevealed ? "on" : "off")
+      .accessibilityIdentifierIfPresent(revealIdentifier)
     }
     .fieldChrome()
   }
@@ -257,11 +267,20 @@ struct FieldKindModifier: ViewModifier {
 struct SecureFieldKindModifier: ViewModifier {
   let kind: SecureFieldKind
 
+  /// `-ui-testing`: XCUITests launch the app with it. On a simulator, a `.newPassword` field makes iOS fill in a
+  /// suggested strong password over whatever the test types, and a `.password` field ends in a "Save Password?"
+  /// sheet. Every UI-tested app needs a switch like this; headless runs never render a field at all.
+  static let isUITesting = ProcessInfo.processInfo.arguments.contains("-ui-testing")
+
   func body(content: Content) -> some View {
     #if os(iOS)
-      switch kind {
-      case .password: content.textContentType(.password).textInputAutocapitalization(.never)
-      case .newPassword: content.textContentType(.newPassword).textInputAutocapitalization(.never)
+      if Self.isUITesting {
+        content.textContentType(.oneTimeCode).textInputAutocapitalization(.never)
+      } else {
+        switch kind {
+        case .password: content.textContentType(.password).textInputAutocapitalization(.never)
+        case .newPassword: content.textContentType(.newPassword).textInputAutocapitalization(.never)
+        }
       }
     #else
       content

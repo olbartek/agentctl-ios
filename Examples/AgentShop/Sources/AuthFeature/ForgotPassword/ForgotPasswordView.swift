@@ -22,11 +22,11 @@ public struct ForgotPasswordView: View {
         ) {
           store.send(.backTapped)
         }
-        FormField("Email Address", error: store.error?.message) {
-          ASTextField("name@example.com", text: $store.email, kind: .email, identifier: "forgot.email")
+        FormField("Email Address", error: store.error?.message, errorCode: store.error?.rawValue) {
+          ASTextField("name@example.com", text: $store.email, kind: .email, identifier: "ForgotPassword.email")
         }
         .padding(.top, 64)
-        PrimaryButton("Submit", isLoading: store.isLoading, isEnabled: store.canSend, identifier: "forgot.send") {
+        PrimaryButton("Submit", isLoading: store.isLoading, isEnabled: store.canSend, identifier: "ForgotPassword.send") {
           store.send(.sendTapped)
         }
         .padding(.top, Metrics.sectionSpacing)
@@ -43,7 +43,7 @@ public struct ForgotPasswordView: View {
           Text("Enter Code")
             .font(Typography.sectionLabel)
             .foregroundStyle(Palette.textSubtle)
-          CodeInputField(code: $store.code, identifier: "forgot.code")
+          CodeInputField(code: $store.code, identifier: "ForgotPassword.code")
         }
         .padding(.top, 64)
         VStack(spacing: Metrics.fieldSpacing) {
@@ -52,7 +52,8 @@ public struct ForgotPasswordView: View {
               text: $store.password,
               isRevealed: $store.showPassword,
               kind: .newPassword,
-              identifier: "forgot.password"
+              identifier: "ForgotPassword.password",
+              revealIdentifier: "ForgotPassword.show-password"
             )
           }
           FormField("Confirm Password", error: store.confirmFieldIssues.message) {
@@ -60,20 +61,21 @@ public struct ForgotPasswordView: View {
               text: $store.confirm,
               isRevealed: $store.showConfirm,
               kind: .newPassword,
-              identifier: "forgot.confirm"
+              identifier: "ForgotPassword.confirm",
+              revealIdentifier: "ForgotPassword.show-confirm"
             )
           }
         }
         .padding(.top, Metrics.fieldSpacing)
         if let error = store.error {
-          InlineError(error.message)
+          InlineError(error.message, code: error.rawValue)
             .padding(.top, 16)
         }
         PrimaryButton(
           "Reset Password",
           isLoading: store.isLoading,
           isEnabled: store.canSubmit,
-          identifier: "forgot.submit"
+          identifier: "ForgotPassword.submit"
         ) {
           store.send(.submitTapped)
         }
@@ -92,12 +94,13 @@ public struct ForgotPasswordView: View {
           .foregroundStyle(Palette.checkboxOn)
           .frame(maxWidth: .infinity)
           .padding(.top, 64)
-        PrimaryButton("Back to Login", identifier: "forgot.toLogin") {
+        PrimaryButton("Back to Login", identifier: "ForgotPassword.to-login") {
           store.send(.backToLoginTapped)
         }
         .padding(.top, 64)
       }
     }
+    .screenIdentifier(ForgotPassword.screenPath(store.state))
   }
 
   private var loginLink: some View {
@@ -106,7 +109,7 @@ public struct ForgotPasswordView: View {
       link: "Login to your account",
       promptColor: Palette.textSecondary,
       linkFont: Typography.body,
-      identifier: "forgot.login"
+      identifier: "ForgotPassword.login"
     ) {
       store.send(.backTapped)
     }

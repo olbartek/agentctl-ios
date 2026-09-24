@@ -90,9 +90,20 @@
         #expect(try await request("POST", "/run", body: "expect screen=items", port: bridge.port).exit == "0")
         #expect(try await request("POST", "/run", body: "expect screen=nope", port: bridge.port).exit == "1")
         #expect(try await request("POST", "/run", body: "expect \"open", port: bridge.port).exit == "2")
-        let advance = try await request("POST", "/run", body: "advance 1s", port: bridge.port)
+        let advance = try await request("POST", "/run", body: "advance 1x", port: bridge.port)
         #expect(advance.exit == "2")
-        #expect(advance.body.contains("advance is only available headlessly"))
+        #expect(advance.body.contains("advance needs a duration"))
+      }
+
+      /// `advance` in the running app: the three-second cooldown `save` starts is over after `advance 3s`, every
+      /// tick fired, whatever real time did meanwhile (a tick that fired on its own just leaves fewer to advance).
+      @Test func advanceMovesTheRunningAppsClock() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.server.stop() }
+        let response = try await request(
+          "POST", "/run", body: "open 2; save; advance 3s; expect cooldown=0 pending=0", port: bridge.port
+        )
+        #expect(response.exit == "0", "\(response.body)")
       }
 
       @Test func otherEndpoints() async throws {

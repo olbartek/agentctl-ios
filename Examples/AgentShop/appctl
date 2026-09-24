@@ -20,5 +20,8 @@ CONFIGURATION="debug"       # "release" builds slower but runs faster
 # (by default its `.xcworkspace`/`.xcodeproj`), which also works but depends on where the command was run.
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" -q >&2 || exit 3
+FLAGS=""
+[ "$CONFIGURATION" = "release" ] && FLAGS="-Xswiftc -DAGENTCTL_RELEASE"
+# shellcheck disable=SC2086 # FLAGS is two words on purpose
+swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" $FLAGS -q >&2 || exit 3
 APPCTL_ROOT="$ROOT" exec "$ROOT/$PACKAGE/.build/$CONFIGURATION/$PRODUCT" "$@"

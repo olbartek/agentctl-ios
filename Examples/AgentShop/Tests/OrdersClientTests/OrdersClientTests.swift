@@ -87,6 +87,10 @@ struct OrdersClientLiveTests {
   }
 
   @Test func mockMethods() {
-    #expect(OrdersClient.mockMethods.map(\.name) == ["orders.fetchOrders", "orders.fetchOrder", "orders.cancelOrder"])
+    #expect(
+      OrdersClient.mockMethods.map(\.name) == [
+        "orders.fetchOrders", "orders.fetchOrder", "orders.cancelOrder", "orders.placeOrder",
+      ]
+    )
   }
 }

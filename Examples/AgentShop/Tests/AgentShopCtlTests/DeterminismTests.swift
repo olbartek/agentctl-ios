@@ -40,12 +40,12 @@ extension AppCtlSuite {
     /// What `--session` promises: resuming a session replays the saved commands into a fresh runner, so it must
     /// land in exactly the state one uninterrupted run would have reached. The same script run in three `run`
     /// calls against one runner versus in one, compared by full state dump. The script signs in — every line
-    /// changes the state, from the login form to the orders list — and every run must pass, so the two dumps can
+    /// changes the state, from the login form to the shop — and every run must pass, so the two dumps can
     /// only agree by reaching the same place, not by both going nowhere.
     @Test func sessionReplayMatchesASingleRun() async {
       let parts = [
         "email alice@example.com; password Passw0rd!",
-        "submit; expect screen=home/orders orders=3",
+        "submit; expect screen=home/shop products=12",
         "advance 1s",
       ]
       let (initial, split, single) = await serially {

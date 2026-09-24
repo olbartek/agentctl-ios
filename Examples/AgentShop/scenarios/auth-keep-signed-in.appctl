@@ -5,7 +5,7 @@ expect keepSignedIn=false
 email alice@example.com
 password Passw0rd!
 submit
-expect screen=home/orders call=session.save
+expect screen=home/shop call=session.save
 reset
 expect screen=auth/login call=session.current
 # With it on, the session survives a relaunch.
@@ -13,4 +13,4 @@ email alice@example.com
 password Passw0rd!
 submit
 reset
-expect screen=home/orders call=session.current
+expect screen=home/shop call=session.current

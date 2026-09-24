@@ -1,3 +1,4 @@
+import AccountClient
 import AgentCtlCore
 import AppFeature
 import AuthClient
@@ -6,6 +7,7 @@ import ComposableArchitecture
 import Foundation
 import HomeFeature
 import Models
+import OnboardingFeature
 import SessionClient
 import Testing
 
@@ -48,11 +50,40 @@ struct AppFeatureTests {
       AppFeature()
     } withDependencies: {
       $0.sessionClient.save = { saved.setValue(StoredSession(session: $0, remember: $1)) }
+      $0.accountClient.fetchProfile = { AccountProfile(needsOnboarding: false) }
       $0.uuid = .incrementing
     }
     await store.send(.auth(.delegate(.authenticated(alice, remember: remember))))
     await store.receive(\.signedIn) { $0 = .home(HomeTabs.State(id: UUID(0), session: self.alice)) }
     #expect(saved.value == StoredSession(session: alice, remember: remember))
+  }
+
+  @Test func aNewAccountIsOnboardedThenGoesHome() async {
+    let nina = MockAccounts.session(for: MockAccounts.nina.user)
+    let store = TestStore(initialState: .auth(AuthFlow.State())) {
+      AppFeature()
+    } withDependencies: {
+      $0.sessionClient.save = { _, _ in }
+      $0.accountClient.fetchProfile = { AccountProfile(needsOnboarding: true) }
+      $0.uuid = .incrementing
+    }
+    await store.send(.auth(.delegate(.authenticated(nina, remember: true))))
+    await store.receive(\.signedIn) { $0 = .onboarding(OnboardingFlow.State(session: nina)) }
+    await store.send(.onboarding(.delegate(.finished(nina)))) {
+      $0 = .home(HomeTabs.State(id: UUID(0), session: nina))
+    }
+  }
+
+  @Test func aFailedProfileLoadStillGoesHome() async {
+    let store = TestStore(initialState: .auth(AuthFlow.State())) {
+      AppFeature()
+    } withDependencies: {
+      $0.sessionClient.save = { _, _ in }
+      $0.accountClient.fetchProfile = { throw AccountError.network }
+      $0.uuid = .incrementing
+    }
+    await store.send(.auth(.delegate(.authenticated(alice, remember: true))))
+    await store.receive(\.signedIn) { $0 = .home(HomeTabs.State(id: UUID(0), session: self.alice)) }
   }
 
   @Test func loggingOutClearsTheSessionAndShowsAFreshAuth() async {
@@ -74,6 +105,7 @@ struct AppFeatureTests {
       AppFeature()
     } withDependencies: {
       $0.sessionClient.save = { saved.setValue(StoredSession(session: $0, remember: $1)) }
+      $0.accountClient.fetchProfile = { AccountProfile(needsOnboarding: false) }
       $0.uuid = .incrementing
     }
     await store.send(.loginAs(bob))
@@ -117,7 +149,10 @@ struct AppFeatureTests {
     #expect(
       AppFeature.registry.map(\.path) == [
         "launching", "auth/login", "auth/otp/email", "auth/otp/code", "auth/register", "auth/register/verify",
-        "auth/forgot/email", "auth/forgot/reset", "auth/forgot/done", "home/orders", "home/orders/<id>", "home/profile",
+        "auth/forgot/email", "auth/forgot/reset", "auth/forgot/done",
+        "onboarding/welcome", "onboarding/interests", "onboarding/address", "onboarding/notifications",
+        "home/shop", "home/shop/<sku>", "home/cart", "home/cart/checkout", "home/cart/confirmation",
+        "home/orders", "home/orders/<id>", "home/profile",
       ]
     )
     #expect(AppFeature.registry.allSatisfy { doc in doc.commands.contains { $0.name == "login-as" } })

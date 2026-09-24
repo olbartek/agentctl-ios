@@ -18,4 +18,4 @@ resend
 expect attemptsLeft=3 resendIn=30 call=auth.sendOTP error=none
 code 123456
 verify
-expect screen=home/orders
+expect screen=home/shop

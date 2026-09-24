@@ -7,4 +7,4 @@ expect canSubmit=true revealed=none
 show-password on
 expect revealed=password
 submit
-expect screen=home/orders orders=3 call=auth.login call=session.save call=orders.fetchOrders
+expect screen=home/shop products=12 call=auth.login call=session.save call=account.fetchProfile call=catalog.fetchProducts

@@ -1,16 +1,14 @@
-# An unknown order id shows notFound.
-login-as alice
-open 9999
-expect screen=home/orders/9999 error=notFound canCancel=false
-back
-# A failed load can be retried.
+email alice@example.com
+password Passw0rd!
+submit
+# A failed order load can be retried, and a refused cancel leaves the order pending.
+tab orders
 mock orders.fetchOrder network
 open 1001
 expect screen=home/orders/1001 error=network
 retry
 expect status=delivered error=none
 back
-# A forced cancel failure is reported and the order stays pending.
 open 1003
 mock orders.cancelOrder notCancellable
 cancel

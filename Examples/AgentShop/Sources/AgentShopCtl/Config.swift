@@ -2,7 +2,10 @@ import Foundation
 import AgentCtlCore
 import AgentCtlTCA
 import AppFeature
+import AccountClient
 import AuthClient
+import CartClient
+import CatalogClient
 import ComposableArchitecture
 import Models
 import OrdersClient
@@ -22,7 +25,10 @@ public enum AgentShopConfig {
 
   /// Every method `mock` can fail, for docs and for each host's `ScriptRunner` (which doesn't know about
   /// AgentShop's clients).
-  public static var mockMethods: [MockMethod] { AuthClient.mockMethods + OrdersClient.mockMethods }
+  public static var mockMethods: [MockMethod] {
+    AuthClient.mockMethods + AccountClient.mockMethods + CatalogClient.mockMethods + CartClient.mockMethods
+      + OrdersClient.mockMethods
+  }
 
   /// The host-written prose in `agent-commands.md`.
   public static let docsText = DocsText(
@@ -102,9 +108,13 @@ public enum AgentShopConfig {
       deps.authClient = .liveValue
       deps.sessionClient = .liveValue
       deps.ordersClient = .liveValue
+      deps.accountClient = .liveValue
+      deps.catalogClient = .liveValue
+      deps.cartClient = .liveValue
       deps.sessionStorage = .inMemory()
       deps.authBackend = AuthBackend(clock: env.clock)
       deps.ordersBackend = OrdersBackend()
+      deps.accountBackend = AccountBackend()
     }
   }
 
@@ -116,9 +126,13 @@ public enum AgentShopConfig {
       deps.authClient = .liveValue
       deps.sessionClient = .liveValue
       deps.ordersClient = .liveValue
+      deps.accountClient = .liveValue
+      deps.catalogClient = .liveValue
+      deps.cartClient = .liveValue
       deps.sessionStorage = sessionStorage
       deps.authBackend = AuthBackend(clock: env.clock)
       deps.ordersBackend = OrdersBackend()
+      deps.accountBackend = AccountBackend()
       // `-mock-fault <method>#<n>=<code>`: how a UI test, which cannot send `mock`, fails a backend call.
       deps.scheduledFaults = ScheduledFaults(arguments: ProcessInfo.processInfo.arguments)
     }

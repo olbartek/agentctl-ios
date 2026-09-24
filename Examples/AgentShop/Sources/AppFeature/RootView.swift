@@ -2,6 +2,7 @@ import AuthFeature
 import ComposableArchitecture
 import DesignSystem
 import HomeFeature
+import OnboardingFeature
 import SwiftUI
 
 public struct RootView: View {
@@ -19,6 +20,10 @@ public struct RootView: View {
     case .auth:
       if let store = store.scope(state: \.auth, action: \.auth) {
         AuthFlowView(store: store)
+      }
+    case .onboarding:
+      if let store = store.scope(state: \.onboarding, action: \.onboarding) {
+        OnboardingView(store: store)
       }
     case let .home(home):
       if let store = store.scope(state: \.home, action: \.home) {

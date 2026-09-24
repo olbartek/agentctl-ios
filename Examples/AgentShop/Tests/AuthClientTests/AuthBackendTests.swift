@@ -133,7 +133,7 @@ struct AuthBackendRegisterAndResetTests {
       try await backend.verifyEmail(email: "carol@example.com", code: "000000")
     }
     let session = try await backend.verifyEmail(email: "carol@example.com", code: "123456")
-    #expect(session.user == User(id: "u5", name: "Carol", email: "carol@example.com"))
+    #expect(session.user == User(id: "u6", name: "Carol", email: "carol@example.com"))
     let again = try await backend.login(email: "carol@example.com", password: "Secret123")
     #expect(again == session)
   }

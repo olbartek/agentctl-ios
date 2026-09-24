@@ -23,6 +23,16 @@ extension OrdersError {
     switch self {
     case .notFound: "This order does not exist."
     case .notCancellable: "This order can no longer be cancelled."
+    case .paymentDeclined: "Your card was declined. Try another card or Apple Pay."
+    case .network: "The network is unreachable. Try again."
+    case .unauthorized: "You are signed out."
+    }
+  }
+}
+
+extension AccountError {
+  public var message: String {
+    switch self {
     case .network: "The network is unreachable. Try again."
     case .unauthorized: "You are signed out."
     }

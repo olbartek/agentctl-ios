@@ -39,3 +39,21 @@ public struct Order: Codable, Equatable, Hashable, Identifiable, Sendable {
   /// Only pending orders can be cancelled.
   public var isCancellable: Bool { status == .pending }
 }
+
+/// What checkout sends to place an order.
+public struct OrderRequest: Codable, Equatable, Hashable, Sendable {
+  public var lines: [CartLine]
+  public var address: Address
+  public var shippingCents: Int
+  public var discountCents: Int
+  /// `nil` for Apple Pay.
+  public var cardNumber: String?
+
+  public init(lines: [CartLine], address: Address, shippingCents: Int, discountCents: Int, cardNumber: String?) {
+    self.lines = lines
+    self.address = address
+    self.shippingCents = shippingCents
+    self.discountCents = discountCents
+    self.cardNumber = cardNumber
+  }
+}

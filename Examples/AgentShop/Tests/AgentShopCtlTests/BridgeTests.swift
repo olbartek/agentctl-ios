@@ -18,7 +18,7 @@ extension AppCtlSuite {
   @MainActor
   @Suite struct BridgeTests {
     @Test func runReturnsTheSameStepsAsAppctl() async {
-      let script = "login-as alice; open 1003; cancel; back"
+      let script = "login-as alice; tab orders; open 1003; cancel; back"
       let headless = await serially {
         let runner = AgentShopConfig.headless().makeRunner()
         let launch = await runner.launch()

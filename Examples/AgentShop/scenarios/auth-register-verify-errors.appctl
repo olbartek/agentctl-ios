@@ -34,4 +34,4 @@ resend
 expect call=auth.resendVerification resendIn=30
 code 123456
 verify
-expect screen=home/orders call=auth.verifyEmail
+expect screen=onboarding/welcome call=auth.verifyEmail

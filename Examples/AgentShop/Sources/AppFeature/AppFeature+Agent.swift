@@ -3,6 +3,7 @@ import AuthClient
 import AuthFeature
 import ComposableArchitecture
 import HomeFeature
+import OnboardingFeature
 
 extension AppFeature: AgentContainer {
   static let loginAsHelp = "Save a seeded account's session and go straight home."
@@ -40,6 +41,8 @@ extension AppFeature: AgentContainer {
         )
       case let .auth(auth):
         AuthFlow.activeScreen(auth).map { .auth($0) }.identified(by: "auth")
+      case let .onboarding(onboarding):
+        OnboardingFlow.activeScreen(onboarding).map { .onboarding($0) }.identified(by: "onboarding")
       case let .home(home):
         HomeTabs.activeScreen(home).map { .home($0) }
       }
@@ -59,6 +62,7 @@ extension AppFeature: AgentContainer {
     let screens =
       [ScreenDoc(path: "launching", screen: "AppFeature", commands: [], summaryKeys: [])]
       + AuthFlow.registry
+      + OnboardingFlow.registry
       + HomeTabs.registry
     return screens.map { $0.inheriting(root) }
   }

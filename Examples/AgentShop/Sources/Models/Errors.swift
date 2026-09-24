@@ -17,6 +17,8 @@ public enum AuthError: String, Error, Codable, CaseIterable, Hashable, Sendable 
 public enum OrdersError: String, Error, Codable, CaseIterable, Hashable, Sendable {
   case notFound
   case notCancellable
+  /// The card was declined when placing an order (the mock declines 4000 0000 0000 0002).
+  case paymentDeclined
   case network
   /// No session. Normal flows never hit this; it guards against calling orders while logged out.
   case unauthorized

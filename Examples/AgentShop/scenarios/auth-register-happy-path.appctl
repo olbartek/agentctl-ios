@@ -1,4 +1,4 @@
-# A new account verifies its email, then signs in (spec §5.4, Figma "Signup" → "Verify Email").
+# A new account verifies its email, signs in, and goes through onboarding once before home.
 register
 name Carol Smith
 email carol@example.com
@@ -10,6 +10,13 @@ expect screen=auth/register/verify email=carol@example.com resendIn=30 canVerify
 code 123456
 expect canVerify=true
 verify
-expect screen=home/orders orders=0 call=auth.verifyEmail call=session.save
+expect screen=onboarding/welcome call=auth.verifyEmail call=session.save call=account.fetchProfile
+skip
+toggle shoes
+toggle bags
+continue
+skip
+not-now
+expect screen=home/shop products=12 call=account.completeOnboarding
 tab profile
 expect name="Carol Smith" email=carol@example.com

@@ -10,6 +10,7 @@ public struct OrdersClient: Sendable {
   public var fetchOrders: @Sendable () async throws -> [Order]
   public var fetchOrder: @Sendable (_ id: Int) async throws -> Order
   public var cancelOrder: @Sendable (_ id: Int) async throws -> Order
+  public var placeOrder: @Sendable (_ request: OrderRequest) async throws -> Order
 }
 
 extension OrdersClient: DependencyKey {
@@ -22,6 +23,12 @@ extension OrdersClient: DependencyKey {
     },
     cancelOrder: { id in
       try await ordersCall("orders.cancelOrder") { backend, email in try await backend.cancelOrder(id: id, for: email) }
+    },
+    placeOrder: { request in
+      @Dependency(\.date.now) var now
+      return try await ordersCall("orders.placeOrder") { backend, email in
+        try await backend.placeOrder(request, for: email, on: now)
+      }
     }
   )
 
@@ -29,7 +36,7 @@ extension OrdersClient: DependencyKey {
   public static let previewValue = liveValue
 
   /// The methods `mock orders.<method> <error>` accepts, with their error codes.
-  public static let mockMethods: [MockMethod] = ["fetchOrders", "fetchOrder", "cancelOrder"].map {
+  public static let mockMethods: [MockMethod] = ["fetchOrders", "fetchOrder", "cancelOrder", "placeOrder"].map {
     MockMethod("orders.\($0)", errorCodes: OrdersError.allCases.map(\.rawValue))
   }
 }

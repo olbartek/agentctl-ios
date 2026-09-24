@@ -7,4 +7,4 @@ expect screen=auth/otp/code resendIn=30 attemptsLeft=3 call=auth.sendOTP pending
 code 12a3456
 expect canVerify=true
 verify
-expect screen=home/orders orders=3 call=auth.verifyOTP call=session.save pending=0
+expect screen=home/shop products=12 call=auth.verifyOTP call=session.save pending=0

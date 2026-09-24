@@ -33,13 +33,19 @@ public enum MockAccounts {
     alwaysLocked: true
   )
 
+  /// A seeded account that has never been through onboarding, so signing in starts it.
+  public static let nina = MockAccount(
+    user: User(id: "u4", name: "Nina", email: "nina@example.com"),
+    password: "Passw0rd!"
+  )
+
   /// The account "Sign in with Google" returns (the design's persona). It has no password.
   public static let google = MockAccount(
     user: User(id: "u-google", name: "Becca Ade", email: "becca@gmail.com"),
     password: nil
   )
 
-  public static let seed = [alice, bob, locked, google]
+  public static let seed = [alice, bob, locked, nina, google]
 
   /// The one-time login code. Always the same in the mock backend.
   public static let otpCode = "123456"

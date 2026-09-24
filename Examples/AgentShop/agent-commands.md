@@ -177,6 +177,153 @@ Summary keys: `email`, `canSend`, `revealed`, `issues`, `canSubmit`, `loading`.
 | `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
 | `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
 
+### `onboarding/welcome`
+
+Screen: `Welcome`.
+Summary keys: `page`, `pages`.
+
+| Command | Description | From |
+|---|---|---|
+| `next` | The next page; on the last one, go on to interests. | Welcome |
+| `skip` | Skip the introduction and go to interests. | Welcome |
+| `back` | The previous page. *(disabled when page=1)* | Welcome |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+
+### `onboarding/interests`
+
+Screen: `Interests`.
+Summary keys: `selected`, `interests`, `canContinue`.
+
+| Command | Description | From |
+|---|---|---|
+| `toggle <shoes\|bags\|watches\|jackets\|accessories\|home>` | Pick or unpick a category (2–4); a fifth reports error=tooMany. | Interests |
+| `continue` | Save the picks and go on to the address. *(disabled when canContinue=false)* | Interests |
+| `back` | Go back to the previous step. | OnboardingFlow |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+
+### `onboarding/address`
+
+Screen: `AddressForm`.
+Summary keys: `name`, `street`, `city`, `zip`, `canContinue`.
+
+| Command | Description | From |
+|---|---|---|
+| `name <text>` | Set the full name. | AddressForm |
+| `street <text>` | Set the street. | AddressForm |
+| `city <text>` | Set the city. | AddressForm |
+| `zip <text>` | Set the zip code (five digits). | AddressForm |
+| `continue` | Save the address for checkout; a zip that isn't five digits reports error=invalidZip. *(disabled when canContinue=false)* | AddressForm |
+| `skip` | Go on without an address. | AddressForm |
+| `back` | Go back to the previous step. | OnboardingFlow |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+
+### `onboarding/notifications`
+
+Screen: `Notifications`.
+Summary keys: `notifications`, `loading`.
+
+| Command | Description | From |
+|---|---|---|
+| `allow` | Allow notifications and finish onboarding (account.completeOnboarding). | Notifications |
+| `not-now` | Finish onboarding without notifications. | Notifications |
+| `retry` | Save onboarding again after a failure. *(disabled when error=none)* | Notifications |
+| `back` | Go back to the previous step. | OnboardingFlow |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+
+### `home/shop`
+
+Screen: `ShopFeed`.
+Summary keys: `products`, `filter`, `query`, `sort`, `loading`.
+
+| Command | Description | From |
+|---|---|---|
+| `filter <all\|shoes\|bags\|watches\|jackets\|accessories\|home>` | Show one category, or all. | ShopFeed |
+| `search <text>` | Type in the search field; matches product names as you type. | ShopFeed |
+| `clear-search` | Clear the search field. | ShopFeed |
+| `sort <featured\|price-asc\|price-desc>` | Sort the products. | ShopFeed |
+| `open <sku>` | Open a product, e.g. open 101. *(disabled when products=0)* | ShopFeed |
+| `refresh` | Load the catalog again. | ShopFeed |
+| `retry` | Load the catalog again after a failure. *(disabled when error=none)* | ShopFeed |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+| `back` | Fails with 'nothing to go back to' when no screen is pushed. | AppFeature |
+
+### `home/shop/<sku>`
+
+Screen: `ProductDetail`.
+Summary keys: `name`, `price`, `size`, `qty`, `inStock`, `favorite`, `canAdd`, `added`.
+
+| Command | Description | From |
+|---|---|---|
+| `size <size>` | Pick a size, e.g. size 42 or size M. | ProductDetail |
+| `qty-up` | One more (at most 5; beyond that error=maxQuantity). | ProductDetail |
+| `qty-down` | One fewer (at least 1; below that error=minQuantity). | ProductDetail |
+| `favorite <on\|off>` | Mark or unmark as a favorite. | ProductDetail |
+| `add-to-cart` | Add the quantity in the chosen size to the cart. Needs a size when the product has sizes. *(disabled when canAdd=false)* | ProductDetail |
+| `view-cart` | Switch to the cart tab. | ProductDetail |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
+| `back` | Go back to the previous screen. | HomeTabs |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+
+### `home/cart`
+
+Screen: `Cart`.
+Summary keys: `lines`, `items`, `subtotal`, `discount`, `total`, `promo`, `canCheckout`.
+
+| Command | Description | From |
+|---|---|---|
+| `inc <line>` | One more of a line, e.g. inc 101-42 or inc 103. | Cart |
+| `dec <line>` | One fewer of a line; at one, the line is removed. | Cart |
+| `remove <line>` | Remove a line. | Cart |
+| `promo <text>` | Type a promo code (SAVE10 and HALF exist). | Cart |
+| `apply-promo` | Apply the typed code (cart.applyPromo); an unknown one reports error=invalidPromo. *(disabled when no code typed)* | Cart |
+| `clear-promo` | Remove the applied promo code. *(disabled when promo=none)* | Cart |
+| `checkout` | Go to checkout. *(disabled when canCheckout=false)* | Cart |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+| `back` | Fails with 'nothing to go back to' when no screen is pushed. | AppFeature |
+
+### `home/cart/checkout`
+
+Screen: `Checkout`.
+Summary keys: `name`, `street`, `city`, `zip`, `shipping`, `payment`, `total`, `canPlace`, `loading`.
+
+| Command | Description | From |
+|---|---|---|
+| `name <text>` | Set the full name. | Checkout |
+| `street <text>` | Set the street. | Checkout |
+| `city <text>` | Set the city. | Checkout |
+| `zip <text>` | Set the zip code (five digits). | Checkout |
+| `shipping <standard\|express>` | Standard is free; express adds $15.00. | Checkout |
+| `payment <card\|apple-pay>` | Pay by card or with Apple Pay. | Checkout |
+| `card <number>` | Type the card number (16 digits; 4000 0000 0000 0002 is declined). *(disabled when payment=apple-pay)* | Checkout |
+| `place-order` | Place the order (orders.placeOrder). Reports invalidZip, invalidCard, paymentDeclined or network. *(disabled when canPlace=false)* | Checkout |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
+| `back` | Go back to the previous screen. | HomeTabs |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+
+### `home/cart/confirmation`
+
+Screen: `OrderConfirmation`.
+Summary keys: `order`, `total`.
+
+| Command | Description | From |
+|---|---|---|
+| `view-order` | Open the new order in the orders tab. | OrderConfirmation |
+| `continue-shopping` | Back to the shop, with an empty cart. | OrderConfirmation |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
+| `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
+| `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
+| `back` | Fails with 'nothing to go back to' when no screen is pushed. | AppFeature |
+
 ### `home/orders`
 
 Screen: `OrdersList`.
@@ -187,7 +334,7 @@ Summary keys: `orders`, `loading`, `statuses`.
 | `open <id>` | Open an order, e.g. open 1003. | OrdersList |
 | `refresh` | Pull to refresh. | OrdersList |
 | `retry` | Retry after a failed load. *(disabled when error=none)* | OrdersList |
-| `tab <orders\|profile>` | Switch tab. | HomeTabs |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
 | `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
 | `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
 | `back` | Fails with 'nothing to go back to' when no screen is pushed. | AppFeature |
@@ -201,7 +348,7 @@ Summary keys: `id`, `status`, `items`, `total`, `date`, `canCancel`, `loading`.
 |---|---|---|
 | `cancel` | Cancel the order (pending orders only). *(disabled when canCancel=false)* | OrderDetail |
 | `retry` | Reload the order after an error. *(disabled when error=none)* | OrderDetail |
-| `tab <orders\|profile>` | Switch tab. | HomeTabs |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
 | `back` | Go back to the previous screen. | HomeTabs |
 | `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
 | `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
@@ -216,7 +363,7 @@ Summary keys: `name`, `email`, `alert`.
 | `logout` | Ask to log out (shows a confirmation alert). | Profile |
 | `confirm` | Confirm logging out in the alert. *(disabled when alert=none)* | Profile |
 | `dismiss` | Dismiss the alert. *(disabled when alert=none)* | Profile |
-| `tab <orders\|profile>` | Switch tab. | HomeTabs |
+| `tab <shop\|cart\|orders\|profile>` | Switch tab. | HomeTabs |
 | `login-as <alice\|bob>` | Save a seeded account's session and go straight home. | AppFeature |
 | `reset` | Restart from a fresh launch (keeps the saved session and the mock data). | AppFeature |
 | `back` | Fails with 'nothing to go back to' when no screen is pushed. | AppFeature |
@@ -236,9 +383,14 @@ Summary keys: `name`, `email`, `alert`.
 | `auth.signInWithGoogle` | `invalidCredentials`, `accountLocked`, `unknownEmail`, `invalidCode`, `codeExpired`, `resendNotAvailable`, `emailTaken`, `weakPassword`, `emailNotVerified`, `network` |
 | `auth.requestPasswordReset` | `invalidCredentials`, `accountLocked`, `unknownEmail`, `invalidCode`, `codeExpired`, `resendNotAvailable`, `emailTaken`, `weakPassword`, `emailNotVerified`, `network` |
 | `auth.resetPassword` | `invalidCredentials`, `accountLocked`, `unknownEmail`, `invalidCode`, `codeExpired`, `resendNotAvailable`, `emailTaken`, `weakPassword`, `emailNotVerified`, `network` |
-| `orders.fetchOrders` | `notFound`, `notCancellable`, `network`, `unauthorized` |
-| `orders.fetchOrder` | `notFound`, `notCancellable`, `network`, `unauthorized` |
-| `orders.cancelOrder` | `notFound`, `notCancellable`, `network`, `unauthorized` |
+| `account.fetchProfile` | `network` |
+| `account.completeOnboarding` | `network` |
+| `catalog.fetchProducts` | `network`, `timeout` |
+| `cart.applyPromo` | `network` |
+| `orders.fetchOrders` | `notFound`, `notCancellable`, `paymentDeclined`, `network`, `unauthorized` |
+| `orders.fetchOrder` | `notFound`, `notCancellable`, `paymentDeclined`, `network`, `unauthorized` |
+| `orders.cancelOrder` | `notFound`, `notCancellable`, `paymentDeclined`, `network`, `unauthorized` |
+| `orders.placeOrder` | `notFound`, `notCancellable`, `paymentDeclined`, `network`, `unauthorized` |
 
 ## Test accounts
 

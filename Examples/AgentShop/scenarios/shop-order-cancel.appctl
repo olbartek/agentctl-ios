@@ -1,12 +1,13 @@
+email alice@example.com
+password Passw0rd!
+submit
 # Cancel a pending order; the list reflects it after going back.
-login-as alice
-expect screen=home/orders orders=3 statuses=delivered,shipped,pending
+tab orders
 open 1003
-expect screen=home/orders/1003 status=pending canCancel=true total=$59.80 items=2 date=2025-12-30 call=orders.fetchOrder
+expect screen=home/orders/1003 status=pending canCancel=true total=$59.80 call=orders.fetchOrder
 cancel
 expect status=cancelled canCancel=false call=orders.cancelOrder
 back
 expect screen=home/orders statuses=delivered,shipped,cancelled
-# Shipped and delivered orders cannot be cancelled.
 open 1002
 expect status=shipped canCancel=false

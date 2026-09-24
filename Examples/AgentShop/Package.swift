@@ -41,16 +41,29 @@ let package = Package(
     .target(name: "AuthClient", dependencies: base),
     .target(name: "SessionClient", dependencies: base),
     .target(name: "OrdersClient", dependencies: base + ["SessionClient"]),
+    .target(name: "AccountClient", dependencies: base + ["SessionClient"]),
+    .target(name: "CatalogClient", dependencies: base),
+    .target(name: "CartClient", dependencies: base),
 
     // Features
     .target(name: "AuthFeature", dependencies: feature + ["AuthClient"]),
-    .target(name: "HomeFeature", dependencies: feature + ["OrdersClient"]),
-    .target(name: "AppFeature", dependencies: feature + ["AuthFeature", "HomeFeature", "AuthClient", "SessionClient"]),
+    .target(name: "OnboardingFeature", dependencies: feature + ["AccountClient"]),
+    .target(name: "ShopFeature", dependencies: feature + ["CatalogClient", "CartClient", "OrdersClient", "AccountClient"]),
+    .target(name: "HomeFeature", dependencies: feature + ["OrdersClient", "ShopFeature"]),
+    .target(
+      name: "AppFeature",
+      dependencies: feature + [
+        "AuthFeature", "OnboardingFeature", "HomeFeature", "AuthClient", "SessionClient", "AccountClient",
+      ]
+    ),
 
     // The host's AgentCtl integration and its CLI.
     .target(
       name: "AgentShopCtl",
-      dependencies: base + [agentTCA, "AppFeature", "AuthClient", "SessionClient", "OrdersClient"]
+      dependencies: base + [
+        agentTCA, "AppFeature", "AuthClient", "SessionClient", "OrdersClient", "AccountClient", "CatalogClient",
+        "CartClient",
+      ]
     ),
     .executableTarget(
       name: "shopctl",
@@ -63,15 +76,24 @@ let package = Package(
     .testTarget(name: "SessionClientTests", dependencies: base + ["SessionClient"]),
     .testTarget(name: "OrdersClientTests", dependencies: base + ["OrdersClient", "SessionClient"]),
     .testTarget(name: "AuthFeatureTests", dependencies: feature + ["AuthFeature", "AuthClient"]),
-    .testTarget(name: "HomeFeatureTests", dependencies: feature + ["HomeFeature", "OrdersClient"]),
+    .testTarget(name: "AccountClientTests", dependencies: base + ["AccountClient", "SessionClient"]),
+    .testTarget(name: "OnboardingFeatureTests", dependencies: feature + ["OnboardingFeature", "AccountClient"]),
+    .testTarget(
+      name: "ShopFeatureTests",
+      dependencies: feature + ["ShopFeature", "CatalogClient", "CartClient", "OrdersClient", "AccountClient"]
+    ),
+    .testTarget(name: "HomeFeatureTests", dependencies: feature + ["HomeFeature", "OrdersClient", "ShopFeature"]),
     .testTarget(
       name: "AppFeatureTests",
-      dependencies: feature + ["AppFeature", "AuthFeature", "HomeFeature", "AuthClient", "SessionClient"]
+      dependencies: feature + [
+        "AppFeature", "AuthFeature", "OnboardingFeature", "HomeFeature", "AuthClient", "SessionClient", "AccountClient",
+      ]
     ),
     .testTarget(
       name: "AgentShopCtlTests",
       dependencies: base + [
-        "AgentShopCtl", "AppFeature", "AuthClient", "SessionClient", "OrdersClient", agentTCA,
+        "AgentShopCtl", "AppFeature", "AuthClient", "SessionClient", "OrdersClient", "AccountClient", "CatalogClient",
+        "CartClient", agentTCA,
         .product(name: "AgentCtlTestSupport", package: "agentctl-ios"),
       ]
     ),

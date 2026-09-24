@@ -1,3 +1,4 @@
+import Foundation
 import ComposableArchitecture
 import Models
 
@@ -16,6 +17,32 @@ public actor OrdersBackend {
 
   public func order(id: Int, for email: String) throws(OrdersError) -> Order {
     guard let order = ordersByEmail[email, default: []].first(where: { $0.id == id }) else { throw .notFound }
+    return order
+  }
+
+  /// The card the mock always declines.
+  public static let declinedCard = "4000000000000002"
+
+  /// Places an order: the next id after the user's newest (1001 for a first order), pending, dated `date`.
+  /// Shipping and a promo discount are line items, so the order's total is what checkout showed.
+  public func placeOrder(_ request: OrderRequest, for email: String, on date: Date) throws(OrdersError) -> Order {
+    if request.cardNumber?.filter({ $0 != " " }) == Self.declinedCard { throw .paymentDeclined }
+    var items = request.lines.map { line in
+      OrderItem(
+        name: line.size.map { "\(line.product.name) (\($0))" } ?? line.product.name,
+        quantity: line.quantity,
+        unitPriceCents: line.product.priceCents
+      )
+    }
+    if request.shippingCents > 0 {
+      items.append(OrderItem(name: "Express shipping", quantity: 1, unitPriceCents: request.shippingCents))
+    }
+    if request.discountCents > 0 {
+      items.append(OrderItem(name: "Promo discount", quantity: 1, unitPriceCents: -request.discountCents))
+    }
+    let orders = ordersByEmail[email, default: []]
+    let order = Order(id: (orders.map(\.id).max() ?? 1000) + 1, status: .pending, placedOn: date, items: items)
+    ordersByEmail[email] = orders + [order]
     return order
   }
 

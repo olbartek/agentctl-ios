@@ -73,8 +73,9 @@ jobs:
           xcodebuild build -quiet -scheme agent-ctl-Package -destination 'generic/platform=iOS Simulator' \
             -skipMacroValidation
 
-  # AgentCtlBridge is `#if DEBUG` from end to end, so a host's Release build compiles it away. A Release build of
-  # the package is what proves nothing outside it depends on it.
+  # AgentCtlBridge is `#if DEBUG` from end to end, and AgentCtlTCA, AgentCtlCLI and AgentCtlTestSupport are
+  # `#if DEBUG || AGENTCTL_RELEASE`, so a host's Release build compiles them all away. A Release build of the package
+  # is what proves nothing that ships depends on them.
   release:
     runs-on: macos-latest
     steps:

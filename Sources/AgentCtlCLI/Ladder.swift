@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
   import AgentCtlTCA
   import Foundation

@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import Foundation
 
   /// Every directory the CLI touches, derived from the repo root and the host's config.

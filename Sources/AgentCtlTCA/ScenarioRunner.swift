@@ -1,91 +1,94 @@
-import AgentCtlCore
-import ComposableArchitecture
-import Foundation
+// Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
+#if DEBUG || AGENTCTL_RELEASE
+  import AgentCtlCore
+  import ComposableArchitecture
+  import Foundation
 
-public struct ScenarioResult: Sendable {
-  public var name: String
-  public var steps: [StepRecord]
-  public var status: RunStatus
-  public var failedLine: ScriptLine?
-  public var message: String?
-  public var duration: Duration
+  public struct ScenarioResult: Sendable {
+    public var name: String
+    public var steps: [StepRecord]
+    public var status: RunStatus
+    public var failedLine: ScriptLine?
+    public var message: String?
+    public var duration: Duration
 
-  public var passed: Bool { status == .ok }
+    public var passed: Bool { status == .ok }
 
-  /// `PASS name (N steps, X ms)` or `FAIL name:line` followed by the failing step.
-  public var report: String {
-    let milliseconds = Int(duration.components.seconds) * 1000
-      + Int(duration.components.attoseconds / 1_000_000_000_000_000)
-    guard !passed else { return "PASS \(name) (\(steps.count) steps, \(milliseconds) ms)" }
-    var lines = ["FAIL \(name)\(failedLine.map { ":\($0.line)" } ?? "")"]
-    if let message { lines.append("  \(message)") }
-    if let failing = steps.last {
-      lines += StepFormatter.text(failing).split(separator: "\n").map { "  \($0)" }
+    /// `PASS name (N steps, X ms)` or `FAIL name:line` followed by the failing step.
+    public var report: String {
+      let milliseconds = Int(duration.components.seconds) * 1000
+        + Int(duration.components.attoseconds / 1_000_000_000_000_000)
+      guard !passed else { return "PASS \(name) (\(steps.count) steps, \(milliseconds) ms)" }
+      var lines = ["FAIL \(name)\(failedLine.map { ":\($0.line)" } ?? "")"]
+      if let message { lines.append("  \(message)") }
+      if let failing = steps.last {
+        lines += StepFormatter.text(failing).split(separator: "\n").map { "  \($0)" }
+      }
+      return lines.joined(separator: "\n")
     }
-    return lines.joined(separator: "\n")
   }
-}
 
-/// Runs `scenarios/*.appctl` files, each against a fresh ``ScriptRunner`` from `make`.
-@MainActor
-public enum ScenarioRunner {
-  public static func run<Root: Reducer & AgentContainer>(
-    name: String,
-    source: String,
-    make: @MainActor () -> ScriptRunner<Root>
-  ) async -> ScenarioResult
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
-    let clock = ContinuousClock()
-    let start = clock.now
-    let runner = make()
-    let launch = await runner.launch()
-    // An app that never settled at launch fails the scenario before its first line runs.
-    guard launch.status == .ok else {
+  /// Runs `scenarios/*.appctl` files, each against a fresh ``ScriptRunner`` from `make`.
+  @MainActor
+  public enum ScenarioRunner {
+    public static func run<Root: Reducer & AgentContainer>(
+      name: String,
+      source: String,
+      make: @MainActor () -> ScriptRunner<Root>
+    ) async -> ScenarioResult
+    where
+      Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
+      Root.AgentState == Root.State, Root.AgentAction == Root.Action
+    {
+      let clock = ContinuousClock()
+      let start = clock.now
+      let runner = make()
+      let launch = await runner.launch()
+      // An app that never settled at launch fails the scenario before its first line runs.
+      guard launch.status == .ok else {
+        return ScenarioResult(
+          name: name,
+          steps: [launch.step],
+          status: launch.status,
+          failedLine: nil,
+          message: nil,
+          duration: start.duration(to: clock.now)
+        )
+      }
+      let result = await runner.run(source)
       return ScenarioResult(
         name: name,
-        steps: [launch.step],
-        status: launch.status,
-        failedLine: nil,
-        message: nil,
+        steps: [launch.step] + result.steps,
+        status: result.status,
+        failedLine: result.failedLine,
+        message: result.message,
         duration: start.duration(to: clock.now)
       )
     }
-    let result = await runner.run(source)
-    return ScenarioResult(
-      name: name,
-      steps: [launch.step] + result.steps,
-      status: result.status,
-      failedLine: result.failedLine,
-      message: result.message,
-      duration: start.duration(to: clock.now)
-    )
-  }
 
-  public static func run<Root: Reducer & AgentContainer>(
-    file: URL,
-    make: @MainActor () -> ScriptRunner<Root>
-  ) async -> ScenarioResult
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
-    let name = file.deletingPathExtension().lastPathComponent
-    // A missing or unreadable file is an environment problem, not a script's: exit code 3 (CONTRACT.md §5).
-    guard let source = try? String(contentsOf: file, encoding: .utf8) else {
-      return ScenarioResult(
-        name: name, steps: [], status: .internalError, failedLine: nil, message: "cannot read \(file.path)",
-        duration: .zero
-      )
+    public static func run<Root: Reducer & AgentContainer>(
+      file: URL,
+      make: @MainActor () -> ScriptRunner<Root>
+    ) async -> ScenarioResult
+    where
+      Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
+      Root.AgentState == Root.State, Root.AgentAction == Root.Action
+    {
+      let name = file.deletingPathExtension().lastPathComponent
+      // A missing or unreadable file is an environment problem, not a script's: exit code 3 (CONTRACT.md §5).
+      guard let source = try? String(contentsOf: file, encoding: .utf8) else {
+        return ScenarioResult(
+          name: name, steps: [], status: .internalError, failedLine: nil, message: "cannot read \(file.path)",
+          duration: .zero
+        )
+      }
+      return await run(name: name, source: source, make: make)
     }
-    return await run(name: name, source: source, make: make)
-  }
 
-  /// Every `*.appctl` file in `directory`, sorted by name.
-  nonisolated public static func files(in directory: URL) -> [URL] {
-    let contents = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-    return contents.filter { $0.pathExtension == "appctl" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    /// Every `*.appctl` file in `directory`, sorted by name.
+    nonisolated public static func files(in directory: URL) -> [URL] {
+      let contents = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+      return contents.filter { $0.pathExtension == "appctl" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
   }
-}
+#endif

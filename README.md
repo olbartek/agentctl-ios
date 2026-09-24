@@ -274,13 +274,21 @@ Your executable is then the whole of
 [`Sources/tinyctl/main.swift`](Examples/TinyApp/Sources/tinyctl/main.swift):
 
 ```swift
-#if os(macOS)
+#if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCLI
   import TinyApp
 
   await AgentCtl.run(config: TinyAppConfig.appCtl)
 #endif
 ```
+
+**Debug builds only.** `AgentCtlTCA`, `AgentCtlCLI` and `AgentCtlTestSupport` compile to nothing in a release
+build, so that none of AgentCtl's runtime ships in your app: SwiftPM cannot leave a dependency out of one build
+configuration, so the code leaves itself out. Wrap the target that holds your config in the same condition
+(`#if DEBUG || AGENTCTL_RELEASE` around each file, as TinyApp's `Config.swift` is), and your features' `+Agent.swift`
+files, which only use `AgentCtlCore`, need nothing. Your CLI builds in debug; to build it in release, pass
+`-Xswiftc -DAGENTCTL_RELEASE`, which [the wrapper](#4-copy-the-wrapper) does when you set its configuration to
+`release`.
 
 Declare it in your package next to the target that holds the config. (TinyApp lives inside *this* package, so it
 names `"AgentCtlCLI"` as a plain target; your package writes

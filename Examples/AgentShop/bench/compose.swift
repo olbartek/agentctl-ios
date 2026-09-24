@@ -4,6 +4,7 @@
 //
 //   swift bench/compose.swift --uitest ui.mp4 --uitest-start 1.2 --uitest-seconds 64.0 \
 //     --bridge bridge.mp4 --bridge-start 0.8 --bridge-seconds 12.1 \
+//     [--uitest-freeze 63.0] [--bridge-freeze 13.7] \
 //     --headless headless.txt --headless-seconds 0.21 --caption "…" --out out.mp4
 //
 // `--*-start` is where the run begins in its recording, `--*-seconds` how long it ran. Only AVFoundation, CoreText
@@ -17,6 +18,7 @@ import Foundation
 struct Options {
   var uitest = "", bridge = "", headless = "", out = "", caption = ""
   var uitestStart = 0.0, uitestSeconds = 0.0, bridgeStart = 0.0, bridgeSeconds = 0.0, headlessSeconds = 0.0
+  var uitestFreeze: Double?, bridgeFreeze: Double?
 
   init(_ arguments: [String]) {
     var iterator = arguments.dropFirst().makeIterator()
@@ -26,9 +28,11 @@ struct Options {
       case "--uitest": uitest = value
       case "--uitest-start": uitestStart = Double(value) ?? 0
       case "--uitest-seconds": uitestSeconds = Double(value) ?? 0
+      case "--uitest-freeze": uitestFreeze = Double(value)
       case "--bridge": bridge = value
       case "--bridge-start": bridgeStart = Double(value) ?? 0
       case "--bridge-seconds": bridgeSeconds = Double(value) ?? 0
+      case "--bridge-freeze": bridgeFreeze = Double(value)
       case "--headless": headless = value
       case "--headless-seconds": headlessSeconds = Double(value) ?? 0
       case "--caption": caption = value
@@ -83,6 +87,32 @@ final class FrameSource {
         pending = (seconds, image)
       }
     }
+  }
+
+  /// The last frame at or before `time` that shows the app rather than the home screen. AgentShop's screens are
+  /// mostly white and the home screen is a dark wallpaper, so the frame's average brightness tells them apart.
+  /// XCTest quits the app as a test ends, before xcodebuild reports it, so the frame at `time` is often the home screen.
+  func lastAppFrame(upTo time: Double) -> CGImage? {
+    var found: CGImage?
+    var next = 0.0
+    while let sample = output.copyNextSampleBuffer(), let buffer = CMSampleBufferGetImageBuffer(sample) {
+      let seconds = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+      guard seconds <= time else { break }
+      guard seconds >= next else { continue }
+      next = seconds + 0.2
+      let image = CIImage(cvPixelBuffer: buffer)
+      if brightness(of: image) > 0.75 {
+        found = context.createCGImage(image, from: image.extent)
+      }
+    }
+    return found
+  }
+
+  private func brightness(of image: CIImage) -> Double {
+    let average = image.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: image.extent)])
+    var pixel = [UInt8](repeating: 0, count: 4)
+    context.render(average, toBitmap: &pixel, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+    return (0.299 * Double(pixel[0]) + 0.587 * Double(pixel[1]) + 0.114 * Double(pixel[2])) / 255
   }
 }
 
@@ -162,6 +192,11 @@ func fit(_ image: CGImage, in rect: CGRect) -> CGRect {
 let options = Options(CommandLine.arguments)
 let uitest = try await FrameSource(path: options.uitest)
 let bridge = try await FrameSource(path: options.bridge)
+// What each simulator panel holds once its run is done.
+let uitestHold = try await FrameSource(path: options.uitest)
+  .lastAppFrame(upTo: options.uitestFreeze ?? options.uitestStart + options.uitestSeconds)
+let bridgeHold = try await FrameSource(path: options.bridge)
+  .frame(at: options.bridgeFreeze ?? options.bridgeStart + options.bridgeSeconds)
 let headlessLines = (try? String(contentsOfFile: options.headless, encoding: .utf8))?.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) ?? []
 
 let panelTop = Double(height) - headerHeight
@@ -206,10 +241,16 @@ for index in 0..<frameCount {
   context.setFillColor(background)
   context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-  for (panel, source, start) in [(panels[0], uitest, options.uitestStart), (panels[1], bridge, options.bridgeStart)] {
+  for (panel, source, start, hold) in [
+    (panels[0], uitest, options.uitestStart, uitestHold),
+    (panels[1], bridge, options.bridgeStart, bridgeHold),
+  ] {
     context.setFillColor(panelColor)
     context.fill(panel.rect)
-    if let image = source.frame(at: start + min(time, panel.seconds)) {
+    // Once a run is done, its panel holds a settled frame rather than whatever the recording shows at that
+    // moment: an animation, or the home screen after the app has quit.
+    let live = time < panel.seconds ? source.frame(at: start + time) : nil
+    if let image = live ?? hold ?? source.frame(at: start + panel.seconds) {
       context.draw(image, in: fit(image, in: panel.rect.insetBy(dx: 6, dy: 6)))
     }
     drawChrome(panel, in: context, at: time)

@@ -37,6 +37,27 @@ expect cooldown=2 pending=1 error=cooldown
 — from [`Examples/TinyApp/scenarios/save-cooldown.appctl`](Examples/TinyApp/scenarios/save-cooldown.appctl), run
 by `tinyctl test` and by this package's own test suite.
 
+## How much faster
+
+[`Examples/AgentShop`](Examples/AgentShop) (sign-in, onboarding, a shop) has 99 scenarios that run unchanged in
+three modes: headlessly, through the bridge in the real app on a simulator, and as XCUITests generated from the
+same files. On an Apple M4 Max, with an iPhone 17 Pro simulator:
+
+| | Headless | Simulator, via the bridge | XCUITest |
+|---|---|---|---|
+| All 99 scenarios (1,104 steps) | **1.3 s** | 8 min 2 s | 30 min 8 s |
+| A typical 12-step scenario | **18 ms** | 5.1 s | 18.4 s |
+| Change a line of a reducer, then check it | **1.6 s** | — | 35.2 s |
+
+Headless has nothing to wait for: no simulator, no app to launch, no views, and a test clock instead of real
+time. The bridge pays for a real app, a launch per scenario and a 250 ms quiet window per command; the UI tests
+also pay for a second process that finds every element through accessibility, types key by key and waits for
+every animation. [The full report](docs/benchmarks/2026-09-24-agentshop.md) explains where the time goes, and
+[this video](docs/benchmarks/2026-09-24-agentshop.mp4) runs three scenarios side by side.
+
+The modes check different things, so this is not a case for deleting UI tests: the generated UI tests found a
+place where the headless run disagreed with iOS. It is a case for which one an agent runs hundreds of times a day.
+
 ## Requirements, and what this is not
 
 - **macOS 15+ and a Swift 6.1+ toolchain** (`swift-tools-version: 6.1`; developed and verified on Swift 6.3,

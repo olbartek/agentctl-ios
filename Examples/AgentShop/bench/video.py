@@ -82,10 +82,11 @@ def bridge(scenarios: list[str], udid: str, port: int) -> tuple[Path, float, flo
     seconds = time.perf_counter() - start
     time.sleep(1)
     recorder.stop()
-    return path, start - recorder.started, seconds
+    # Hold a frame from just after the last step, once its animation has finished.
+    return path, start - recorder.started, seconds, start - recorder.started + seconds + 0.8
 
 
-def uitests(scenarios: list[str], udid: str, manifest: dict) -> tuple[Path, float, float]:
+def uitests(scenarios: list[str], udid: str, manifest: dict) -> tuple[Path, float, float, float | None]:
     path = VIDEO / "uitest.mp4"
     recorder = Recorder(udid, path)
     time.sleep(0.5)
@@ -95,14 +96,26 @@ def uitests(scenarios: list[str], udid: str, manifest: dict) -> tuple[Path, floa
         "xcodebuild", "test-without-building", "-xctestrun", str(bench.xctestrun()), "-destination", f"id={udid}",
         "-parallel-testing-enabled", "NO",
     ] + [f"-only-testing:{test}" for test in tests]
-    result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+    # Streamed, to note when the last test finished: after that the runner shuts down and the app quits, and the
+    # recording shows the home screen until xcodebuild exits.
+    process = subprocess.Popen(
+        command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        env={**os.environ, "NSUnbufferedIO": "YES"},  # otherwise xcodebuild holds its output until it exits
+    )
+    output, last_passed = [], None
+    for line in process.stdout:  # type: ignore[union-attr]
+        output.append(line)
+        if line.startswith("Test Case") and " passed " in line:
+            last_passed = time.perf_counter()
+    process.wait()
     seconds = time.perf_counter() - start
     time.sleep(1)
     recorder.stop()
-    if result.returncode != 0:
-        print((result.stdout + result.stderr)[-3000:])
+    if process.returncode != 0:
+        print("".join(output)[-3000:])
         sys.exit("video: the UI tests failed")
-    return path, start - recorder.started, seconds
+    freeze = last_passed - recorder.started - 0.3 if last_passed else None
+    return path, start - recorder.started, seconds, freeze
 
 
 def default_caption() -> str:
@@ -146,9 +159,9 @@ def main() -> None:
     headless_s, headless_text = headless(scenarios)
     (VIDEO / "headless.txt").write_text(headless_text)
     print(f"  headless: {bench.fmt_s(headless_s)}", flush=True)
-    bridge_path, bridge_start, bridge_s = bridge(scenarios, udid, args.port)
+    bridge_path, bridge_start, bridge_s, bridge_freeze = bridge(scenarios, udid, args.port)
     print(f"  bridge: {bench.fmt_s(bridge_s)}", flush=True)
-    ui_path, ui_start, ui_s = uitests(scenarios, udid, manifest)
+    ui_path, ui_start, ui_s, ui_freeze = uitests(scenarios, udid, manifest)
     print(f"  XCUITest: {bench.fmt_s(ui_s)}", flush=True)
 
     out = VIDEO / "agentshop-three-modes.mp4"
@@ -156,6 +169,8 @@ def main() -> None:
         "swift", str(ROOT / "bench/compose.swift"),
         "--uitest", str(ui_path), "--uitest-start", f"{ui_start:.3f}", "--uitest-seconds", f"{ui_s:.3f}",
         "--bridge", str(bridge_path), "--bridge-start", f"{bridge_start:.3f}", "--bridge-seconds", f"{bridge_s:.3f}",
+        "--bridge-freeze", f"{bridge_freeze:.3f}",
+    ] + (["--uitest-freeze", f"{ui_freeze:.3f}"] if ui_freeze else []) + [
         "--headless", str(VIDEO / "headless.txt"), "--headless-seconds", f"{headless_s:.3f}",
         "--caption", args.caption or default_caption(),
         "--out", str(out),

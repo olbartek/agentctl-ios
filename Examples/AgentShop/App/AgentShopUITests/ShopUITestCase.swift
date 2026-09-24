@@ -138,7 +138,7 @@ class ShopUITestCase: XCTestCase {
       if !app.frame.contains(CGPoint(x: element.frame.midX, y: app.frame.midY)) {
         // Off to the side in a horizontal row (the category chips): drag the row.
         scrollRow(toward: element)
-      } else if attempts % 2 == 0, app.keyboards.count > 0, tapReturnKey() {
+      } else if attempts % 2 == 0, visibleKeyboard != nil, tapReturnKey() {
         // A text keyboard's return key ends editing (the first tap may only accept a suggestion).
       } else {
         // A number pad has no return key; scrolling moves the element above it (and above the tab bar).
@@ -158,20 +158,33 @@ class ShopUITestCase: XCTestCase {
     guard !frame.isEmpty else { return false }
     let center = CGPoint(x: frame.midX, y: frame.midY)
     guard app.frame.contains(center) else { return false }
-    for cover in [app.keyboards.firstMatch, app.tabBars.firstMatch] where cover.exists {
-      let area = cover.frame
-      if area.contains(center), !area.contains(frame) { return false }
+    var covers: [CGRect] = []
+    if let keyboard = visibleKeyboard {
+      // The suggestions bar above the keys is not part of the keyboard element, but covers the app all the same.
+      var area = keyboard.frame
+      area.origin.y -= 44
+      area.size.height += 44
+      covers.append(area)
+    }
+    if app.tabBars.firstMatch.exists { covers.append(app.tabBars.firstMatch.frame) }
+    for area in covers where area.contains(center) && !area.contains(frame) {
+      return false
     }
     return true
   }
 
+  /// The keyboard on screen, if any. There can be more than one keyboard element (one parked below the screen), so
+  /// `app.keyboards.firstMatch` may not be the one covering the app.
+  private var visibleKeyboard: XCUIElement? {
+    app.keyboards.allElementsBoundByIndex.first { $0.exists && $0.frame.minY < app.frame.maxY - 1 }
+  }
+
   /// Waits until the keyboard has finished appearing or going away: until its frame (or its absence) holds still.
   private func settleKeyboard() {
-    var last = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame : .null
+    var last = visibleKeyboard?.frame ?? .null
     for _ in 0..<20 {
       Thread.sleep(forTimeInterval: 0.1)
-      let keyboard = app.keyboards.firstMatch
-      let now = keyboard.exists ? keyboard.frame : .null
+      let now = visibleKeyboard?.frame ?? .null
       if now == last { return }
       last = now
     }
@@ -199,10 +212,11 @@ class ShopUITestCase: XCTestCase {
 
   /// Taps the keyboard's return key, if it has one. Returns whether it did.
   private func tapReturnKey() -> Bool {
-    let keyboard = app.keyboards.firstMatch
+    guard let keyboard = visibleKeyboard else { return false }
     for label in ["return", "Return", "done", "Done", "go", "Go", "next", "Next"] {
       let key = keyboard.buttons[label]
-      if key.exists {
+      // A keyboard that is sliding away still lists its keys, below the screen; tapping one fails slowly.
+      if key.exists, app.frame.contains(CGPoint(x: key.frame.midX, y: key.frame.midY)) {
         key.tap()
         return true
       }

@@ -270,6 +270,14 @@ def ratio(slow: float, fast: float) -> str:
     return f"{slow / fast:,.0f}×" if fast > 0 and slow > 0 else "—"
 
 
+# Failures that are differences between the modes rather than bugs, explained in the report.
+KNOWN_FAILURES = {
+    "bridge auth-launch": "its only line checks `call=session.current`, the session lookup at launch. Headlessly the"
+    " first step reports the launch's calls; through the bridge, `app run` starts after the launch has settled and"
+    " sees none. The UI test does not check calls, and passes.",
+}
+
+
 def fit(points: list[tuple[int, float]]) -> tuple[float, float]:
     """Least squares `seconds = fixed + per_step * steps`. Returns (fixed, per_step), neither below zero."""
     if len(points) < 2:
@@ -341,8 +349,9 @@ def why_section(data: dict) -> list[str]:
         " (Each scenario starts fresh, as a UI test does, so the comparison is fair; one launch could run many.)",
         f"- **A settle window per step** ({fmt_s(b_step)} a step here): the command is sent over HTTP and applied on the app's"
         " main thread, like the headless one, but the app's effects run on real time. So the bridge can only call a"
-        " step settled once no mocked call is in flight and the state has stayed unchanged for **250 ms**. That quiet"
-        " window is most of every step: it is the price of knowing the step is finished without a virtual clock.",
+        " step settled once no mocked call is in flight and the state has stayed unchanged for **250 ms**. Every command"
+        " pays that quiet window; an `expect` sends nothing and costs almost nothing, which is why the average step comes"
+        " out below it. The window is the price of knowing a step is finished without a virtual clock.",
         "- **Real rendering.** SwiftUI lays out and draws every screen, with its animations. The bridge does not wait for"
         " them, but they share the main thread with the app.",
         "",
@@ -579,9 +588,25 @@ def write_report(data: dict) -> Path:
         "- UI tests run one at a time on one simulator; parallel clones would cut the wall time but not the per-test cost.",
         "- The UI tests had to work around what every UI suite hits: the system \"Save Password?\" sheet, the keyboard"
         " covering buttons, and password autofill fighting typed text (`-ui-testing` turns autofill hints off).",
-        f"- Failures in this run: {', '.join(failures) if failures else 'none'}.",
-        "",
     ]
+    reruns = data.get("reruns", {})
+    failures = [f for f in failures if f.removeprefix("uitest ") not in reruns]
+    if reruns:
+        lines.append(
+            f"- {len(reruns)} UI tests failed in this run on a bug in the test driver (it sometimes read a keyboard parked"
+            " below the screen instead of the one covering the button). After the fix they were rerun alone and passed: "
+            + ", ".join(f"`{t}` {fmt_s(s)}" for t, s in reruns.items())
+            + ". The group times above are the full run's, failed attempts included."
+        )
+    for failure in failures:
+        lines.append(f"- Failed: `{failure}`" + (f": {KNOWN_FAILURES[failure]}" if failure in KNOWN_FAILURES else "."))
+    if not failures:
+        lines.append("- No other failures.")
+    lines.append("")
+    video = REPORT_DIR / f"{now:%Y-%m-%d}-agentshop.mp4"
+    if video.exists():
+        # `bench/video.py`'s recording, copied (and compressed) next to the report.
+        lines.insert(lines.index("## Summary"), f"**Video:** [three scenarios in all three modes, side by side]({video.name}).\n")
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORT_DIR / f"{now:%Y-%m-%d}-agentshop.md"
     path.write_text("\n".join(lines))

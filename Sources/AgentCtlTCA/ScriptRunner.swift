@@ -5,7 +5,8 @@ import ComposableArchitecture
 @MainActor
 public struct RunnerEnvironment {
   public var settle: @MainActor () async -> SettleResult
-  /// Advances the test clock. `nil` in the running app, where `advance` is not available.
+  /// Moves the app's clock forward: the test clock headlessly, the ``AdvanceableClock`` in the running app. `nil`
+  /// where the runtime controls no clock, and `advance` is then rejected.
   public var advance: (@MainActor (Duration) async -> Void)?
   /// Headless runs send each screen's `onAppear` action when it becomes active (no views exist to do it).
   public var synthesizesAppearance: Bool

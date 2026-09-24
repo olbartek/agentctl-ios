@@ -441,9 +441,9 @@ failed, or a step — `(launch)` included — did not settle; `2` a usage or par
 included; `3` an internal or environment error — a scenario file that does not exist, no scenario files to run,
 no repo root, a build that failed.
 
-Three runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (headless only — a
-running app's timers are real, so `advance` is rejected there rather than silently slept), and
-`mock <client.method> <error>`.
+Three runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (the virtual clock
+headlessly; in the running app, the app's real-time clock jumped forward, see [the bridge](#the-in-app-bridge)),
+and `mock <client.method> <error>`.
 
 Headless runs are deterministic by construction, so the same script always prints the same bytes — which is what
 makes step output usable as a committed fixture. `HeadlessHost` runs everything on one serial executor and pins
@@ -594,8 +594,12 @@ the bridge's first answer means the app is ready. A seed is a script and fails l
 step, or at a `(launch)` that did not settle — and the app logs `AgentCtlBridge: seed applied` or
 `AgentCtlBridge: seed FAILED (exit <code>)` with its steps.
 
-The same scripts then run against the real app (`app run`), on the live clock and with real mock latency — which
-is why `advance` is rejected there. The wire protocol — routes, the `X-Appctl-Exit` header, the JSON form, the
+The same scripts then run against the real app (`app run`), on real time and with real mock latency. `advance`
+works there too: the app's `\.continuousClock` is an `AdvanceableClock`, which `advance` moves forward deadline by
+deadline, so a countdown ticks once per second advanced, as it does headlessly, and `\.date` moves with it. Only
+what sleeps on that clock moves; a timer on `Task.sleep` or a dispatch queue keeps real time. A backend of yours
+that reads the time should read `LiveEnvironment.now` (in `makeLive`'s `configure`), as it would read the
+`TestClock` headlessly. The wire protocol — routes, the `X-Appctl-Exit` header, the JSON form, the
 launch arguments — is [CONTRACT.md §8](CONTRACT.md#8-the-in-app-bridge).
 
 ## The contract

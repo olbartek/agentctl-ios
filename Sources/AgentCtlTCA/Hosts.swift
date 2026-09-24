@@ -162,15 +162,25 @@ struct SeededRandomNumberGenerator: RandomNumberGenerator, Sendable {
 
 /// The pieces `LiveHost` owns, handed to the app so it can bind its own backends to them.
 public struct LiveEnvironment {
-  public let clock: CountingClock<ContinuousClock>
+  /// The app's `\.continuousClock`: real time that `advance` moves forward (``AdvanceableClock``), with its sleeps
+  /// counted for `pending`. A backend that sleeps should sleep on it, so `advance` moves it too.
+  public let clock: CountingClock<AdvanceableClock>
   public let callLog: MockCallLog
   public let faults: MockFaults
   public let tracker: EffectTracker
   public let latency: MockLatency
+
+  /// The current date in the app's time: real time plus whatever `advance` has added. It is also the app's
+  /// `\.date`. A backend that reads the time (a code's expiry, say) should read it here, as it would read
+  /// ``HeadlessEnvironment/clock`` headlessly.
+  public var now: @Sendable () -> Date { clock.base.date }
 }
 
 /// The app's store as AgentCtlBridge runs it in DEBUG builds: real time and real mock latency, plus the hooks the
 /// agent runtime needs (call log, faults, effect tracking and a clock that counts pending sleeps).
+///
+/// Time is real, but `advance` can move it forward: the app's `\.continuousClock` is an ``AdvanceableClock``, and
+/// its `\.date` follows that clock.
 @MainActor
 public final class LiveHost<Root: Reducer & AgentContainer>
 where
@@ -181,7 +191,7 @@ where
   public let callLog: MockCallLog
   public let faults: MockFaults
   public let tracker: EffectTracker
-  public let clock: CountingClock<ContinuousClock>
+  public let clock: CountingClock<AdvanceableClock>
   let mockMethods: [MockMethod]
 
   public init(
@@ -194,7 +204,7 @@ where
     let callLog = MockCallLog()
     let faults = MockFaults()
     let tracker = EffectTracker()
-    let clock = CountingClock(ContinuousClock())
+    let clock = CountingClock(AdvanceableClock())
     self.callLog = callLog
     self.faults = faults
     self.tracker = tracker
@@ -209,7 +219,7 @@ where
       // Explicit, so the store behaves the same in a test process (where defaults are unimplemented).
       $0.continuousClock = clock
       $0.uuid = UUIDGenerator { UUID() }
-      $0.date = DateGenerator { Date() }
+      $0.date = DateGenerator { clock.base.date() }
       $0.withRandomNumberGenerator = WithRandomNumberGenerator(SystemRandomNumberGenerator())
       $0.mockLatency = latency
       $0.mockCallLog = callLog
@@ -229,6 +239,17 @@ where
     )
   }
 
+  func settleBetweenDeadlines() async {
+    _ = await settleLive(
+      state: { store.state },
+      callLog: callLog,
+      pending: { [clock] in clock.activeSleeps },
+      quietWindow: .milliseconds(30),
+      pollInterval: .milliseconds(5),
+      limit: .seconds(1)
+    )
+  }
+
   /// - Parameter synthesizesAppearance: `true` for launch seeding (before any view exists), `false` once the
   ///   views are on screen and send their own `onAppear`.
   public func makeRunner(synthesizesAppearance: Bool) -> ScriptRunner<Root> {
@@ -240,7 +261,11 @@ where
       pending: { [clock] in clock.activeSleeps },
       environment: RunnerEnvironment(
         settle: { [self] in await settle() },
-        advance: nil,
+        advance: { [self] duration in
+          // Between deadlines, a short settle: long enough for what a timer fires to reach the store and start
+          // its next sleep, short enough that `advance 1m` over a one-second countdown stays quick.
+          await clock.base.advance(by: duration, between: { @MainActor [self] in await settleBetweenDeadlines() })
+        },
         synthesizesAppearance: synthesizesAppearance
       ),
       mockMethods: mockMethods

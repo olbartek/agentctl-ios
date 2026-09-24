@@ -225,7 +225,7 @@
   struct AppRun: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "run",
-      abstract: "Run a script in the running app (headless-only commands such as advance are rejected).",
+      abstract: "Run a script in the running app; advance moves its clock forward.",
       discussion: """
         Examples:
           \(help.invocation) app run "\(help.appScript(0))"

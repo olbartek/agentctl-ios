@@ -28,7 +28,7 @@
         let commands: [(String, any ParsableCommand.Type)] = [
           ("(root)", AppCtlCommand.self), ("run", Run.self), ("state", StateCommand.self), ("screens", Screens.self),
           ("docs", Docs.self), ("test", Test.self), ("snapshots", Snapshots.self), ("check", Check.self),
-          ("app", AppCommand.self), ("app launch", AppLaunch.self), ("app run", AppRun.self),
+          ("app", AppCommand.self), ("app launch", AppLaunch.self), ("app run", AppRun.self), ("app test", AppTestCommand.self),
           ("app state", AppState.self), ("app screens", AppScreens.self),
         ]
         return commands.map { ($0.0, $0.1.helpMessage(columns: 100)) }
@@ -80,7 +80,7 @@
       @Test
       func everyPageIsRenderedFromTheHostsExamples() {
         let pages = Self.pages
-        #expect(pages.count == 13)
+        #expect(pages.count == 14)
         for page in pages {
           #expect(page.text.count > 60, "'\(page.name)' help is suspiciously short:\n\(page.text)")
         }
@@ -112,7 +112,7 @@
       @Test
       func noCLISourceSpellsTheCLIsOwnName() throws {
         let files = try Self.cliCodeWithoutComments()
-        #expect(files.count == 8, "expected the eight CLI files, found \(files.map(\.name).sorted())")
+        #expect(files.count == 9, "expected the nine CLI files, found \(files.map(\.name).sorted())")
         for file in files {
           // The booleans are named so a failure reads as the file's name, not as a dump of the whole file.
           let length = file.text.count

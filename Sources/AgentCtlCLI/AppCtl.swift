@@ -177,7 +177,7 @@
     static let configuration = CommandConfiguration(
       commandName: "app",
       abstract: "Launch the app on a simulator and drive it through its agent bridge.",
-      subcommands: [AppLaunch.self, AppRun.self, AppState.self, AppScreens.self]
+      subcommands: [AppLaunch.self, AppRun.self, AppTestCommand.self, AppState.self, AppScreens.self]
     )
   }
 
@@ -243,6 +243,49 @@
 
     func run() async throws {
       let code = await AppCommands.run(script: script, json: json, port: bridge.port)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  struct AppTestCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "test",
+      abstract: "Run scenario files in the app on a simulator, each from a fresh launch, and print pass/fail per file.",
+      discussion: """
+        Builds once, then launches the app with no saved session for each file and runs it through the agent \
+        bridge. A file with a '# app-test: skip <reason>' line is skipped.
+        Examples:
+          \(help.invocation) app test
+          \(help.invocation) app test --no-build \(help.scenarioPath ?? "\(AgentCtl.runtime.scenariosPath)/<name>.appctl")
+          \(help.invocation) app test --record \(AgentCtl.runtime.outputPath)/scenarios.mp4 --step-delay 0.5
+        """
+    )
+
+    @Argument(help: "Scenario files. Defaults to every \(AgentCtl.runtime.scenariosPath)/*.appctl.")
+    var paths: [String] = []
+
+    @Option(help: "Simulator name or UDID.")
+    var sim: String = AgentCtl.runtime.simulatorName
+
+    @Option(help: "Fixed mock latency in ms (default: the app's own).")
+    var latency: Int?
+
+    @Flag(help: "Use the installed app instead of building it.")
+    var noBuild = false
+
+    @Option(help: "Record the run to this .mp4, with a <file>.chapters.txt of when each scenario started.")
+    var record: String?
+
+    @Option(help: "Send the scenario one line at a time, this many seconds apart, so a recording can be followed.")
+    var stepDelay: Double?
+
+    @OptionGroup var bridge: BridgeOptions
+
+    func run() async throws {
+      let options = AppTest.Options(
+        simulator: sim, latency: latency, build: !noBuild, port: bridge.port, record: record, stepDelay: stepDelay
+      )
+      let code = await AppTest.run(paths: paths, options: options)
       if code != 0 { throw ExitCode(code) }
     }
   }

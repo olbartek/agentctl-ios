@@ -191,7 +191,12 @@ public struct ProductDetailView: View {
           Text("Out of stock").font(Typography.bodyMedium).foregroundStyle(Palette.error)
         }
 
-        if !store.product.sizes.isEmpty {
+        if store.product.sizes.isEmpty {
+          Text("One size")
+            .font(Typography.caption)
+            .foregroundStyle(Palette.textSecondary)
+            .summaryValue("ProductDetail.size", "one-size")
+        } else {
           Text("Size").font(Typography.bodyMedium)
           HStack(spacing: 8) {
             ForEach(store.product.sizes, id: \.self) { size in
@@ -296,7 +301,7 @@ public struct CartView: View {
           TextField("Promo code", text: $store.promoCode)
             .textFieldStyle(.roundedBorder)
             .autocorrectionDisabled()
-            .accessibilityIdentifier("Cart.promo")
+            .accessibilityIdentifier("Cart.promo-code")
           Button("Apply") { store.send(.applyPromoTapped) }
             .disabled(!store.canApplyPromo)
             .accessibilityIdentifier("Cart.apply-promo")

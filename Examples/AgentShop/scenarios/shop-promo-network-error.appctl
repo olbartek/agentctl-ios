@@ -5,7 +5,7 @@ open 103
 add-to-cart
 view-cart
 # A failed promo request reports the error; applying again works.
-promo SAVE10
+promo-code SAVE10
 mock cart.applyPromo network
 apply-promo
 expect error=network promo=none

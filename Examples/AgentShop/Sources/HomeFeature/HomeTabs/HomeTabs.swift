@@ -99,6 +99,15 @@ public struct HomeTabs {
     Reduce { state, action in
       switch action {
       case let .tabSelected(tab):
+        // As on iOS: selecting the tab that is already selected pops it back to its first screen.
+        if tab == state.selectedTab {
+          switch tab {
+          case .shop: state.shopPath.removeAll()
+          case .cart: state.cartPath.removeAll()
+          case .orders: state.ordersPath.removeAll()
+          case .profile: break
+          }
+        }
         state.selectedTab = tab
         return .none
 

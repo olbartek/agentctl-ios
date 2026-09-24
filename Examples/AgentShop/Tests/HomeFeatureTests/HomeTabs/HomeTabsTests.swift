@@ -21,6 +21,20 @@ struct HomeTabsTests {
     await store.send(.tabSelected(.orders)) { $0.selectedTab = .orders }
   }
 
+  @Test func selectingTheSelectedTabAgainPopsItToItsFirstScreen() async {
+    let store = TestStore(
+      initialState: HomeTabs.State(
+        id: homeID,
+        session: alice,
+        selectedTab: .orders,
+        ordersPath: StackState([.detail(OrderDetail.State(orderID: 1003))])
+      )
+    ) {
+      HomeTabs()
+    }
+    await store.send(.tabSelected(.orders)) { $0.ordersPath = StackState() }
+  }
+
   @Test func openingAnOrderPushesItsDetailAndBackPopsIt() async {
     let store = TestStore(initialState: HomeTabs.State(id: homeID, session: alice)) { HomeTabs() }
     await store.send(.ordersList(.orderTapped(1003)))

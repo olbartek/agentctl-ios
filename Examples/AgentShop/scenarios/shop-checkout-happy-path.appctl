@@ -8,7 +8,7 @@ size 42
 qty-up
 add-to-cart
 view-cart
-promo SAVE10
+promo-code SAVE10
 apply-promo
 checkout
 card 4242 4242 4242 4242
@@ -16,5 +16,6 @@ shipping express
 expect total=$175.20
 place-order
 expect screen=home/cart/confirmation order=1004 total=$175.20
+# Tapping the Cart tab again pops back to the cart, emptied by the order (as iOS does).
 tab cart
-expect screen=home/cart/confirmation
+expect screen=home/cart items=0

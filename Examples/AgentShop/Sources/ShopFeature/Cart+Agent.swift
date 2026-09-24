@@ -33,7 +33,7 @@ extension Cart: AgentScreen {
     .parsing("remove", argument: "<line>", help: "Remove a line.") { text throws(AgentCommandError) in
       .removeTapped(text)
     },
-    .text("promo", help: "Type a promo code (SAVE10 and HALF exist).") { .binding(.set(\.promoCode, $0)) },
+    .text("promo-code", help: "Type in the promo code field (SAVE10 and HALF exist).") { .binding(.set(\.promoCode, $0)) },
     .action(
       "apply-promo",
       help: "Apply the typed code (cart.applyPromo); an unknown one reports error=invalidPromo.",

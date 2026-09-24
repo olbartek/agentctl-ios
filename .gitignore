@@ -66,3 +66,4 @@ fastlane/test_output
 
 # AgentShop benchmark output: raw numbers, recordings, DerivedData.
 Examples/AgentShop/.bench/
+__pycache__/

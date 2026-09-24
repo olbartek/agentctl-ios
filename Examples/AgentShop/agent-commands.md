@@ -281,7 +281,7 @@ Summary keys: `lines`, `items`, `subtotal`, `discount`, `total`, `promo`, `canCh
 | `inc <line>` | One more of a line, e.g. inc 101-42 or inc 103. | Cart |
 | `dec <line>` | One fewer of a line; at one, the line is removed. | Cart |
 | `remove <line>` | Remove a line. | Cart |
-| `promo <text>` | Type a promo code (SAVE10 and HALF exist). | Cart |
+| `promo-code <text>` | Type in the promo code field (SAVE10 and HALF exist). | Cart |
 | `apply-promo` | Apply the typed code (cart.applyPromo); an unknown one reports error=invalidPromo. *(disabled when no code typed)* | Cart |
 | `clear-promo` | Remove the applied promo code. *(disabled when promo=none)* | Cart |
 | `checkout` | Go to checkout. *(disabled when canCheckout=false)* | Cart |

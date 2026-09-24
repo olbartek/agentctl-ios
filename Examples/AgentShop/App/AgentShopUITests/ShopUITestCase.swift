@@ -41,19 +41,16 @@ class ShopUITestCase: XCTestCase {
 
   func tap(_ id: String, line: String) {
     if let label = alertButtons[id] {
-      let button = app.alerts.buttons[label]
-      require(poll { button.exists }, "no alert button '\(label)'", line)
-      button.tap()
+      hittable(app.alerts.buttons[label], named: "alert button '\(label)'", line: line).tap()
       return
     }
     if id.hasPrefix("HomeTabs.tab."), let label = tabLabels[String(id.dropFirst("HomeTabs.tab.".count))] {
-      let button = app.tabBars.buttons[label]
-      require(poll { button.exists }, "no tab '\(label)'", line)
-      button.tap()
+      // The tab bar is never covered by the keyboard, but a system sheet over the app swallows taps on it.
+      dismissSystemPrompt()
+      hittable(app.tabBars.buttons[label], named: "tab '\(label)'", line: line).tap()
       return
     }
-    let element = hittable(id, line: line)
-    element.tap()
+    hittable(id, line: line).tap()
   }
 
   func type(_ id: String, _ text: String, line: String) {
@@ -76,7 +73,7 @@ class ShopUITestCase: XCTestCase {
   /// `back`: the screen's own back button if it draws one, else the navigation bar's.
   func back(line: String) {
     let own = app.buttons["nav.back"].firstMatch
-    if own.exists, own.isHittable {
+    if own.exists, isOnScreen(own) {
       own.tap()
       return
     }
@@ -92,15 +89,21 @@ class ShopUITestCase: XCTestCase {
     require(poll { marker.exists }, "screen \(path) did not appear", line)
   }
 
+  /// A value a screen only shows when it is set (the applied promo code) counts as `none` when it is not shown.
   func expectValue(_ id: String, _ value: String, line: String) {
     let element = element(id)
+    if value == "none", !poll({ element.exists }, timeout: 1) { return }
     require(poll { element.exists }, "no element \(id)", line)
     require(wait(for: element, value: value), "\(id) is '\(describe(element))', expected '\(value)'", line)
   }
 
+  /// A button a screen hides when it can't be used (an order that can't be cancelled) counts as disabled.
   func expectEnabled(_ id: String, _ enabled: Bool, line: String) {
     let element = element(id)
-    require(poll { element.exists && element.isEnabled == enabled }, "\(id) is not \(enabled ? "enabled" : "disabled")", line)
+    require(
+      poll { enabled ? element.exists && element.isEnabled : !element.exists || !element.isEnabled },
+      "\(id) is not \(enabled ? "enabled" : "disabled")", line
+    )
   }
 
   func expectError(_ code: String, line: String) {
@@ -122,22 +125,66 @@ class ShopUITestCase: XCTestCase {
   /// Waits for the element, then gets it on screen: dismisses a system prompt that covers the app, hides the
   /// keyboard, scrolls. Costs nothing when the element is already tappable.
   private func hittable(_ id: String, line: String) -> XCUIElement {
-    let element = element(id)
-    require(poll { element.exists }, "no element \(id)", line)
+    hittable(element(id), named: id, line: line)
+  }
+
+  private func hittable(_ element: XCUIElement, named name: String, line: String) -> XCUIElement {
+    require(poll { element.exists }, "no element \(name)", line)
+    // A system sheet over the app would swallow the tap, wherever the element is.
+    dismissSystemPrompt()
+    settleKeyboard()
     var attempts = 0
-    while !element.isHittable, attempts < 8 {
-      if dismissSystemPrompt() {
-        // Nothing else to do: the prompt was what covered the element.
-      } else if attempts == 0, app.keyboards.count > 0, tapReturnKey() {
-        // A text keyboard's return key ends editing.
+    while !isOnScreen(element), attempts < 8 {
+      if !app.frame.contains(CGPoint(x: element.frame.midX, y: app.frame.midY)) {
+        // Off to the side in a horizontal row (the category chips): drag the row.
+        scrollRow(toward: element)
+      } else if attempts % 2 == 0, app.keyboards.count > 0, tapReturnKey() {
+        // A text keyboard's return key ends editing (the first tap may only accept a suggestion).
       } else {
-        // A number pad has no return key; scrolling moves the element above the keyboard instead.
+        // A number pad has no return key; scrolling moves the element above it (and above the tab bar).
         app.swipeUp(velocity: .slow)
       }
       attempts += 1
+      settleKeyboard()
     }
-    require(element.isHittable, "\(id) cannot be tapped", line)
+    require(isOnScreen(element), "\(name) is not on screen", line)
     return element
+  }
+
+  /// Whether a tap at the element's center would land on it: inside the window, and not under the keyboard or the
+  /// tab bar (unless it is part of them). XCUIElement.isHittable is unreliable for SwiftUI on recent simulators.
+  private func isOnScreen(_ element: XCUIElement) -> Bool {
+    let frame = element.frame
+    guard !frame.isEmpty else { return false }
+    let center = CGPoint(x: frame.midX, y: frame.midY)
+    guard app.frame.contains(center) else { return false }
+    for cover in [app.keyboards.firstMatch, app.tabBars.firstMatch] where cover.exists {
+      let area = cover.frame
+      if area.contains(center), !area.contains(frame) { return false }
+    }
+    return true
+  }
+
+  /// Waits until the keyboard has finished appearing or going away: until its frame (or its absence) holds still.
+  private func settleKeyboard() {
+    var last = app.keyboards.firstMatch.exists ? app.keyboards.firstMatch.frame : .null
+    for _ in 0..<20 {
+      Thread.sleep(forTimeInterval: 0.1)
+      let keyboard = app.keyboards.firstMatch
+      let now = keyboard.exists ? keyboard.frame : .null
+      if now == last { return }
+      last = now
+    }
+  }
+
+  /// Drags a horizontal row sideways, by its middle, so the element moves toward the middle of the screen.
+  private func scrollRow(toward element: XCUIElement) {
+    let window = app.frame
+    let y = element.frame.midY / window.height
+    let right = element.frame.midX > window.midX
+    let start = app.coordinate(withNormalizedOffset: CGVector(dx: right ? 0.8 : 0.2, dy: y))
+    let end = app.coordinate(withNormalizedOffset: CGVector(dx: right ? 0.2 : 0.8, dy: y))
+    start.press(forDuration: 0.05, thenDragTo: end)
   }
 
   /// iOS offers to save a password after a login form goes away. It is a system sheet over the app; "Not Now"
@@ -164,8 +211,8 @@ class ShopUITestCase: XCTestCase {
   }
 
   /// Polls `condition` until it holds or `timeout` passes; on the way, clears a system prompt covering the app.
-  private func poll(_ condition: () -> Bool) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
+  private func poll(_ condition: () -> Bool, timeout: TimeInterval? = nil) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout ?? self.timeout)
     while Date() < deadline {
       if condition() { return true }
       dismissSystemPrompt()
@@ -182,8 +229,15 @@ class ShopUITestCase: XCTestCase {
     element.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
   }
 
+  /// An empty text field reports its placeholder as its value, so `""` also matches the placeholder.
   private func wait(for element: XCUIElement, value: String) -> Bool {
-    poll { (element.value as? String) == value || element.label == value }
+    poll {
+      let current = element.value as? String
+      // A switch or a checkbox shows on/off where the summary says true/false.
+      let shown = ["on": "true", "off": "false"][current ?? ""] ?? current
+      return current == value || shown == value || element.label == value
+        || (value.isEmpty && (current == nil || current == element.placeholderValue))
+    }
   }
 
   private func describe(_ element: XCUIElement) -> String {

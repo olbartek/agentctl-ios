@@ -5,7 +5,7 @@ open 103
 add-to-cart
 view-cart
 # An applied code can be removed.
-promo HALF
+promo-code HALF
 apply-promo
 expect promo=HALF total=$14.50
 clear-promo

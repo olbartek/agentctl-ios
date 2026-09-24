@@ -117,7 +117,9 @@ public struct ASSecureField: View {
   public var body: some View {
     HStack(spacing: 4) {
       Group {
-        if isRevealed {
+        // Under UI tests a secure field is a plain one: iOS treats a disappearing secure field as a finished
+        // login and puts its password-saving UI over the app, which swallows the next taps.
+        if isRevealed || SecureFieldKindModifier.isUITesting {
           TextField(placeholder, text: $text, prompt: prompt)
             .modifier(SecureFieldKindModifier(kind: kind))
         } else {
@@ -275,7 +277,7 @@ struct SecureFieldKindModifier: ViewModifier {
   func body(content: Content) -> some View {
     #if os(iOS)
       if Self.isUITesting {
-        content.textContentType(.oneTimeCode).textInputAutocapitalization(.never)
+        content.textContentType(.oneTimeCode).textInputAutocapitalization(.never).autocorrectionDisabled()
       } else {
         switch kind {
         case .password: content.textContentType(.password).textInputAutocapitalization(.never)

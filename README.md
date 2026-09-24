@@ -435,6 +435,7 @@ exit=1
 | `snapshots` | The view snapshot tests, on an iOS simulator; `--record` re-records the reference images. |
 | `check` | The verification ladder below; `--ui` adds its last two rungs. |
 | `app launch` / `app run` / `app state` / `app screens` | The same commands, against the real app on a simulator, through the in-app bridge. |
+| `app test [files…]` | The scenario files, in the real app on a simulator: one fresh launch each, one PASS/FAIL/SKIP line each. `--record <mp4>` records the run, `--step-delay <s>` sends a line at a time so the recording can be followed. |
 
 Exit codes are part of the contract: `0` everything ran and every `expect` passed; `1` a command or an `expect`
 failed, or a step — `(launch)` included — did not settle; `2` a usage or parse error, the CLI's own command line
@@ -599,7 +600,25 @@ works there too: the app's `\.continuousClock` is an `AdvanceableClock`, which `
 deadline, so a countdown ticks once per second advanced, as it does headlessly, and `\.date` moves with it. Only
 what sleeps on that clock moves; a timer on `Task.sleep` or a dispatch queue keeps real time. A backend of yours
 that reads the time should read `LiveEnvironment.now` (in `makeLive`'s `configure`), as it would read the
-`TestClock` headlessly. The wire protocol — routes, the `X-Appctl-Exit` header, the JSON form, the
+`TestClock` headlessly.
+
+`app test` runs the scenario files this way, as `test` runs them headlessly: it builds once, then for each file
+launches the app with no saved session and sends the file through the bridge. `--latency <ms>` fixes the mock
+latency, `--no-build` uses the installed app, `--record <mp4>` records the simulator for the whole run and writes
+`<mp4>.chapters.txt` with the time each scenario started, and `--step-delay <s>` sends one line at a time so the
+video can be followed. A few scenarios are true headlessly but not in a running app: a first `expect` on the
+launch's own calls (`app launch` has made them before the script starts), a countdown's exact value (it also
+ticks in real time), or a date that is in the future only against the headless fixed date. Such a file says so on
+a comment line, and `app test` prints it as skipped:
+
+```
+# app-test: skip the countdown also ticks in real time
+```
+
+If your app opens URLs, stub `openURL` in `makeLive`'s `configure`: opening Safari puts the app, and its bridge,
+in the background, and the next request never gets an answer.
+
+The wire protocol — routes, the `X-Appctl-Exit` header, the JSON form, the
 launch arguments — is [CONTRACT.md §8](CONTRACT.md#8-the-in-app-bridge).
 
 ## The contract

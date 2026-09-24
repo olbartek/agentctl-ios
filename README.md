@@ -37,6 +37,27 @@ expect cooldown=2 pending=1 error=cooldown
 — from [`Examples/TinyApp/scenarios/save-cooldown.appctl`](Examples/TinyApp/scenarios/save-cooldown.appctl), run
 by `tinyctl test` and by this package's own test suite.
 
+## How much faster
+
+[`Examples/AgentShop`](Examples/AgentShop) (sign-in, onboarding, a shop) has 99 scenarios that run unchanged in
+three modes: headlessly, through the bridge in the real app on a simulator, and as XCUITests generated from the
+same files. On an Apple M4 Max, with an iPhone 17 Pro simulator:
+
+| | Headless | Simulator, via the bridge | XCUITest |
+|---|---|---|---|
+| All 99 scenarios (1,104 steps) | **1.3 s** | 8 min 2 s | 30 min 8 s |
+| A typical 12-step scenario | **18 ms** | 5.1 s | 18.4 s |
+| Change a line of a reducer, then check it | **1.6 s** | — | 35.2 s |
+
+Headless has nothing to wait for: no simulator, no app to launch, no views, and a test clock instead of real
+time. The bridge pays for a real app, a launch per scenario and a 250 ms quiet window per command; the UI tests
+also pay for a second process that finds every element through accessibility, types key by key and waits for
+every animation. [The full report](docs/benchmarks/2026-09-24-agentshop.md) explains where the time goes, and
+[this video](docs/benchmarks/2026-09-24-agentshop.mp4) runs three scenarios side by side.
+
+The modes check different things, so this is not a case for deleting UI tests: the generated UI tests found a
+place where the headless run disagreed with iOS. It is a case for which one an agent runs hundreds of times a day.
+
 ## Requirements, and what this is not
 
 - **macOS 15+ and a Swift 6.1+ toolchain** (`swift-tools-version: 6.1`; developed and verified on Swift 6.3,
@@ -584,10 +605,10 @@ text, the exit codes, the determinism requirements, and the in-app bridge's wire
 another language implements, and it is a more precise description of the behaviour summarized above. Its
 examples are TinyApp's, and their output is real.
 
-## The example app
+## The example apps
 
-[`Examples/TinyApp`](Examples/TinyApp) is a complete worked example and this package's fixture: two screens, one
-mocked client, three scenarios, its own `tinyctl` executable and a committed
+[`Examples/TinyApp`](Examples/TinyApp) is the smallest complete integration and this package's fixture: two screens,
+one mocked client, three scenarios, its own `tinyctl` executable and a committed
 [generated command reference](Examples/TinyApp/agent-commands.md). See
 [its README](Examples/TinyApp/README.md), or just run it:
 
@@ -597,7 +618,12 @@ swift run tinyctl test
 swift test          # this package's own suite, driven against TinyApp
 ```
 
+[`Examples/AgentShop`](Examples/AgentShop) is the showcase: a real iOS app (sign-in, onboarding, a shop with a
+cart and checkout) with an Xcode project, 105 scenarios, UI tests generated from them, and the benchmark behind
+[the numbers above](#how-much-faster). It is its own package, depending on this one by path. See
+[its README](Examples/AgentShop/README.md).
+
 ## Status
 
-Version 0.3, extracted from the app it was built for. The example app in this repository is the only integration
+Version 0.3, extracted from the app it was built for. The two example apps in this repository are the integrations
 CI exercises, and the API may still change between minor versions before 1.0. MIT licensed.

@@ -23,6 +23,11 @@ let package = Package(
         .product(name: "Dependencies", package: "swift-dependencies"),
       ]
     ),
+    // AgentCtlTCA, AgentCtlCLI and AgentCtlTestSupport compile to nothing in a release build: every file is
+    // `#if DEBUG || AGENTCTL_RELEASE`. A host's app links a config module that depends on AgentCtlTCA, and SwiftPM
+    // cannot drop a dependency per build configuration, so without this the runtime would ship, unreachable, in
+    // the app. A CLI that is itself built in release passes `-Xswiftc -DAGENTCTL_RELEASE` (Templates/appctl
+    // does), which reaches every target. AgentCtlCore stays: features' `+Agent.swift` files use it and ship.
     .target(
       name: "AgentCtlTCA",
       dependencies: [

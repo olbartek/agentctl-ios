@@ -9,7 +9,7 @@
 # --- Change these three lines for your repo ------------------------------------------------------------------
 PACKAGE="Packages/AppCtl"   # the SwiftPM package that declares the executable, relative to this script
 PRODUCT="appctl"            # the executable product's name, as Package.swift spells it
-CONFIGURATION="debug"       # "release" builds slower but runs faster
+CONFIGURATION="debug"       # "release" builds slower but runs faster (it adds -DAGENTCTL_RELEASE, see below)
 # ------------------------------------------------------------------------------------------------------------
 #
 # Name this file whatever your agents should type (`./appctl`, `./myappctl`) and set the same spelling as
@@ -18,7 +18,13 @@ CONFIGURATION="debug"       # "release" builds slower but runs faster
 # APPCTL_ROOT tells the CLI where the repository root is, which is where `scenariosPath` and `docsPath` are
 # resolved from. Without it the CLI walks up from the working directory looking for the config's `rootMarker`
 # (by default its `.xcworkspace`/`.xcodeproj`), which also works but depends on where the command was run.
+#
+# AgentCtl compiles out of release builds, so that none of it ships in your app. A release build of the CLI
+# brings it back with -DAGENTCTL_RELEASE, which `-Xswiftc` passes to every target, AgentCtl's included.
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" -q >&2 || exit 3
+FLAGS=""
+[ "$CONFIGURATION" = "release" ] && FLAGS="-Xswiftc -DAGENTCTL_RELEASE"
+# shellcheck disable=SC2086 # FLAGS is two words on purpose
+swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" $FLAGS -q >&2 || exit 3
 APPCTL_ROOT="$ROOT" exec "$ROOT/$PACKAGE/.build/$CONFIGURATION/$PRODUCT" "$@"

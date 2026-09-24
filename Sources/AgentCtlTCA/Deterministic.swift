@@ -1,20 +1,23 @@
-import ComposableArchitecture
+// Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
+#if DEBUG || AGENTCTL_RELEASE
+  import ComposableArchitecture
 
-/// Deterministic scheduling for headless runs: every task, including actor jobs, runs in order on the main
-/// serial executor. `appctl` enables it for the whole process.
-public enum Deterministic {
-  @MainActor
-  public static var isEnabled: Bool {
-    get { uncheckedUseMainSerialExecutor }
-    set { uncheckedUseMainSerialExecutor = newValue }
+  /// Deterministic scheduling for headless runs: every task, including actor jobs, runs in order on the main
+  /// serial executor. `appctl` enables it for the whole process.
+  public enum Deterministic {
+    @MainActor
+    public static var isEnabled: Bool {
+      get { uncheckedUseMainSerialExecutor }
+      set { uncheckedUseMainSerialExecutor = newValue }
+    }
   }
-}
 
-extension ScriptRunner {
-  /// `customDump` of the root state, as printed by `appctl state`.
-  public var stateDump: String {
-    var output = ""
-    customDump(state, to: &output)
-    return output
+  extension ScriptRunner {
+    /// `customDump` of the root state, as printed by `appctl state`.
+    public var stateDump: String {
+      var output = ""
+      customDump(state, to: &output)
+      return output
+    }
   }
-}
+#endif

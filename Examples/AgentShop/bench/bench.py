@@ -270,6 +270,117 @@ def ratio(slow: float, fast: float) -> str:
     return f"{slow / fast:,.0f}×" if fast > 0 and slow > 0 else "—"
 
 
+def fit(points: list[tuple[int, float]]) -> tuple[float, float]:
+    """Least squares `seconds = fixed + per_step * steps`. Returns (fixed, per_step), neither below zero."""
+    if len(points) < 2:
+        return 0.0, 0.0
+    n = len(points)
+    mx = sum(x for x, _ in points) / n
+    my = sum(y for _, y in points) / n
+    sxx = sum((x - mx) ** 2 for x, _ in points)
+    slope = sum((x - mx) * (y - my) for x, y in points) / sxx if sxx else 0.0
+    return max(my - slope * mx, 0.0), max(slope, 0.0)
+
+
+def why_section(data: dict) -> list[str]:
+    """Where each mode spends its time, from this run's numbers: a fixed cost per scenario and a cost per step."""
+    manifest = data["manifest"]
+    head, bridge_launch, bridge_run, ui = [], [], [], []
+    for g in data["groups"].values():
+        tests = g.get("uitest", {}).get("tests", {})
+        for name in g["scenarios"]:
+            steps = manifest[name]["steps"]
+            h = g.get("headless", {}).get(name)
+            if h and h.get("passed"):
+                head.append((steps, h.get("in_process_s", 0.0)))
+            b = g.get("bridge", {}).get(name)
+            if b and b.get("passed"):
+                bridge_launch.append(b["launch_s"])
+                bridge_run.append((steps, b["run_s"]))
+            t = tests.get(manifest[name].get("uitest", "").removeprefix("AgentShopUITests/"))
+            if t and t.get("passed"):
+                ui.append((steps, t["seconds"]))
+    if not (head and bridge_run and ui):
+        return []
+    h_fixed, h_step = fit(head)
+    b_fixed, b_step = fit(bridge_run)
+    b_fixed += sum(bridge_launch) / len(bridge_launch)
+    u_fixed, u_step = fit(ui)
+    launch_test = next(
+        (t["seconds"] for g in data["groups"].values() for k, t in g.get("uitest", {}).get("tests", {}).items()
+         if k.endswith("/test_launch") and t.get("passed")),
+        None,
+    )
+    lines = [
+        "## Why headless is the fastest, and where the other two spend their time",
+        "",
+        "Each mode's time per scenario, fitted as *a fixed cost per scenario + a cost per step* over every scenario"
+        " in this run (a step is one line of a scenario: a command or an `expect`):",
+        "",
+        "| Mode | Fixed cost per scenario | Cost per step | A 12-step scenario |",
+        "|---|---|---|---|",
+        f"| Headless | {fmt_s(h_fixed)} | {fmt_s(h_step)} | **{fmt_s(h_fixed + 12 * h_step)}** |",
+        f"| Simulator bridge | {fmt_s(b_fixed)} | {fmt_s(b_step)} | **{fmt_s(b_fixed + 12 * b_step)}** |",
+        f"| XCUITest | {fmt_s(u_fixed)} | {fmt_s(u_step)} | **{fmt_s(u_fixed + 12 * u_step)}** |",
+        "",
+        "### Headless: nothing to wait for",
+        "",
+        "- **No simulator, no app, no views.** The scenario runs in a Mac process that holds the app's features (their"
+        " reducers and state) with the mocked clients. Nothing is installed, launched or rendered.",
+        "- **A command goes straight to the screen's store.** There is no touch to synthesize and no element to find:"
+        " `add-to-cart` is the action the button would send.",
+        "- **Time is virtual.** The app's clock is a test clock, so a mock's latency, a debounce or `advance 30s` take no"
+        " real time. A step is settled the moment its effects have finished, not after a wait.",
+        f"- What is left is the Swift work itself: {fmt_s(h_step)} a step. Starting the process is the biggest cost, and"
+        " one `shopctl test` pays it once for every scenario.",
+        "",
+        "### Simulator bridge: a real app, and real time",
+        "",
+        f"- **A launch per scenario** ({fmt_s(sum(bridge_launch) / len(bridge_launch))} on average): `simctl` terminates"
+        " and relaunches the app with a clean session, the app starts, and its bridge must answer before the first step."
+        " (Each scenario starts fresh, as a UI test does, so the comparison is fair; one launch could run many.)",
+        f"- **A settle window per step** ({fmt_s(b_step)} a step here): the command is sent over HTTP and applied on the app's"
+        " main thread, like the headless one, but the app's effects run on real time. So the bridge can only call a"
+        " step settled once no mocked call is in flight and the state has stayed unchanged for **250 ms**. That quiet"
+        " window is most of every step: it is the price of knowing the step is finished without a virtual clock.",
+        "- **Real rendering.** SwiftUI lays out and draws every screen, with its animations. The bridge does not wait for"
+        " them, but they share the main thread with the app.",
+        "",
+        "### XCUITest: a second process, touching the screen",
+        "",
+    ]
+    if launch_test is not None:
+        lines.append(
+            f"- **A launch per test** (`test_launch`, which only launches and checks one screen, takes {fmt_s(launch_test)}):"
+            " XCTest terminates the app, launches it with the test's arguments, and waits for it to be idle before the"
+            " first query."
+        )
+    else:
+        lines.append("- **A launch per test**: XCTest terminates the app, relaunches it and waits for it to be idle.")
+    lines += [
+        f"- **Every step goes through the UI** ({fmt_s(u_step)} a step here). The test runs in a separate runner app that"
+        " sees the app only through accessibility. To tap a button it asks the app for a snapshot of its element tree,"
+        " finds the element, waits for the app to be idle (no animation running), synthesizes the touch and waits for"
+        " idle again. Each of those is a round trip between two processes.",
+        "- **Typing is key by key** on the software keyboard, and the keyboard animates in and out.",
+        "- **Navigation animates.** A push, a sheet or a tab switch has to finish before the next element can be tapped.",
+        "- **Checks poll.** An expectation is a wait for an element or a value to appear, re-reading the tree until it"
+        " does. A UI test cannot ask the app what state it is in; it can only look.",
+        "- **What every UI suite needs on top:** scrolling elements out from under the keyboard or into view, and closing"
+        " system prompts (\"Save Password?\"). Each costs more round trips and animations.",
+        "",
+        "The bridge and the UI tests run the same app on the same simulator. The difference between them is what driving"
+        " through the UI costs; the difference between the bridge and headless is what a running app and real time cost.",
+        "",
+        "They are not interchangeable, though. The UI tests are the only mode that checks what a user can reach: while"
+        " building this benchmark they found one place where the headless run disagreed with iOS (selecting the selected"
+        " tab pops it to its first screen), which the app now does headlessly too. Headless is for the hundreds of"
+        " checks an agent runs while it works; the UI tests are for what only the real UI can tell you.",
+        "",
+    ]
+    return lines
+
+
 def write_report(data: dict) -> Path:
     now = dt.datetime.now()
     info = data["machine"]
@@ -401,6 +512,8 @@ def write_report(data: dict) -> Path:
             if key in s:
                 lines.append(f"| {label} | {fmt_s(s[key])} |")
         lines.append("")
+
+    lines += why_section(data)
 
     checked = sum(manifest[n].get("assertions_checked_in_ui", 0) for g in groups.values() for n in g["scenarios"])
     headless_only_asserts = sum(manifest[n].get("assertions_headless_only", 0) for g in groups.values() for n in g["scenarios"])

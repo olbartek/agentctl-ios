@@ -1,0 +1,10 @@
+# A failed load shows the error with retry; retrying loads the orders.
+mock orders.fetchOrders network
+login-as alice
+expect screen=home/orders orders=0 error=network call=orders.fetchOrders
+retry
+expect orders=3 error=none statuses=delivered,shipped,pending call=orders.fetchOrders
+# A failed refresh keeps the rows and reports the error.
+mock orders.fetchOrders network
+refresh
+expect orders=3 error=network

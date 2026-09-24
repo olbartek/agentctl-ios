@@ -1,0 +1,10 @@
+# Logging out clears the saved session and returns to a fresh login screen.
+login-as alice
+tab profile
+logout
+expect alert=logout
+confirm
+expect screen=auth/login email="" call=session.clear
+# A relaunch finds no session.
+reset
+expect screen=auth/login call=session.current

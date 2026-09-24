@@ -1,0 +1,18 @@
+# "Sign in with Google" and "Sign up with Google" both sign in as the Google test account.
+google
+expect screen=home/orders orders=0 call=auth.signInWithGoogle call=session.save
+tab profile
+expect name="Becca Ade" email=becca@gmail.com
+logout
+confirm
+expect screen=auth/login
+register
+google
+expect screen=home/orders call=auth.signInWithGoogle
+# A failure stays on the screen.
+tab profile
+logout
+confirm
+mock auth.signInWithGoogle network
+google
+expect screen=auth/login error=network loading=false

@@ -1,0 +1,5 @@
+# Bob has no orders: the list shows the empty state.
+login-as bob
+expect screen=home/orders orders=0 loading=false statuses=none call=session.save call=orders.fetchOrders
+refresh
+expect orders=0 call=orders.fetchOrders

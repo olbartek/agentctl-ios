@@ -137,7 +137,8 @@ where
   /// identity, so it is unique within one build graph.
   public var packages: [String]
   /// The packages whose snapshot tests `snapshots` (L3) runs, as paths like ``packages``. For each one it runs
-  /// `xcodebuild test -scheme <name> -only-testing:<name>SnapshotTests` inside that directory.
+  /// `xcodebuild test` inside that directory, on the package's scheme — `<name>`, or `<name>-Package` for a
+  /// package with several products — and only the test targets in its `Tests/*SnapshotTests` directories.
   public var snapshotPackages: [String]
   /// The simulator `app launch` and `check --ui` use by default.
   public var simulatorName: String

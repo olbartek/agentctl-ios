@@ -492,9 +492,10 @@ comes from the config, relative to that root:
   SwiftPM identity, so it is unique within one build graph.
 - L0 and L1 run `swift build` / `swift test --package-path <path>` for each path in `packages`, and L1 runs only
   where `<path>/Tests` exists.
-- L3 runs `xcodebuild test -scheme <name> -only-testing:<name>SnapshotTests` inside `<path>` for each path in
-  `snapshotPackages`, so each needs a scheme named after its directory and a `<name>SnapshotTests` target.
-  Reference images live in `<path>/Tests/<name>SnapshotTests/__Snapshots__/`, recorded on
+- L3 runs `xcodebuild test` inside `<path>` for each path in `snapshotPackages`, with `-only-testing:` for each
+  of its `Tests/*SnapshotTests` directories. The scheme is the one `xcodebuild -list` names after the directory:
+  `<name>`, or `<name>-Package` for a package with several products (a package with a single scheme uses it,
+  whatever its name). Reference images live in `<path>/Tests/<Target>SnapshotTests/__Snapshots__/`, recorded on
   `snapshotSimulatorName` at `snapshotRuntimeMajor` (a reference image only compares on the device and iOS
   version it was recorded on). It drives recording and artifact collection through
   [swift-snapshot-testing](https://github.com/pointfreeco/swift-snapshot-testing)'s

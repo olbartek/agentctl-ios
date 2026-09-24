@@ -1,8 +1,10 @@
+import Foundation
 import AgentCtlCore
 import AgentCtlTCA
 import AppFeature
 import AuthClient
 import ComposableArchitecture
+import Models
 import OrdersClient
 import SessionClient
 
@@ -117,6 +119,8 @@ public enum AgentShopConfig {
       deps.sessionStorage = sessionStorage
       deps.authBackend = AuthBackend(clock: env.clock)
       deps.ordersBackend = OrdersBackend()
+      // `-mock-fault <method>#<n>=<code>`: how a UI test, which cannot send `mock`, fails a backend call.
+      deps.scheduledFaults = ScheduledFaults(arguments: ProcessInfo.processInfo.arguments)
     }
   }
 }

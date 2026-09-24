@@ -72,7 +72,7 @@ private func authCall<T: Sendable>(
   _ name: String,
   _ body: @Sendable (AuthBackend) async throws -> T
 ) async throws -> T {
-  try await mockCall(name, error: { AuthError(rawValue: $0) ?? .network }) {
+  try await shopCall(name, error: { AuthError(rawValue: $0) ?? .network }) {
     @Dependency(\.authBackend) var backend
     return try await body(backend)
   }

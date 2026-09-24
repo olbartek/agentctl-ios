@@ -45,7 +45,7 @@ private func ordersCall<T: Sendable>(
   _ name: String,
   _ body: @Sendable (OrdersBackend, String) async throws -> T
 ) async throws -> T {
-  try await mockCall(name, error: { OrdersError(rawValue: $0) ?? .network }) {
+  try await shopCall(name, error: { OrdersError(rawValue: $0) ?? .network }) {
     @Dependency(\.sessionStorage) var sessionStorage
     @Dependency(\.ordersBackend) var backend
     guard let email = sessionStorage.currentSession?.user.email else { throw OrdersError.unauthorized }

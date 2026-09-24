@@ -58,7 +58,7 @@ let package = Package(
     ),
 
     // Tests
-    .testTarget(name: "ModelsTests", dependencies: ["Models"]),
+    .testTarget(name: "ModelsTests", dependencies: ["Models", agentCore, .product(name: "Dependencies", package: "swift-dependencies")]),
     .testTarget(name: "AuthClientTests", dependencies: base + ["AuthClient"]),
     .testTarget(name: "SessionClientTests", dependencies: base + ["SessionClient"]),
     .testTarget(name: "OrdersClientTests", dependencies: base + ["OrdersClient", "SessionClient"]),

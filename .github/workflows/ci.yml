@@ -91,3 +91,43 @@ jobs:
 
       - name: Build in release
         run: swift build -c release
+
+  # The showcase app: its own package (which depends on this one by path), its 105 scenarios, its generated command
+  # reference and generated UI tests, and an iOS Simulator build of the app with its UI tests. The UI tests themselves
+  # take about 25 minutes on a simulator and run locally (Examples/AgentShop/bench/bench.py), not here.
+  example:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The example's manifest names this package by its path identity, the directory's name.
+          path: agentctl-ios
+
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "Selected $latest"
+          sudo xcode-select -s "$latest"
+
+      - name: Test
+        run: swift test
+        working-directory: agentctl-ios/Examples/AgentShop
+
+      - name: Scenarios
+        run: ./appctl test
+        working-directory: agentctl-ios/Examples/AgentShop
+
+      - name: Generated command reference and UI tests are current
+        run: |
+          set -euo pipefail
+          ./appctl docs --check
+          python3 bench/gen_uitests.py --check
+        working-directory: agentctl-ios/Examples/AgentShop
+
+      - name: Build the app and its UI tests for the iOS Simulator
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing -quiet -project App/AgentShop.xcodeproj -scheme AgentShop \
+            -destination 'generic/platform=iOS Simulator' -skipMacroValidation
+        working-directory: agentctl-ios/Examples/AgentShop

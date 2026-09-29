@@ -49,12 +49,24 @@ struct AdvanceableClockTests {
     let timer = Task {
       for _ in 0..<5 {
         try await clock.sleep(for: .seconds(1))
+        // A tick that takes a while, as on a loaded CI runner or in a real app: longer than a fixed wait between
+        // deadlines would have allowed.
+        try await Task.sleep(for: .milliseconds(50))
         ticks.withLock { $0 += 1 }
       }
     }
-    try await until { clock.activeSleeps == 1 }
-    // Between deadlines, a moment for the loop to start its next sleep.
-    await clock.base.advance(by: .seconds(3), between: { try? await Task.sleep(for: .milliseconds(20)) })
+    try await until { clock.base.registeredSleeps == 1 }
+    // Between deadlines, the app settles: here, until the timer has ticked for the deadline just passed and its next
+    // sleep is one `advance` sees. A fixed 20 ms wait raced (it failed on the Kotlin port's CI): when the timer had
+    // not started its next sleep yet, `advance` found nothing due and jumped to the end, ticking once instead of three
+    // times.
+    let deadlines = Mutex(0)
+    await clock.base.advance(
+      by: .seconds(3),
+      between: {
+        let passed = deadlines.withLock { $0 += 1; return min($0, 3) }
+        try? await until { ticks.withLock { $0 } >= passed && clock.base.registeredSleeps == 1 }
+      })
     #expect(ticks.withLock { $0 } == 3)
     timer.cancel()
   }

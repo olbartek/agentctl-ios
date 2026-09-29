@@ -27,6 +27,10 @@
     /// How far ``advance(by:between:)`` has moved this clock ahead of real time.
     public var offset: Duration { state.withLock { $0.offset } }
 
+    /// The sleeps `advance` can see: registered with their deadline. A `CountingClock` around this one counts a
+    /// sleep a moment before it registers here, so a test that waits for a timer's next sleep waits on this.
+    package var registeredSleeps: Int { state.withLock { $0.sleepers.count } }
+
     public var now: Instant { base.now.advanced(by: offset) }
     public var minimumResolution: Duration { base.minimumResolution }
 

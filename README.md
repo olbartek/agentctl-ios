@@ -53,7 +53,9 @@ Headless has nothing to wait for: no simulator, no app to launch, no views, and 
 time. The bridge pays for a real app, a launch per scenario and a 250 ms quiet window per command; the UI tests
 also pay for a second process that finds every element through accessibility, types key by key and waits for
 every animation. [The full report](docs/benchmarks/2026-09-24-agentshop.md) explains where the time goes, and
-[this video](docs/benchmarks/2026-09-24-agentshop.mp4) runs three scenarios side by side.
+[this video](docs/benchmarks/2026-09-24-agentshop.mp4) runs three scenarios side by side. The same 99 scenarios on
+Android, in [the Kotlin port](https://github.com/olbartek/agentctl-android#how-much-faster), take 291 ms headlessly,
+5 min 48 s through the bridge on an emulator and 5 min 12 s as Compose UI tests.
 
 The modes check different things, so this is not a case for deleting UI tests: the generated UI tests found a
 place where the headless run disagreed with iOS. It is a case for which one an agent runs hundreds of times a day.
@@ -85,11 +87,11 @@ client that is also this package's test fixture.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.4.0"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.4.1"),
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](#status)); `from: "0.4.0"` admits every later
+Until 1.0, a minor version may change the API (see [Status](#status)); `from: "0.4.1"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`, and it exposes five products. Take only what each target needs:
@@ -657,5 +659,9 @@ cart and checkout) with an Xcode project, 105 scenarios, UI tests generated from
 
 ## Status
 
-Version 0.4, extracted from the app it was built for. The two example apps in this repository are the integrations
+Version 0.4.1, extracted from the app it was built for. The two example apps in this repository are the integrations
 CI exercises, and the API may still change between minor versions before 1.0. MIT licensed.
+
+[agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
+lockstep: the same features, the same example apps with the same scenario files, and the same version number, so
+0.4.1 here and 0.4.1 there implement the same [`CONTRACT.md`](CONTRACT.md). A change lands in both.

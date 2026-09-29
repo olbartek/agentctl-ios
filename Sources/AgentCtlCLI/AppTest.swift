@@ -57,8 +57,12 @@
           continue
         }
         recording?.chapter(name)
-        let result = await runScenario(name: name, source: source, root: root, device: device, build: !built, options: options)
-        built = true
+        let (result, launched) = await runScenario(
+          name: name, source: source, root: root, device: device, build: !built, options: options
+        )
+        // Built once a launch with the build has really run, not merely been attempted: a parse error or a failed
+        // install would otherwise leave every later file running a stale app.
+        if launched { built = true }
         results.append(result)
         print(result.report)
       }
@@ -71,16 +75,17 @@
     }
 
     /// A fresh launch with no saved session, then the script through the bridge: whole, or a line at a time.
+    /// `launched` says whether the app was launched (and so built, when `build` was set).
     static func runScenario(
       name: String, source: String, root: URL, device: Simulator.Device, build: Bool, options: Options
-    ) async -> Result {
+    ) async -> (result: Result, launched: Bool) {
       let clock = ContinuousClock()
       let start = clock.now
       let lines: [ScriptLine]
       do {
         lines = try ScriptParser.parse(source)
       } catch {
-        return Result(name: name, outcome: .failed(line: error.line, text: "parse error: \(error.description)"))
+        return (Result(name: name, outcome: .failed(line: error.line, text: "parse error: \(error.description)")), false)
       }
       do {
         _ = try await AppCommands.launchApp(
@@ -88,7 +93,7 @@
           port: options.port
         )
       } catch {
-        return Result(name: name, outcome: .broken("launch failed: \(error)"))
+        return (Result(name: name, outcome: .broken("launch failed: \(error)")), false)
       }
       let client = BridgeClient(port: options.port)
       // One request for the script, or one per line: the app keeps one runner across requests, so `expect` still
@@ -105,11 +110,11 @@
           body += response.body
           exitCode = response.exitCode
         } catch {
-          return Result(name: name, outcome: .broken(Message.bridgeUnreachable(port: options.port, error: error)))
+          return (Result(name: name, outcome: .broken(Message.bridgeUnreachable(port: options.port, error: error))), true)
         }
         if exitCode != 0 { break }
       }
-      return result(name: name, lines: lines, body: body, exitCode: exitCode, duration: start.duration(to: clock.now))
+      return (result(name: name, lines: lines, body: body, exitCode: exitCode, duration: start.duration(to: clock.now)), true)
     }
 
     /// What one run through the bridge amounts to, from the steps it printed and its exit code.

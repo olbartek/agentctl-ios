@@ -663,5 +663,6 @@ Version 0.4.1, extracted from the app it was built for. The two example apps in 
 CI exercises, and the API may still change between minor versions before 1.0. MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
-lockstep: the same features, the same example apps with the same scenario files, and the same version number, so
-0.4.1 here and 0.4.1 there implement the same [`CONTRACT.md`](CONTRACT.md). A change lands in both.
+lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,
+so 0.4.x here and 0.4.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
+own fix, so the two patch numbers can differ.

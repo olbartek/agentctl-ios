@@ -34,3 +34,14 @@ The two repositories share MAJOR.MINOR; PATCH is each repository's own.
 
 Tags are bare `X.Y.Z` on `main`. To release here: bump the README's version pins and Status, merge, then tag and push the
 tag. For a minor or major release, release agentctl-android with the same number.
+
+## After a merge
+
+Clean up what the work used, once its PR is merged:
+
+- Remove its worktree (`git worktree remove <path>`), then delete its branch (`git branch -D <branch>`: a squash
+  merge leaves it unmerged in git's eyes).
+- Delete that worktree's Xcode DerivedData folder: the `~/Library/Developer/Xcode/DerivedData/<Scheme>-<hash>` whose
+  `info.plist` `WorkspacePath` is the worktree.
+- Never remove a worktree with uncommitted changes, or one another session is using.
+- The main checkout's `.build` and DerivedData stay.

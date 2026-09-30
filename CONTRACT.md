@@ -510,8 +510,10 @@ and documentation send exactly these.
 - **Debug builds only.** A release build of the app contains no bridge (the reference compiles it
   out: `#if DEBUG` from end to end).
 - **Loopback only.** It listens on `127.0.0.1` and never on another interface.
-- **Its own port.** It binds without address reuse, so a port another process already listens on
-  (an `adb forward`, a second app) makes it fail to start rather than listen beside that process.
+- **Its own port.** When another process already listens on the port (an `adb forward`, a second
+  app), the bridge fails to start rather than listening beside it. (The reference binds without
+  address reuse, which macOS needs for that; on Linux, address reuse never lets two sockets listen
+  on one port, so the Kotlin port keeps it for quick relaunches.)
 - **Port 8765** unless the app is launched with `-agent-port <n>`; `-agent-port 0` asks the system
   for a free port. Which port a CLI launches the app on, and which it connects to, is §8.6.
 - **HTTP/1.1, one request per connection.** A request is a request line, headers, and a body of

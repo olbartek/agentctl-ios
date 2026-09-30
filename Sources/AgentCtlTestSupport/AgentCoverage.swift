@@ -5,7 +5,8 @@
   import ComposableArchitecture
   import Foundation
 
-  /// Thrown by `AgentCoverage.init` when `scenarios` has no `*.appctl` files to check.
+  /// Thrown by `AgentCoverage.init` and `AgentScenarioChecks.init` when `scenarios` has no `*.appctl` files to
+  /// check.
   ///
   /// Every guard on ``AgentCoverage`` answers "what's missing" by scanning the scenario files found at
   /// `scenarios`; an empty result means "no problems found". That reading is only meaningful if there were
@@ -23,8 +24,9 @@
     }
 
     public var description: String {
-      "AgentCoverage: no *.appctl files found at \(scenarios.path) — check the `scenarios` argument passed to "
-        + "AgentCoverage.init; every coverage guard would otherwise report success without checking anything."
+      "no *.appctl files found at \(scenarios.path) — check the `scenarios` argument passed to AgentCoverage.init, "
+        + "or the config's scenariosPath and the root AgentScenarioChecks resolved it against; every guard would "
+        + "otherwise report success without checking anything."
     }
   }
 

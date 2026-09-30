@@ -1,43 +1,35 @@
-import AgentCtlCore
-import AgentCtlTCA
+import AgentCtlTestSupport
 import AgentShopCtl
+import AppFeature
 import Foundation
 import Testing
 
 extension AppCtlSuite {
   /// What this guards: `swift test` covers what `./appctl test` and `./appctl docs --check` cover, so the host
-  /// tests alone catch a failing scenario or a stale command reference — the two guards the in-repo agent layer had
-  /// before the extraction (`AgentKitTests/ScenarioTests`), ported to the package's API.
+  /// tests alone catch a failing scenario or a stale command reference, through the library's scenario checks.
   @MainActor
   @Suite struct ScenarioTests {
-    nonisolated static let files = ScenarioRunner.files(in: Repo.scenarios)
-
-    /// Not vacuous: `scenarioPasses` is parameterized over these files, and zero files would run zero tests.
-    @Test func thereAreScenarios() {
-      #expect(!Self.files.isEmpty, "no *.appctl files at \(Repo.scenarios.path)")
+    static func checks() throws -> AgentScenarioChecks<AppFeature> {
+      try AgentScenarioChecks(config: AgentShopConfig.appCtl)
     }
 
-    /// Every scenario passes against AgentShop's own headless wiring, one test case per file.
-    @Test(arguments: files)
-    func scenarioPasses(_ file: URL) async {
-      let result = await serially {
-        await ScenarioRunner.run(file: file, make: { AgentShopConfig.headless().makeRunner() })
-      }
-      #expect(result.passed, "\(result.report)")
+    /// Every scenario passes against AgentShop's own headless wiring (and there is at least one: the checks refuse
+    /// an empty scenarios directory).
+    @Test func everyScenarioPasses() async throws {
+      let problems = try await Self.checks().allPass()
+      #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
     }
 
-    /// The committed command reference is what `./appctl docs` would write today: the same rendering, from the same
-    /// config, as the CLI's `docs --check`.
+    /// Every scenario ends by asserting something, so none can pass having checked nothing at its end.
+    @Test func everyScenarioEndsWithAnExpect() throws {
+      let problems = try Self.checks().endWithExpect()
+      #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
+    }
+
+    /// The committed command reference is what `./appctl docs` would write today.
     @Test func docsAreUpToDate() throws {
-      let path = AgentShopConfig.appCtl.docsPath
-      let existing = try String(contentsOf: Repo.root.appending(path: path), encoding: .utf8)
-      let rendered = DocsRenderer.render(
-        screens: AgentShopConfig.screens,
-        runtimeCommands: AgentRegistry.runtimeCommands(mockExample: AgentShopConfig.docsText.mockExample),
-        mockMethods: AgentShopConfig.mockMethods,
-        text: AgentShopConfig.docsText
-      )
-      #expect(existing == rendered, "\(path) is stale. Run ./appctl docs.")
+      let problems = try Self.checks().docsCurrent()
+      #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
     }
   }
 }

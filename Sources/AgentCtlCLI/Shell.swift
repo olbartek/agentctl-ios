@@ -8,6 +8,13 @@
   /// a pipe would block before any deadline began), and stops a child that outlives the deadline: SIGTERM, then
   /// SIGKILL. A grandchild that keeps the pipe open cannot hold the CLI either: once the child has exited, its output
   /// is waited for only briefly.
+  ///
+  /// Two deliberate differences from agentctl-android's helper (agreed for 0.5, not drift):
+  /// - Only the child is stopped, not its descendants. `simctl` does its work in CoreSimulator's XPC services, which
+  ///   are not its children, so there are no descendants worth stopping; and a grandchild cannot block the CLI here.
+  /// - No per-device skip. `simctl list` reports every simulator in one call, so a frozen simulator cannot make the
+  ///   listing hang one device at a time the way `adb shell getprop` can; if the call itself times out, the command
+  ///   fails (exit 3) and says CoreSimulator may be stuck.
   enum Shell {
     /// Simulator operations that answer in seconds when CoreSimulator is healthy: `list`, `terminate`, `launch`,
     /// `screenshot`, `status_bar`, `get_app_container`.

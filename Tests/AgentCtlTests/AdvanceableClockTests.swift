@@ -46,9 +46,11 @@ struct AdvanceableClockTests {
   @Test func aTimerTicksOncePerIntervalAdvanced() async throws {
     let clock = CountingClock(AdvanceableClock())
     let ticks = Mutex(0)
+    // A minute per tick: the clock also runs in real time, and with a one-second interval a loaded full suite could
+    // take a real second and see a fourth tick come due by itself.
     let timer = Task {
       for _ in 0..<5 {
-        try await clock.sleep(for: .seconds(1))
+        try await clock.sleep(for: .seconds(60))
         // A tick that takes a while, as on a loaded CI runner or in a real app: longer than a fixed wait between
         // deadlines would have allowed.
         try await Task.sleep(for: .milliseconds(50))
@@ -62,7 +64,7 @@ struct AdvanceableClockTests {
     // times.
     let deadlines = Mutex(0)
     await clock.base.advance(
-      by: .seconds(3),
+      by: .seconds(180),
       between: {
         let passed = deadlines.withLock { $0 += 1; return min($0, 3) }
         try? await until { ticks.withLock { $0 } >= passed && clock.base.registeredSleeps == 1 }

@@ -261,6 +261,11 @@
       "the recording \(state.file) was not written; see \(AgentCtl.runtime.outputPath)/logs/app-record.log"
     }
 
+    /// The recording is there, but its last frame could not be made to last until the end (``RecordedVideo``).
+    static func recordingNotHeld(_ file: String, _ error: any Error) -> String {
+      "the recording \(file) ends at its last screen change, not at stop: \(error)"
+    }
+
     static func notBooted(_ device: Simulator.Device) -> String {
       "\(device.label) [\(device.udid)] is not booted; boot it, or run \(help.invocation) app launch"
     }

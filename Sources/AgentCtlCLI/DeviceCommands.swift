@@ -58,7 +58,12 @@
         guard Simulator.wasWritten(URL(fileURLWithPath: state.file)) else {
           throw AppCtlError(Message.recordingNotWritten(state))
         }
-        let seconds = Self.duration(of: URL(fileURLWithPath: state.file))
+        let seconds: Double
+        do {
+          seconds = try RecordedVideo.holdLastFrame(URL(fileURLWithPath: state.file))
+        } catch {
+          throw AppCtlError(Message.recordingNotHeld(state.file, error))
+        }
         print("recorded \(state.file) (\(String(format: "%.1f", seconds))s)")
         return 0
       } catch {
@@ -111,17 +116,6 @@
       } catch {
         return AppCommands.fail(error)
       }
-    }
-
-    static func duration(of video: URL) -> Double {
-      let semaphore = DispatchSemaphore(value: 0)
-      nonisolated(unsafe) var seconds = 0.0
-      Task {
-        if let time = try? await AVURLAsset(url: video).load(.duration) { seconds = time.seconds }
-        semaphore.signal()
-      }
-      semaphore.wait()
-      return seconds.isFinite ? seconds : 0
     }
   }
 

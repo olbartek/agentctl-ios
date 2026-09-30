@@ -112,7 +112,7 @@
       @Test
       func noCLISourceSpellsTheCLIsOwnName() throws {
         let files = try Self.cliCodeWithoutComments()
-        #expect(files.count == 12, "expected the twelve CLI files, found \(files.map(\.name).sorted())")
+        #expect(files.count == 13, "expected the thirteen CLI files, found \(files.map(\.name).sorted())")
         for file in files {
           // The booleans are named so a failure reads as the file's name, not as a dump of the whole file.
           let length = file.text.count

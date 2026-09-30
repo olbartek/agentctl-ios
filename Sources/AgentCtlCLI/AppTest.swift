@@ -241,6 +241,14 @@
         }
         try? (chapters.joined(separator: "\n") + "\n").write(to: chaptersFile, atomically: true, encoding: .utf8)
         let result = Simulator.wasWritten(video)
+        if result {
+          do {
+            _ = try RecordedVideo.holdLastFrame(video)
+          } catch {
+            // The video is there and plays; only its end is short.
+            FileHandle.standardError.write(Data(("warning: " + Message.recordingNotHeld(video.path(percentEncoded: false), error) + "\n").utf8))
+          }
+        }
         written = result
         return result
       }

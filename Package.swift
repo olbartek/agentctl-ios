@@ -96,7 +96,9 @@ let package = Package(
       // AgentCtlCLI so the help pages and the messages that name the CLI can be rendered and asserted on;
       // its files are `#if os(macOS)`, and so is the test that reads them. TinyApp is the fixture for every
       // test that needs a real app to drive. AgentCtlTestSupport is proved against that same fixture below.
-      dependencies: ["AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport", "TinyApp"]
+      dependencies: ["AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport", "TinyApp"],
+      // Read by path (`PackageRoot`), not bundled.
+      exclude: ["Fixtures"]
     ),
   ]
 )

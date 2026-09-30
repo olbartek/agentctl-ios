@@ -9,7 +9,10 @@ extension AgentCtlSuite {
   /// one that stays busy past the ceiling does not settle.
   @MainActor
   @Suite struct LiveSettleTests {
-    @Test func aBusyUIHoldsSettlingUntilItIsIdle() async {
+    /// The poll interval the host uses, and a slow one like a loaded CI runner's, where polls land far apart.
+    nonisolated static let pollIntervals: [Duration] = [.milliseconds(20), .milliseconds(60)]
+
+    @Test(arguments: pollIntervals) func aBusyUIHoldsSettlingUntilItIsIdle(pollInterval: Duration) async {
       let clock = ContinuousClock()
       let start = clock.now
       let busyFor = Duration.milliseconds(300)
@@ -18,7 +21,8 @@ extension AgentCtlSuite {
         callLog: MockCallLog(),
         pending: { 0 },
         isUIIdle: { start.duration(to: clock.now) >= busyFor },
-        quietWindow: .milliseconds(100)
+        quietWindow: .milliseconds(100),
+        pollInterval: pollInterval
       )
       let elapsed = start.duration(to: clock.now)
       #expect(result.settled)
@@ -45,7 +49,7 @@ extension AgentCtlSuite {
     /// while the state changes (60–1200 ms, a slow response), and a second one (1100–1500 ms) starts before the
     /// state goes quiet. Watching only quiet polls would miss the idle gap, date the second transition from the
     /// first, call it endless and settle mid-animation.
-    @Test func aSecondTransitionAfterALongStateChangeStillHolds() async {
+    @Test(arguments: pollIntervals) func aSecondTransitionAfterALongStateChangeStillHolds(pollInterval: Duration) async {
       let clock = ContinuousClock()
       let start = clock.now
       func now() -> Duration { start.duration(to: clock.now) }
@@ -54,7 +58,8 @@ extension AgentCtlSuite {
         callLog: MockCallLog(),
         pending: { 0 },
         isUIIdle: { !(now() < .milliseconds(80) || (now() >= .milliseconds(1100) && now() < .milliseconds(1500))) },
-        quietWindow: .milliseconds(100)
+        quietWindow: .milliseconds(100),
+        pollInterval: pollInterval
       )
       #expect(result.settled)
       #expect(now() >= .milliseconds(1570), "settled after \(now())")
@@ -62,7 +67,7 @@ extension AgentCtlSuite {
 
     /// An endless animation (a spinner) is busy with short idle gaps between frames. After a second at a stretch it
     /// stops holding settling, so a screen with a spinner still settles.
-    @Test func anEndlessAnimationStopsHoldingAfterASecond() async {
+    @Test(arguments: pollIntervals) func anEndlessAnimationStopsHoldingAfterASecond(pollInterval: Duration) async {
       let clock = ContinuousClock()
       let start = clock.now
       var polls = 0
@@ -77,7 +82,8 @@ extension AgentCtlSuite {
           polls += 1
           return polls % 3 == 0
         },
-        quietWindow: .milliseconds(100)
+        quietWindow: .milliseconds(100),
+        pollInterval: pollInterval
       )
       let elapsed = start.duration(to: clock.now)
       #expect(result.settled)

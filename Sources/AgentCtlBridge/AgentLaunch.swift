@@ -46,6 +46,17 @@
       }
     }
 
+    /// Whether this launch asks for the bridge: the CLI's `app` subcommands always pass `-agent-port`, and any other
+    /// launch (⌘R from Xcode included) does not. An app shell that should run as the plain app over its live
+    /// dependencies unless an agent launched it checks this before creating an `AgentLaunch`:
+    ///
+    /// ```swift
+    /// if AgentLaunch<MyRoot>.isRequested() { … AgentLaunch(config: MyAppConfig.appCtl) … } else { … }
+    /// ```
+    public nonisolated static func isRequested(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+      arguments.contains("-agent-port")
+    }
+
     public let options: Options
     public let store: Store<Root.State, Root.Action>
     /// `false` while a launch seed is being applied.

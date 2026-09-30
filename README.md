@@ -183,6 +183,22 @@ of sending an action that could only do nothing.
   ]
 ```
 
+The other command kinds: `.text` takes the rest of the line as it is typed, `.onOff` a switch (`terms on`), and
+`.choice` one of a fixed set of words, from which it generates both the documented argument and the error, so the
+two cannot drift apart:
+
+```swift
+// a String enum, its raw values in allCases order
+.choice("tab", of: Tab.self, help: "Switch tab.") { .tabSelected($0) }
+// words standing for values
+.choice("sort", [("new", Sort.newest), ("cheap", Sort.priceAscending)], help: "Sort.") { .sortTapped($0) }
+// the word itself
+.choice("login-as", options: ["alice", "bob"], help: "Sign in.") { .loginAs($0) }
+```
+
+`tab <shop|cart|orders|profile>` is how the first is documented, and `tab home` fails with
+`tab <shop|cart|orders|profile>: invalid argument: expected shop|cart|orders|profile`.
+
 Then a *container* — your navigation stack, tab bar or root reducer — resolves which screen is active, lifts
 that screen's commands to its own action type, and appends the commands it owns itself. All of
 [`TinyRoot+Agent.swift`](Examples/TinyApp/Sources/TinyApp/TinyRoot+Agent.swift):
@@ -217,6 +233,35 @@ extension TinyRoot: AgentContainer {
 Command lookup is **leaf first**: the active screen's own commands, then its containers', then the root's; a
 screen can shadow a container's command of the same name.
 
+A container that offers commands on *every* screen beneath it — a root's `login-as`, a tab bar's `tab` — declares
+them once as `inheritedCommands`, and `inheritingCommands` adds them both to the active screen and to every screen of
+the registry, so the docs cannot list a command the app does not offer. They go after the commands of the screens
+beneath, and before the container's own `back`, whichever you apply first; a command with `paths` is offered on
+those paths only. A root can also offer a `back` for when nothing is pushed, which fails with
+`back: nothing to go back to on <path>` rather than as an unknown command. From AgentShop's
+[`AppFeature+Agent.swift`](Examples/AgentShop/Sources/AppFeature/AppFeature+Agent.swift):
+
+```swift
+extension AppFeature: AgentContainer {
+  public static let inheritedCommands: [AgentCommand<State, Action>] = [
+    .choice("login-as", [("alice", MockAccounts.alice.user), ("bob", MockAccounts.bob.user)], help: loginAsHelp) {
+      .loginAs(MockAccounts.session(for: $0))
+    },
+    .action("reset", help: resetHelp, .reset),
+  ]
+
+  public static func activeScreen(_ state: State) -> ActiveScreen<Action> {
+    let screen: ActiveScreen<Action> = …   // the active child, as above
+    return inheritingCommands(screen, state).appendingBackFallback(source: containerName)
+  }
+
+  public static var registry: [ScreenDoc] {
+    let screens = AuthFlow.registry + OnboardingFlow.registry + HomeTabs.registry   // abridged
+    return inheritingCommands(screens).map { $0.inheriting([.backFallback(source: containerName)]) }
+  }
+}
+```
+
 Finally, for a call to show up as `calls=items.fetch` — and to be forceable to fail with
 `mock items.fetch network` — route your mock through `mockCall`
 ([`ItemsClient.swift`](Examples/TinyApp/Sources/TinyApp/ItemsClient.swift)):
@@ -229,6 +274,11 @@ extension ItemsClient: DependencyKey {
     }
   )
 ```
+
+Each client lists the codes `mock` may force on its methods as `MockMethod`s. A failure every call can have,
+whatever its client's own errors, is added once rather than per method: `(AuthClient.mockMethods +
+OrdersClient.mockMethods).accepting(["network"])` gives each method `network` after its own codes, unless it
+already lists it, so `mock`'s `valid:` list and the docs read as if every client had written it out.
 
 ### 3. Write your CLI
 
@@ -348,7 +398,13 @@ SUBCOMMANDS:
 Agents should never call `swift run`: it prints its build log to stdout, mixed into the step output they are
 supposed to read. [`Templates/appctl`](Templates/appctl) rebuilds your executable incrementally (about half a
 second when nothing changed), sends the build log to stderr, exits 3 if the build fails, and then `exec`s the
-binary:
+binary. SwiftPM's incremental build can trip over its own cache when a pull or a branch switch adds or removes a
+source file of a path dependency ("because of missing inputs", "unable to load output file map", or a new file
+simply not compiled). So a failed build is planned afresh once: the build plan and any stale target's build
+directory are removed and the build runs again, in seconds. If that works, stderr says `appctl: the build cache was
+stale (a pull or a branch switch?); planned the build afresh and it succeeded`. Stale-cache errors that persist get
+two more rounds, then one full `swift package clean`, which rebuilds every dependency; a genuine compile error costs
+one quick extra build and exits 3, its errors shown once:
 
 ```bash
 cp Templates/appctl ./appctl     # then set PACKAGE and PRODUCT at the top of the file
@@ -627,6 +683,10 @@ struct MyApp: App {
   }
 }
 ```
+
+To run the plain app over its live dependencies unless an agent launched it, check
+`AgentLaunch<MyRoot>.isRequested()` before creating the `AgentLaunch`: it is true when the launch arguments hold
+`-agent-port`, which the CLI's `app` subcommands always pass and ⌘R from Xcode does not.
 
 A Release build never names `AgentCtlBridge` or the config's target. `AgentLaunch` reads the launch arguments the
 CLI's `app` subcommands pass: `-agent-port <n>` (default `BridgeDefaults.port`, 8765; the CLI passes the free port it

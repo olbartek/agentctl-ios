@@ -6,6 +6,11 @@
 # its build log to stdout, interleaved with the step output a script is meant to be read from; here the build log
 # goes to stderr and a build failure exits 3, the CLI's "internal or build error" code.
 #
+# After a pull or a branch switch, SwiftPM's incremental build sometimes fails on its own stale cache ("couldn't
+# build … because of missing inputs", "unable to load output file map"): a file it remembers is gone. Such a
+# failure cleans this package's build (`swift package clean`, which keeps the resolved dependencies) and builds
+# once more; any other failure, or a second one, exits 3.
+#
 # --- Change these three lines for your repo ------------------------------------------------------------------
 PACKAGE="Packages/AppCtl"   # the SwiftPM package that declares the executable, relative to this script
 PRODUCT="appctl"            # the executable product's name, as Package.swift spells it
@@ -25,6 +30,57 @@ CONFIGURATION="debug"       # "release" builds slower but runs faster (it adds -
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 FLAGS=""
 [ "$CONFIGURATION" = "release" ] && FLAGS="-Xswiftc -DAGENTCTL_RELEASE"
-# shellcheck disable=SC2086 # FLAGS is two words on purpose
-swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" $FLAGS -q >&2 || exit 3
+LOG="$(mktemp "${TMPDIR:-/tmp}/appctl-build.XXXXXX")" || exit 3
+FIRST="$LOG.first"
+trap 'rm -f "$LOG" "$FIRST"' EXIT   # `exec` below skips it, so the logs are also removed right before
+trap 'exit 130' INT                 # so the EXIT trap runs on a signal too, under every sh (dash skips it otherwise)
+trap 'exit 143' TERM HUP
+
+# Builds, keeping the log in $LOG, and also showing it on stderr as it comes unless QUIET is set. `swift build`'s
+# status travels out on file descriptor 3, because the pipe into `tee` would lose it (POSIX sh has no pipefail).
+QUIET=""
+build() {
+  # shellcheck disable=SC2086 # FLAGS is two words on purpose
+  status="$({ { swift build --package-path "$ROOT/$PACKAGE" --product "$PRODUCT" --configuration "$CONFIGURATION" \
+    $FLAGS -q 2>&1 3>&-; echo $? >&3; } | if [ -n "$QUIET" ]; then cat > "$LOG"; else tee "$LOG" >&2; fi; } 3>&1)"
+  return "${status:-1}"
+}
+
+# SwiftPM's incremental build can trip over its own cache after a pull or a branch switch that adds or removes a
+# source file of a path dependency. Removed: "couldn't build …/<Target>.build/… because of missing inputs" or
+# "unable to load output file map …/<Target>.build/…". Added: the new file is not compiled, which reads like any
+# compile error ("cannot find 'X' in scope"). So a failed build is planned afresh once: the build plan (which lists
+# every target's files) is removed, with the build directory of any target a stale-cache error names, and the build
+# runs again, in seconds. A stale-cache error after that gets two more such rounds, then one full clean, which
+# rebuilds every dependency and takes minutes. A genuine error costs one quick extra build and exits 3.
+BUILD="$(cd "$ROOT/$PACKAGE" && pwd)/.build"   # as SwiftPM prints it: no `./` in the path
+stale() {
+  grep -e '^error: .*because of missing inputs' -e '^error: unable to load output file map' "$LOG" |
+    grep -o "$BUILD/[^ ']*\.build/" | sort -u
+}
+replan() {
+  stale | while IFS= read -r dir; do rm -rf "$dir"; done
+  rm -f "$BUILD/$CONFIGURATION.yaml" "$BUILD"/*/"$CONFIGURATION"/description.json
+}
+if ! build; then
+  cp "$LOG" "$FIRST"
+  QUIET=1
+  built=""
+  for round in 1 2 3; do
+    replan
+    if build; then built=1; break; fi
+    [ -n "$(stale)" ] || break
+  done
+  if [ -z "$built" ] && [ -n "$(stale)" ]; then
+    echo "appctl: the build cache is still stale; cleaning $PACKAGE (this rebuilds every dependency)" >&2
+    swift package clean --package-path "$ROOT/$PACKAGE" >&2 && build && built=1
+  fi
+  if [ -z "$built" ]; then
+    # The first build's errors are on screen already; show the last build's only when they differ.
+    cmp -s "$FIRST" "$LOG" || cat "$LOG" >&2
+    exit 3
+  fi
+  echo "appctl: the build cache was stale (a pull or a branch switch?); planned the build afresh and it succeeded" >&2
+fi
+rm -f "$LOG" "$FIRST"
 APPCTL_ROOT="$ROOT" exec "$ROOT/$PACKAGE/.build/$CONFIGURATION/$PRODUCT" "$@"

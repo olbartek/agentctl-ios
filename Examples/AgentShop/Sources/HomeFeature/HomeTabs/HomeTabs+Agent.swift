@@ -5,19 +5,14 @@ import ShopFeature
 extension HomeTabs: AgentContainer {
   static let backHelp = "Go back to the previous screen."
   static let tabHelp = "Switch tab."
-  static let tabs = Tab.allCases.map(\.rawValue).joined(separator: "|")
 
-  static let tabCommand = AgentCommand<State, Action>.parsing(
-    "tab",
-    argument: "<\(tabs)>",
-    help: tabHelp
-  ) { text throws(AgentCommandError) in
-    guard let tab = Tab(rawValue: text) else { throw .invalidArgument("expected \(tabs)") }
-    return .tabSelected(tab)
-  }
+  /// `tab` on every screen of every tab, pushed or not.
+  public static let inheritedCommands: [AgentCommand<State, Action>] = [
+    .choice("tab", of: Tab.self, help: tabHelp) { .tabSelected($0) }
+  ]
 
   public static func activeScreen(_ state: State) -> ActiveScreen<Action> {
-    var commands = [tabCommand.resolve(state, source: "HomeTabs")]
+    var commands: [ResolvedCommand<Action>] = []
     func back(_ action: Action) {
       commands.append(AgentCommand<State, Action>.action("back", help: backHelp, action).resolve(state, source: "HomeTabs"))
     }
@@ -67,19 +62,21 @@ extension HomeTabs: AgentContainer {
     case .profile:
       screen = Profile.activeScreen(state.profile).map { .profile($0) }
     }
-    return screen.identified(by: "home#\(state.id.uuidString)").appending(commands)
+    return inheritingCommands(screen.identified(by: "home#\(state.id.uuidString)"), state).appending(commands)
   }
 
   public static var registry: [ScreenDoc] {
-    let tab = CommandDoc(name: "tab", argument: "<\(tabs)>", help: tabHelp, source: "HomeTabs")
     let back = CommandDoc(name: "back", argument: nil, help: backHelp, source: "HomeTabs")
-    return ShopFeed.screenDocs.map { $0.inheriting([tab]) }
-      + ProductDetail.screenDocs.map { $0.inheriting([tab, back]) }
-      + Cart.screenDocs.map { $0.inheriting([tab]) }
-      + Checkout.screenDocs.map { $0.inheriting([tab, back]) }
-      + OrderConfirmation.screenDocs.map { $0.inheriting([tab]) }
-      + OrdersList.screenDocs.map { $0.inheriting([tab]) }
-      + OrderDetail.screenDocs.map { $0.inheriting([tab, back]) }
-      + Profile.screenDocs.map { $0.inheriting([tab]) }
+    // `back` is ours too, so `inheritingCommands` puts `tab` before it, as on the active screen.
+    return inheritingCommands(
+      ShopFeed.screenDocs
+        + ProductDetail.screenDocs.map { $0.inheriting([back]) }
+        + Cart.screenDocs
+        + Checkout.screenDocs.map { $0.inheriting([back]) }
+        + OrderConfirmation.screenDocs
+        + OrdersList.screenDocs
+        + OrderDetail.screenDocs.map { $0.inheriting([back]) }
+        + Profile.screenDocs
+    )
   }
 }

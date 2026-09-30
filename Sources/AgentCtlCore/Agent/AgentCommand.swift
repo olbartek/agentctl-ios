@@ -125,14 +125,65 @@ extension AgentCommand where Action: Sendable {
     note: String? = nil,
     _ makeAction: @escaping @Sendable (Bool) -> Action
   ) -> Self {
-    parsing(name, argument: "<on|off>", help: help, paths: paths, gate: gate, note: note) {
+    choice(name, [("on", true), ("off", false)], help: help, paths: paths, gate: gate, note: note, makeAction)
+  }
+
+  /// A command whose argument is one of a fixed set of words, each standing for a value, e.g. `filter all` for
+  /// `nil` and `filter shoes` for `.shoes`.
+  ///
+  /// The argument is documented as `<a|b|c>` and anything else is rejected with `invalid argument: expected a|b|c`,
+  /// both generated from `options` in their order, so the docs, the error and the accepted words cannot drift apart
+  /// the way a hand-written `.parsing` with its own `argument:` string and error text can.
+  public static func choice<Value: Sendable>(
+    _ name: String,
+    _ options: [(String, Value)],
+    help: String,
+    paths: [String]? = nil,
+    gate: CommandGate<State>? = nil,
+    note: String? = nil,
+    _ makeAction: @escaping @Sendable (Value) -> Action
+  ) -> Self {
+    let names = options.map(\.0)
+    // The words are the documented `<a|b|c>` and the only accepted arguments: a malformed list is a host bug.
+    precondition(!names.isEmpty, "choice '\(name)' needs at least one option")
+    precondition(Set(names).count == names.count, "choice '\(name)' lists an option twice: \(names)")
+    precondition(
+      names.allSatisfy { !$0.isEmpty && !$0.contains("|") && !$0.contains(where: \.isWhitespace) },
+      "choice '\(name)' has an option that is empty or contains '|' or whitespace: \(names)"
+    )
+    let words = names.joined(separator: "|")
+    return parsing(name, argument: "<\(words)>", help: help, paths: paths, gate: gate, note: note) {
       (text: String) throws(AgentCommandError) -> Action in
-      switch text {
-      case "on": return makeAction(true)
-      case "off": return makeAction(false)
-      default: throw .invalidArgument("expected on|off")
-      }
+      guard let value = options.first(where: { $0.0 == text })?.1 else { throw .invalidArgument("expected \(words)") }
+      return makeAction(value)
     }
+  }
+
+  /// A command whose argument is one of `options`, passed on as typed. See ``choice(_:_:help:paths:gate:note:_:)``.
+  public static func choice(
+    _ name: String,
+    options: [String],
+    help: String,
+    paths: [String]? = nil,
+    gate: CommandGate<State>? = nil,
+    note: String? = nil,
+    _ makeAction: @escaping @Sendable (String) -> Action
+  ) -> Self {
+    choice(name, options.map { ($0, $0) }, help: help, paths: paths, gate: gate, note: note, makeAction)
+  }
+
+  /// A command whose argument is a case of a string enum, spelled as its raw value, offered in `allCases` order,
+  /// e.g. `.choice("tab", of: Tab.self, help: "Switch tab.") { .tabSelected($0) }` documents `tab <shop|cart>`.
+  public static func choice<Value: CaseIterable & RawRepresentable & Sendable>(
+    _ name: String,
+    of type: Value.Type,
+    help: String,
+    paths: [String]? = nil,
+    gate: CommandGate<State>? = nil,
+    note: String? = nil,
+    _ makeAction: @escaping @Sendable (Value) -> Action
+  ) -> Self where Value.RawValue == String {
+    choice(name, type.allCases.map { ($0.rawValue, $0) }, help: help, paths: paths, gate: gate, note: note, makeAction)
   }
 
   /// A command whose argument must be parsed and may be rejected.
@@ -194,6 +245,20 @@ public struct ResolvedCommand<Action>: Sendable {
       disabledReason: disabledReason
     ) { (argument: String?) throws(AgentCommandError) -> Parent in
       embed(try makeAction(argument))
+    }
+  }
+}
+
+extension ResolvedCommand {
+  /// `back` for when no container has anything to pop: it fails with `nothing to go back to on <path>` instead of
+  /// the runner's "unknown command", which would read as if the app had no `back` at all.
+  ///
+  /// The root appends it last (``ActiveScreen/appendingBackFallback(source:)``), so any container that can pop
+  /// shadows it, and lists ``CommandDoc/backFallback(source:)`` on every screen of its registry.
+  public static func backFallback(path: String, source: String) -> Self {
+    Self(name: "back", argument: nil, help: CommandDoc.backFallbackHelp, source: source, disabledReason: nil) {
+      (_: String?) throws(AgentCommandError) -> Action in
+      throw .notApplicable("nothing to go back to on \(path)")
     }
   }
 }

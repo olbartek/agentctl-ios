@@ -19,17 +19,12 @@ extension Interests: AgentScreen {
 
   public static func errorCode(_ state: State) -> String? { state.error?.rawValue }
 
-  static let categories = ProductCategory.allCases.map(\.rawValue).joined(separator: "|")
-
   public static let commands: [AgentCommand<State, Action>] = [
-    .parsing(
+    .choice(
       "toggle",
-      argument: "<\(categories)>",
+      of: ProductCategory.self,
       help: "Pick or unpick a category (\(Interests.minimum)–\(Interests.maximum)); a fifth reports error=tooMany."
-    ) { text throws(AgentCommandError) in
-      guard let category = ProductCategory(rawValue: text) else { throw .invalidArgument("expected \(categories)") }
-      return .toggled(category)
-    },
+    ) { .toggled($0) },
     .action(
       "continue",
       help: "Save the picks and go on to the address.",

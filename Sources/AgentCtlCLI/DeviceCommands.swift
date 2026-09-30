@@ -22,9 +22,17 @@
           throw AppCtlError(Message.recordingRunning(running))
         }
         let file = URL(fileURLWithPath: path).standardizedFileURL
-        let pid = try sim.startRecording(on: device, to: file, log: Layout(root: root).logs.appending(path: "app-record.log"))
-        try RecordingState(device: device.udid, file: file.path(percentEncoded: false), pid: Int(pid), startedAt: Date())
-          .write(in: root)
+        let log = Layout(root: root).logs.appending(path: "app-record.log")
+        do {
+          // Recorded before the wait, so an interrupted start still leaves a recorder `stop` can find.
+          try sim.startRecording(on: device, to: file, log: log) { pid in
+            try RecordingState(device: device.udid, file: file.path(percentEncoded: false), pid: Int(pid), startedAt: Date())
+              .write(in: root)
+          }
+        } catch {
+          try? FileManager.default.removeItem(at: RecordingState.file(in: root))
+          throw error
+        }
         print("recording \(file.path(percentEncoded: false)) (\(device.label) [\(device.udid)]); stop with \(help.invocation) app record stop")
       }
     }
@@ -43,7 +51,12 @@
         while kill(pid_t(state.pid), 0) == 0, Date() < deadline {
           Thread.sleep(forTimeInterval: 0.1)
         }
+        // Still running: keep record.json, so another `stop` can try again.
+        guard kill(pid_t(state.pid), 0) != 0 else { throw AppCtlError(Message.recorderDidNotFinish(state)) }
         try? FileManager.default.removeItem(at: RecordingState.file(in: root))
+        guard FileManager.default.fileExists(atPath: state.file) else {
+          throw AppCtlError(Message.recordingNotWritten(state))
+        }
         let seconds = Self.duration(of: URL(fileURLWithPath: state.file))
         print("recorded \(state.file) (\(String(format: "%.1f", seconds))s)")
         return 0
@@ -61,6 +74,7 @@
 
     static func info(simulator: String?) -> Int32 {
       run(simulator) { _, sim, device in
+        guard device.isBooted else { throw AppCtlError(Message.notBooted(device)) }
         guard let app = sim.installedApp(on: device) else {
           throw AppCtlError(Message.notInstalled(on: device))
         }

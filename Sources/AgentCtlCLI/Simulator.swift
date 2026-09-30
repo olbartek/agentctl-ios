@@ -125,9 +125,11 @@
       }
     }
 
-    /// Starts `simctl io recordVideo` detached, so it outlives the CLI, and returns its pid once `simctl` says it is
-    /// recording. `app record stop` ends it with SIGINT, which makes `simctl` finish the file.
-    func startRecording(on device: Device, to video: URL, log: URL) throws -> Int32 {
+    /// Starts `simctl io recordVideo` detached, so it outlives the CLI. `started` gets its pid as soon as it runs,
+    /// before it has begun recording, so the caller can record it even if this CLI is interrupted while it waits;
+    /// this returns once `simctl` says it is recording. `app record stop` ends it with SIGINT, which makes `simctl`
+    /// finish the file.
+    func startRecording(on device: Device, to video: URL, log: URL, started: (Int32) throws -> Void) throws {
       try FileManager.default.createDirectory(at: video.deletingLastPathComponent(), withIntermediateDirectories: true)
       try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
       FileManager.default.createFile(atPath: log.path, contents: nil)
@@ -144,6 +146,12 @@
       process.standardError = handle
       process.standardInput = FileHandle.nullDevice
       try process.run()
+      do {
+        try started(process.processIdentifier)
+      } catch {
+        process.terminate()
+        throw error
+      }
       let deadline = Date().addingTimeInterval(20)
       while !((try? String(contentsOf: log, encoding: .utf8)) ?? "").contains("Recording started") {
         guard process.isRunning, Date() < deadline else {
@@ -152,7 +160,6 @@
         }
         Thread.sleep(forTimeInterval: 0.1)
       }
-      return process.processIdentifier
     }
 
     /// A clean status bar for screenshots (9:41, full signal and battery), or the simulator's own again.

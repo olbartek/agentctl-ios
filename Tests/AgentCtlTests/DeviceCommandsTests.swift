@@ -85,6 +85,14 @@
           udid: "U", name: "iPhone 17 Pro", runtime: "iOS 26.5", version: [26, 5], isBooted: true, isBeta: false
         )
         #expect(
+          Message.recorderDidNotFinish(state)
+            == "the recorder of /tmp/a.mp4 did not finish within 30 s; try xctl app record stop again"
+        )
+        #expect(
+          Message.recordingNotWritten(state) == "the recording /tmp/a.mp4 was not written; see .xctl/logs/app-record.log"
+        )
+        #expect(Message.notBooted(device) == "iPhone 17 Pro (iOS 26.5) [U] is not booted; boot it, or run xctl app launch")
+        #expect(
           Message.notInstalled(on: device)
             == "com.example.stub is not installed on iPhone 17 Pro (iOS 26.5) [U]; run xctl app launch"
         )

@@ -6,7 +6,8 @@
   /// `app screenshot`, `app record start|stop`, `app statusbar clean|reset` and `app info`: the simulator itself, for
   /// demos and screenshots. None of them needs the app's bridge.
   ///
-  /// Each acts on `--sim`, else the simulator the last launch recorded in `bridge.json`, else the config's simulator.
+  /// Each acts on `--sim`, else the simulator the last launch recorded in `bridge.json`, else the config's simulator,
+  /// which must be booted.
   enum DeviceCommands {
     static func screenshot(to path: String, simulator: String?) -> Int32 {
       run(simulator) { root, sim, device in
@@ -74,7 +75,6 @@
 
     static func info(simulator: String?) -> Int32 {
       run(simulator) { _, sim, device in
-        guard device.isBooted else { throw AppCtlError(Message.notBooted(device)) }
         guard let app = sim.installedApp(on: device) else {
           throw AppCtlError(Message.notInstalled(on: device))
         }
@@ -102,7 +102,11 @@
       guard let root = Repo.root() else { return RunStatus.internalError.rawValue }
       do {
         let sim = Simulator(root: root)
-        try body(root, sim, try device(simulator, root: root, sim: sim))
+        let device = try device(simulator, root: root, sim: sim)
+        // None of these commands boots a simulator (only `app launch` and `check --ui` do), and simctl's own error
+        // for a shut-down one does not say so.
+        guard device.isBooted else { throw AppCtlError(Message.notBooted(device)) }
+        try body(root, sim, device)
         return 0
       } catch {
         return AppCommands.fail(error)

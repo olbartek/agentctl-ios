@@ -28,6 +28,10 @@
     /// Effects started and not yet finished. Settling waits for this count to stop changing, along with the state
     /// and the call log. It is not `pending`, which counts only sleeps on the clock.
     public let tracker: EffectTracker
+    /// The current date in the app's time: ``HeadlessHost/fixedDate`` plus whatever `advance` has added. It is also
+    /// the app's `\.date`. A backend that reads the time (a code's expiry, say) should read it here, as it would read
+    /// ``LiveEnvironment/now`` in the running app.
+    public let now: @Sendable () -> Date
   }
 
   /// A real store running on the Mac with the deterministic dependencies CONTRACT.md §6 requires.
@@ -38,7 +42,7 @@
   /// |---|---|
   /// | `\.continuousClock` | ``countingClock``: a `TestClock` that only `advance` moves |
   /// | `\.uuid` | `.incrementing` |
-  /// | `\.date` | ``fixedDate``, 2026-01-01T09:00:00Z, for every call |
+  /// | `\.date` | ``fixedDate``, 2026-01-01T09:00:00Z, plus what `advance` has added: ``HeadlessEnvironment/now`` |
   /// | `\.withRandomNumberGenerator` | a generator seeded with ``randomSeed`` |
   /// | `\.timeZone` | ``fixedTimeZone``, UTC |
   /// | `\.locale` | ``fixedLocale``, `en_US_POSIX` |
@@ -58,7 +62,7 @@
     Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
     Root.AgentState == Root.State, Root.AgentAction == Root.Action
   {
-    /// 2026-01-01T09:00:00Z: `\.date`.
+    /// 2026-01-01T09:00:00Z: `\.date` before any `advance`.
     public static var fixedDate: Date { Date(timeIntervalSince1970: 1_767_258_000) }
     /// The seed of `\.withRandomNumberGenerator`: every headless run draws the same numbers in the same order.
     public static var randomSeed: UInt64 { 0 }
@@ -82,6 +86,9 @@
     public let faults: MockFaults
     public let tracker: EffectTracker
     let mockMethods: [MockMethod]
+    /// The store's dependencies, as `configure` left them. The runner computes each step's screen, summary and
+    /// commands inside them, so a summary reads the same date (and anything else) as the reducer.
+    public private(set) var dependencies = DependencyValues()
 
     public init(
       initialState: @escaping () -> Root.State,
@@ -100,9 +107,17 @@
       self.faults = faults
       self.tracker = tracker
       self.mockMethods = mockMethods
+      let fixedDate = Self.fixedDate
+      let origin = clock.now
+      let now: @Sendable () -> Date = { [clock] in
+        let elapsed = origin.duration(to: clock.now)
+        let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        return fixedDate.addingTimeInterval(seconds)
+      }
       let environment = HeadlessEnvironment(
-        clock: clock, countingClock: countingClock, callLog: callLog, faults: faults, tracker: tracker
+        clock: clock, countingClock: countingClock, callLog: callLog, faults: faults, tracker: tracker, now: now
       )
+      var captured = DependencyValues()
       // `initialState()` must be called here, inside `Store.init`'s `@autoclosure` argument, not before: that
       // autoclosure is what `Store.init` evaluates inside `withDependencies`, so root state built from a
       // `@Dependency` or declaring `@Shared` sees the deterministic overrides below instead of live defaults.
@@ -111,7 +126,7 @@
       } withDependencies: {
         $0.continuousClock = countingClock
         $0.uuid = .incrementing
-        $0.date = .constant(Self.fixedDate)
+        $0.date = DateGenerator(now)
         $0.withRandomNumberGenerator = WithRandomNumberGenerator(SeededRandomNumberGenerator(seed: Self.randomSeed))
         $0.timeZone = Self.fixedTimeZone
         $0.locale = Self.fixedLocale
@@ -121,7 +136,9 @@
         $0.mockFaults = faults
         // Last, so the host can override any of the above, and pin what the list leaves out.
         configure(&$0, environment)
+        captured = $0
       }
+      dependencies = captured
     }
 
     public func settle() async -> SettleResult {
@@ -138,7 +155,8 @@
         environment: RunnerEnvironment(
           settle: { [self] in await settle() },
           advance: { [clock] duration in await clock.advance(by: duration) },
-          synthesizesAppearance: true
+          synthesizesAppearance: true,
+          dependencies: dependencies
         ),
         mockMethods: mockMethods
       )
@@ -199,6 +217,9 @@
     /// is (CONTRACT.md §8.5), so the next command never lands mid-transition. `nil` counts as idle; AgentCtlBridge
     /// fills in UIKit's view-controller transitions when the host leaves it `nil`.
     public var isUIIdle: (@MainActor () -> Bool)?
+    /// The store's dependencies, as `configure` left them: the runner computes each step's screen and summary inside
+    /// them, so a summary reads the app's `\.date` (which `advance` moves), not the real one.
+    public private(set) var dependencies = DependencyValues()
 
     public init(
       initialState: @escaping () -> Root.State,
@@ -217,6 +238,7 @@
       self.clock = clock
       self.mockMethods = mockMethods
       let environment = LiveEnvironment(clock: clock, callLog: callLog, faults: faults, tracker: tracker, latency: latency)
+      var captured = DependencyValues()
       // See the note in `HeadlessHost.init`: `initialState()` runs inside `Store.init`'s autoclosure, so it
       // sees these overrides too.
       self.store = Store(initialState: initialState()) {
@@ -231,7 +253,9 @@
         $0.mockCallLog = callLog
         $0.mockFaults = faults
         configure(&$0, environment)
+        captured = $0
       }
+      dependencies = captured
     }
 
     /// Settles on real time — no mock call in flight, the UI at rest, and the state quiet for a moment — because a
@@ -279,7 +303,8 @@
             // its next sleep, short enough that `advance 1m` over a one-second countdown stays quick.
             await clock.base.advance(by: duration, between: { @MainActor [self] in await settleBetweenDeadlines() })
           },
-          synthesizesAppearance: synthesizesAppearance
+          synthesizesAppearance: synthesizesAppearance,
+          dependencies: dependencies
         ),
         mockMethods: mockMethods
       )

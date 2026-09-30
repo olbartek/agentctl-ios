@@ -12,15 +12,20 @@
     public var advance: (@MainActor (Duration) async -> Void)?
     /// Headless runs send each screen's `onAppear` action when it becomes active (no views exist to do it).
     public var synthesizesAppearance: Bool
+    /// The store's dependencies. Screens, summaries and commands are computed inside them, so they read what the
+    /// reducers read (the app's `\.date`, above all) rather than the ambient context. `nil` keeps the ambient one.
+    public var dependencies: DependencyValues?
 
     public init(
       settle: @escaping @MainActor () async -> SettleResult,
       advance: (@MainActor (Duration) async -> Void)?,
-      synthesizesAppearance: Bool
+      synthesizesAppearance: Bool,
+      dependencies: DependencyValues? = nil
     ) {
       self.settle = settle
       self.advance = advance
       self.synthesizesAppearance = synthesizesAppearance
+      self.dependencies = dependencies
     }
   }
 
@@ -209,7 +214,7 @@
     }
 
     private func command(_ line: ScriptLine) async -> (step: StepRecord, status: RunStatus) {
-      let screen = Root.activeScreen(state)
+      let screen = activeScreen()
       guard let command = screen.command(named: line.name) else {
         let valid = (screen.commands.map(\.usage) + Self.runtimeCommandNames).joined(separator: ", ")
         return fail(line, status: .failed, "unknown command '\(line.name)' on \(screen.path). Valid here: \(valid)")
@@ -232,11 +237,17 @@
 
     // MARK: - Helpers
 
+    /// The active screen, computed in the store's dependency context (see ``RunnerEnvironment/dependencies``).
+    private func activeScreen() -> ActiveScreen<Root.Action> {
+      guard let dependencies = environment.dependencies else { return Root.activeScreen(state) }
+      return withDependencies { $0 = dependencies } operation: { Root.activeScreen(state) }
+    }
+
     /// Settles; headlessly, also sends `onAppear` for each newly active screen until the screen is stable.
     private func settleAndAppear() async -> SettleResult {
       var result = await environment.settle()
       for _ in 0..<10 {
-        let screen = Root.activeScreen(state)
+        let screen = activeScreen()
         guard screen.identity != lastIdentity else { break }
         lastIdentity = screen.identity
         guard environment.synthesizesAppearance, let appear = screen.appearAction else { continue }
@@ -267,7 +278,7 @@
     }
 
     private func record(command: String, calls: [String], settle: SettleResult) -> StepRecord {
-      let screen = Root.activeScreen(state)
+      let screen = activeScreen()
       return StepRecord(
         command: command,
         screen: screen.path,

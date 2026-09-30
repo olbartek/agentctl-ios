@@ -231,9 +231,11 @@
     }
 
     /// A launch whose bridge answered as another app, or as none: another process holds the port.
+    /// Without the header, the app may also be an installed one from before it (`--no-build`).
     static func anotherApp(port: Int, answeredAs app: String?) -> String {
       "the app's agent bridge on 127.0.0.1:\(port) answers as \(app ?? "an app without X-Appctl-App"), not "
         + "\(Simulator.bundleID): another app holds that port; pass --port or set \(BridgePort.environmentVariable)"
+        + (app == nil ? " (or the installed app predates X-Appctl-App: launch without --no-build)" : "")
     }
 
     /// A port from the launch state that another app now answers on.

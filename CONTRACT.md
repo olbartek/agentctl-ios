@@ -681,8 +681,9 @@ bridge's `X-Appctl-App` (§8.4) with the app it means:
   `APPCTL_PORT`, launches it once more on the next free port above; if that one mismatches too, or
   the port was named, it exits 3.
 - **When the port came from the file**, with the file's `appId`. A different app on that port
-  means the file is stale: exit 3, and nothing from the response is printed. An answer without the
-  header (an app built before it existed) is accepted.
+  means the file is stale: exit 3, and nothing from the response is printed. A script is only posted
+  after a `GET /snapshot` shows the recorded app, so another app never runs it. An answer without
+  the header (an app built before it existed) is accepted.
 - A port from `--port`, `APPCTL_PORT` or the default is not checked: the CLI cannot know which app
   was meant.
 

@@ -173,7 +173,34 @@
             == "the app's agent bridge on 127.0.0.1:8765 answers as com.example.other, not com.example.stub: "
             + "another app holds that port; pass --port or set APPCTL_PORT"
         )
-        #expect(Message.anotherApp(port: 8765, answeredAs: nil).contains("answers as an app without X-Appctl-App, not"))
+        #expect(
+          Message.anotherApp(port: 8765, answeredAs: nil)
+            == "the app's agent bridge on 127.0.0.1:8765 answers as an app without X-Appctl-App, not com.example.stub: "
+            + "another app holds that port; pass --port or set APPCTL_PORT (or the installed app predates X-Appctl-App: "
+            + "launch without --no-build)"
+        )
+      }
+
+      /// A script is not posted to another app on the recorded port: only the identity check reaches it.
+      @Test func aScriptIsNotPostedToAnotherAppOnTheRecordedPort() async throws {
+        AgentCtl.install(StubRuntime())
+        let root = try CLICommandTests.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var requests: [String] = []
+        let server = BridgeServer(app: "com.example.other") { request in
+          requests.append("\(request.method) \(request.path)")
+          return BridgeResponse(status: 200, body: "> open 1\n", exitCode: 0)
+        }
+        let port = Int(try await server.start(port: 0))
+        defer { server.stop() }
+        var state = Self.state
+        state.port = port
+        try state.write(in: root)
+        let code = await CLICommandTests.withRepoRoot(root.path) {
+          await AppCommands.run(script: "open 1", json: false, port: nil)
+        }
+        #expect(code == 3)
+        #expect(requests == ["GET /snapshot"])
       }
 
       /// A stale file names itself and says to relaunch; a port that did not come from it keeps the old message.

@@ -98,7 +98,17 @@
         return fail(error)
       }
       do {
-        let response = try await BridgeClient(port: port).send(method, path, body: body)
+        let client = BridgeClient(port: port)
+        if case let .launchState(state) = source {
+          // A script changes the app it runs in, so it is only posted once the recorded app is known to answer;
+          // a GET changes nothing, and its own answer is checked instead.
+          let answer = method == "GET" ? nil : try await client.send("GET", "/snapshot")
+          if let app = answer?.app, app != state.appId {
+            printError(Message.anotherApp(port: port, answeredAs: app, recorded: state.appId))
+            return RunStatus.internalError.rawValue
+          }
+        }
+        let response = try await client.send(method, path, body: body)
         if case let .launchState(state) = source, let app = response.app, app != state.appId {
           printError(Message.anotherApp(port: port, answeredAs: app, recorded: state.appId))
           return RunStatus.internalError.rawValue

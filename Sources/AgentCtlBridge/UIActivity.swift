@@ -9,7 +9,8 @@
   @MainActor
   enum UIActivity {
     static func isIdle() -> Bool {
-      for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+      for case let scene as UIWindowScene in UIApplication.shared.connectedScenes
+      where scene.activationState == .foregroundActive || scene.activationState == .foregroundInactive {
         for window in scene.windows {
           if let root = window.rootViewController, isTransitioning(root) { return false }
         }

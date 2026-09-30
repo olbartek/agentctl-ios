@@ -624,8 +624,9 @@ and the steps — none — under `steps`.
   command sent mid-transition can be lost: a push that lands during a pop's animation may never be
   shown. A UI that stays busy for more than 1 s at a stretch (an endless animation, such as a
   spinner) does not hold settling; a stretch ends once the UI has been idle for 100 ms. A launch
-  seed does not wait for the UI, since it runs before the app's screens are shown. A UI still busy
-  at the ceiling is `settled=false`, like a state that never goes quiet.
+  seed does not wait for the UI, since it runs before the app's screens are shown. An interactive
+  transition held open (a swipe-back the user has not let go of) counts as busy, so after 1 s it
+  stops holding like an endless animation.
   A step that starts a timer can therefore read differently from its headless counterpart once a
   tick has fired on its own.
 - **Views appear by themselves.** The app's views send their own appearance actions, so the bridge

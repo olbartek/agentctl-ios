@@ -106,7 +106,9 @@
     while start.duration(to: realClock.now) < limit {
       try? await realClock.sleep(for: pollInterval)
       let next = state()
-      if next != last || callLog.inFlight > 0 || uiHolds() {
+      // Every poll, so a busy stretch's start and its idle gaps are seen while the state is still changing too.
+      let uiBusy = uiHolds()
+      if next != last || callLog.inFlight > 0 || uiBusy {
         last = next
         quietSince = realClock.now
       } else if quietSince.duration(to: realClock.now) >= quietWindow {

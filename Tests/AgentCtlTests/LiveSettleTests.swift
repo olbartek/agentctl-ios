@@ -27,7 +27,8 @@ extension AgentCtlSuite {
       #expect(elapsed >= .milliseconds(370), "settled after \(elapsed)")
     }
 
-    /// Within the ceiling, a UI that is still busy (a transition longer than it) does not settle.
+    /// A UI still busy when the ceiling comes (here a ceiling shorter than the 1 s after which busy stops holding)
+    /// does not settle.
     @Test func aUIStillBusyAtTheCeilingDoesNotSettle() async {
       let result = await settleLive(
         state: { 0 },
@@ -38,6 +39,25 @@ extension AgentCtlSuite {
         limit: .milliseconds(300)
       )
       #expect(!result.settled)
+    }
+
+    /// The UI is watched on every poll, not only once the state is quiet. Here a first transition (0–80 ms) ends
+    /// while the state changes (60–1200 ms, a slow response), and a second one (1100–1500 ms) starts before the
+    /// state goes quiet. Watching only quiet polls would miss the idle gap, date the second transition from the
+    /// first, call it endless and settle mid-animation.
+    @Test func aSecondTransitionAfterALongStateChangeStillHolds() async {
+      let clock = ContinuousClock()
+      let start = clock.now
+      func now() -> Duration { start.duration(to: clock.now) }
+      let result = await settleLive(
+        state: { now() < .milliseconds(60) || now() >= .milliseconds(1200) ? 0 : Int(now() / .milliseconds(20)) },
+        callLog: MockCallLog(),
+        pending: { 0 },
+        isUIIdle: { !(now() < .milliseconds(80) || (now() >= .milliseconds(1100) && now() < .milliseconds(1500))) },
+        quietWindow: .milliseconds(100)
+      )
+      #expect(result.settled)
+      #expect(now() >= .milliseconds(1570), "settled after \(now())")
     }
 
     /// An endless animation (a spinner) is busy with short idle gaps between frames. After a second at a stretch it

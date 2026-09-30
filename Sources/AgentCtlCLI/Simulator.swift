@@ -162,13 +162,14 @@
       }
     }
 
-    /// A clean status bar for screenshots (9:41, full signal and battery), or the simulator's own again.
+    /// A clean status bar for screenshots (9:41 in the simulator's own time format, full signal, a full battery that is
+    /// not charging), or the simulator's own again.
     func statusBar(clean: Bool, on device: Device, log: URL) throws {
       let arguments =
         clean
         ? [
           "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
-          "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged", "--batteryLevel", "100",
+          "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "discharging", "--batteryLevel", "100",
         ]
         : ["clear"]
       guard Shell.run(["xcrun", "simctl", "status_bar", device.udid] + arguments, in: root, log: log) == 0 else {

@@ -718,7 +718,8 @@ acts on: an app with the same ID on the other platform is another app. An error 
 - **When the port came from the file**, with the file's `appId` and `platform`. A different app
   or platform on that port means the file is stale: exit 3, and nothing from the response is
   printed. A script is only posted after a `GET /snapshot` does not show another app, so another app
-  never runs it. A header the answer lacks is not compared (an app built before it existed).
+  never runs it. An answer that lacks either header is another app too: the launch that wrote the
+  file checked both.
 - A port from `--port`, `APPCTL_PORT` or the default is not checked: the CLI cannot know which app
   was meant.
 

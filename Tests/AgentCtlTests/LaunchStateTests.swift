@@ -187,7 +187,8 @@
         AgentCtl.install(StubRuntime())
         let root = try CLICommandTests.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let server = BridgeServer { _ in BridgeResponse(status: 200, body: "state\n", exitCode: 0) }
+        // The app the launch state names, as its bridge says.
+        let server = BridgeServer(app: "com.example.stub") { _ in BridgeResponse(status: 200, body: "state\n", exitCode: 0) }
         let port = Int(try await server.start(port: 0))
         defer { server.stop() }
         var state = Self.state
@@ -223,9 +224,10 @@
         AgentCtl.install(StubRuntime())
         let root = try CLICommandTests.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        // The same app on Android is another app; a header the answer lacks is not compared.
+        // The same app on Android is another app, and so is an answer without either header: the launch that wrote
+        // bridge.json checked both.
         let answers: [(String?, String?, Int32)] = [
-          ("com.example.other", "ios", 3), ("com.example.stub", "android", 3), (nil, nil, 0), ("com.example.stub", nil, 0),
+          ("com.example.other", "ios", 3), ("com.example.stub", "android", 3), (nil, nil, 3), ("com.example.stub", nil, 3),
           ("com.example.stub", "ios", 0),
         ]
         for (app, platform, expected) in answers {

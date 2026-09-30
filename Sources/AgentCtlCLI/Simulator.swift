@@ -301,10 +301,10 @@
     /// At launch: the app the CLI built names itself in full, so a missing header is another app too.
     var isOurs: Bool { self == .ours }
 
-    /// Against `bridge.json`: a header that is there and differs. A header the answer lacks is not compared (an app
-    /// built before it existed).
+    /// Against `bridge.json`: anything but the recorded app and platform, a missing header included. The launch that
+    /// wrote the file checked both headers, so the app it launched sends them.
     func contradicts(_ state: LaunchState) -> Bool {
-      app.map { $0 != state.appId } ?? false || platform.map { $0 != state.platform } ?? false
+      self != Self(app: state.appId, platform: state.platform)
     }
 
     /// `<app> (<platform>)`, as the "answers as …, not …" messages print it.

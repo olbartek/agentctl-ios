@@ -143,7 +143,15 @@ extension AgentCommand where Action: Sendable {
     note: String? = nil,
     _ makeAction: @escaping @Sendable (Value) -> Action
   ) -> Self {
-    let words = options.map(\.0).joined(separator: "|")
+    let names = options.map(\.0)
+    // The words are the documented `<a|b|c>` and the only accepted arguments: a malformed list is a host bug.
+    precondition(!names.isEmpty, "choice '\(name)' needs at least one option")
+    precondition(Set(names).count == names.count, "choice '\(name)' lists an option twice: \(names)")
+    precondition(
+      names.allSatisfy { !$0.isEmpty && !$0.contains("|") && !$0.contains(where: \.isWhitespace) },
+      "choice '\(name)' has an option that is empty or contains '|' or whitespace: \(names)"
+    )
+    let words = names.joined(separator: "|")
     return parsing(name, argument: "<\(words)>", help: help, paths: paths, gate: gate, note: note) {
       (text: String) throws(AgentCommandError) -> Action in
       guard let value = options.first(where: { $0.0 == text })?.1 else { throw .invalidArgument("expected \(words)") }

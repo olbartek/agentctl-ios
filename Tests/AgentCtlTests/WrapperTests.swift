@@ -4,8 +4,8 @@
 
   /// What this guards: `Templates/appctl`, the wrapper every host copies. It is run as it ships, by `/bin/sh`, over
   /// a fake `swift` on `PATH` whose builds fail or pass as each test scripts them, so the recovery from a stale
-  /// SwiftPM cache is proved without a real build: clean once and rebuild on those two signatures, exit 3 on anything
-  /// else or on a second failure.
+  /// SwiftPM cache is proved without a real build: a failed build is planned afresh once (and a stale target's build
+  /// directory removed); stale-cache errors get two more rounds, then one full clean; anything else exits 3.
   struct WrapperTests {
     struct Run {
       var status: Int32
@@ -15,13 +15,16 @@
       var swiftCalls: [String]
       /// Whatever the wrapper left in its temporary directory.
       var leftovers: [String]
+      /// Whether the stale target's build directory (`AgentCtlCLI.build`) is gone.
+      var staleRemoved: Bool
     }
 
+    /// The two stale-cache errors, naming a target's build directory under the package's `.build` (`<build>`).
     static let missingInputs =
-      "error: couldn't build /r/.build/debug/AgentCtlCLI.build/AppTest.swift.o because of missing inputs: "
-      + "/r/.build/checkouts/agentctl-ios/Sources/AgentCtlCLI/AppTest.swift"
+      "error: couldn't build <build>/debug/AgentCtlCLI.build/AppTest.swift.o because of missing inputs: "
+      + "<build>/checkouts/agentctl-ios/Sources/AgentCtlCLI/AppTest.swift"
     static let outputFileMap =
-      "error: unable to load output file map '/r/.build/debug/AgentCtlCLI.build/output-file-map.json': "
+      "error: unable to load output file map '<build>/debug/AgentCtlCLI.build/output-file-map.json': "
       + "No such file or directory"
 
     /// Runs the template with `builds[i]` as the output of the fake's i-th `swift build` (`nil`: it succeeds).
@@ -32,7 +35,8 @@
       let bin = root.appending(path: "bin")
       let tmp = root.appending(path: "tmp")
       let product = root.appending(path: "Packages/AppCtl/.build/debug")
-      for directory in [bin, tmp, product] {
+      let stale = product.appending(path: "AgentCtlCLI.build")
+      for directory in [bin, tmp, product, stale] {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
       }
       let template = PackageRoot.url.appending(path: "Templates/appctl")
@@ -51,7 +55,8 @@
         """
       for (index, output) in builds.enumerated() {
         guard let output else { continue }
-        try (output + "\n").write(to: root.appending(path: "build-\(index + 1).out"), atomically: true, encoding: .utf8)
+        let text = output.replacingOccurrences(of: "<build>", with: root.appending(path: "Packages/AppCtl/.build").path)
+        try (text + "\n").write(to: root.appending(path: "build-\(index + 1).out"), atomically: true, encoding: .utf8)
       }
       try write(fake, to: bin.appending(path: "swift"))
       try write("#!/bin/sh\necho \"ran $* in $APPCTL_ROOT\"\n", to: product.appending(path: "appctl"))
@@ -74,7 +79,8 @@
         stdout: String(decoding: out, as: UTF8.self),
         stderr: String(decoding: err, as: UTF8.self),
         swiftCalls: calls.split(separator: "\n").map { String($0).replacingOccurrences(of: root.path, with: "<root>") },
-        leftovers: try fileManager.contentsOfDirectory(atPath: tmp.path)
+        leftovers: try fileManager.contentsOfDirectory(atPath: tmp.path),
+        staleRemoved: !fileManager.fileExists(atPath: stale.path)
       )
     }
 
@@ -94,32 +100,67 @@
       #expect(run.leftovers.isEmpty)
     }
 
+    static let recovered =
+      "appctl: the build cache was stale (a pull or a branch switch?); planned the build afresh and it succeeded\n"
+
+    /// A file removed from a dependency: the stale target's build directory goes with the build plan, and the next
+    /// build succeeds.
     @Test(arguments: [missingInputs, outputFileMap])
-    func aStaleCacheIsCleanedAndBuiltOnceMore(signature: String) throws {
+    func aStaleTargetIsRemovedAndBuiltOnceMore(signature: String) throws {
       let run = try run(builds: [signature])
       #expect(run.status == 0, "\(run.stderr)")
       #expect(run.stdout.hasPrefix("ran run open 2 in "), "\(run.stdout)")
-      #expect(run.swiftCalls == [Self.build, Self.clean, Self.build])
-      #expect(run.stderr.contains(signature), "the first build's log is still shown")
-      #expect(run.stderr.contains("appctl: the build cache is stale; cleaning Packages/AppCtl and building again\n"))
+      #expect(run.swiftCalls == [Self.build, Self.build])
+      #expect(run.staleRemoved)
+      #expect(run.stderr.contains(Self.recovered))
       #expect(run.leftovers.isEmpty)
     }
 
-    @Test func aStaleCacheTwiceExits3() throws {
-      let run = try run(builds: [Self.outputFileMap, Self.outputFileMap])
-      #expect(run.status == 3)
-      #expect(run.stdout.isEmpty)
-      #expect(run.swiftCalls == [Self.build, Self.clean, Self.build])
+    /// A file added to a dependency is not compiled until the build is planned afresh, and the failure reads like any
+    /// compile error: one fresh plan fixes it.
+    @Test func aCompileErrorThatAFreshPlanFixesSucceeds() throws {
+      let run = try run(builds: ["error: cannot find 'DeviceCommands' in scope"])
+      #expect(run.status == 0, "\(run.stderr)")
+      #expect(run.swiftCalls == [Self.build, Self.build])
+      #expect(!run.staleRemoved, "no stale-cache error named a directory")
+      #expect(run.stderr.contains(Self.recovered))
+    }
+
+    /// Two more rounds of stale-cache errors end in one full clean.
+    @Test func aCacheStillStaleAfterThreeRoundsIsCleanedOnce() throws {
+      let run = try run(builds: Array(repeating: Self.outputFileMap, count: 4))
+      #expect(run.status == 0, "\(run.stderr)")
+      #expect(run.swiftCalls == [Self.build, Self.build, Self.build, Self.build, Self.clean, Self.build])
+      #expect(run.stderr.contains("appctl: the build cache is still stale; cleaning Packages/AppCtl"))
       #expect(run.leftovers.isEmpty)
     }
 
-    @Test func anyOtherFailureExits3WithoutCleaning() throws {
-      let run = try run(builds: ["error: cannot find 'x' in scope"])
+    @Test func aCacheStaleEvenAfterACleanExits3() throws {
+      let run = try run(builds: Array(repeating: Self.missingInputs, count: 5))
       #expect(run.status == 3)
       #expect(run.stdout.isEmpty)
-      #expect(run.stderr.contains("error: cannot find 'x' in scope"))
-      #expect(run.swiftCalls == [Self.build])
+      #expect(run.swiftCalls == [Self.build, Self.build, Self.build, Self.build, Self.clean, Self.build])
       #expect(run.leftovers.isEmpty)
+    }
+
+    /// A genuine error costs one quick extra build, exits 3, and is shown once, not twice.
+    @Test func aGenuineErrorExits3AfterOneFreshPlan() throws {
+      let error = "error: cannot find 'x' in scope"
+      let run = try run(builds: [error, error])
+      #expect(run.status == 3)
+      #expect(run.stdout.isEmpty)
+      #expect(run.swiftCalls == [Self.build, Self.build])
+      #expect(run.stderr.components(separatedBy: error).count == 2, "shown once: \(run.stderr)")
+      #expect(run.leftovers.isEmpty)
+    }
+
+    /// Only directories inside the package's own `.build` are ever removed.
+    @Test func aStaleLookingPathOutsideTheBuildDirectoryIsLeftAlone() throws {
+      let error = "error: unable to load output file map '/elsewhere/X.build/output-file-map.json'"
+      let run = try run(builds: [error, error])
+      #expect(run.status == 3)
+      #expect(run.swiftCalls == [Self.build, Self.build])
+      #expect(!run.staleRemoved)
     }
   }
 #endif

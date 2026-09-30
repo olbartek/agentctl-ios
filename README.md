@@ -398,9 +398,13 @@ SUBCOMMANDS:
 Agents should never call `swift run`: it prints its build log to stdout, mixed into the step output they are
 supposed to read. [`Templates/appctl`](Templates/appctl) rebuilds your executable incrementally (about half a
 second when nothing changed), sends the build log to stderr, exits 3 if the build fails, and then `exec`s the
-binary. A build that fails on SwiftPM's own stale cache after a pull or a branch switch ("because of missing
-inputs", "unable to load output file map") is cleaned (`swift package clean` for that package) and built once more,
-saying `appctl: the build cache is stale; cleaning <PACKAGE> and building again` on stderr:
+binary. SwiftPM's incremental build can trip over its own cache when a pull or a branch switch adds or removes a
+source file of a path dependency ("because of missing inputs", "unable to load output file map", or a new file
+simply not compiled). So a failed build is planned afresh once: the build plan and any stale target's build
+directory are removed and the build runs again, in seconds. If that works, stderr says `appctl: the build cache was
+stale (a pull or a branch switch?); planned the build afresh and it succeeded`. Stale-cache errors that persist get
+two more rounds, then one full `swift package clean`, which rebuilds every dependency; a genuine compile error costs
+one quick extra build and exits 3, its errors shown once:
 
 ```bash
 cp Templates/appctl ./appctl     # then set PACKAGE and PRODUCT at the top of the file

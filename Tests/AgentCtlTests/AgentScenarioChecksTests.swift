@@ -82,7 +82,8 @@ extension AgentCtlSuite {
     // MARK: - allPass
 
     @Test func allPassReportsTheFailingScenario() async throws {
-      #expect(try await Self.checks(Self.good).allPass().isEmpty)
+      let passing1 = try await Self.checks(Self.good).allPass()
+      #expect(passing1.isEmpty, "\(passing1)")
       let problems = try await Self.checks(Self.good.merging(["wrong": "expect items=4"]) { $1 }).allPass()
       #expect(problems.count == 1)
       #expect(problems.first?.hasPrefix("FAIL wrong:1") == true, "\(problems)")
@@ -92,7 +93,8 @@ extension AgentCtlSuite {
     // MARK: - endWithExpect
 
     @Test func endWithExpectNamesTheScenarioAndItsLastCommand() throws {
-      #expect(try Self.checks(Self.good).endWithExpect().isEmpty)
+      let passing2 = try Self.checks(Self.good).endWithExpect()
+      #expect(passing2.isEmpty, "\(passing2)")
       let problems = try Self.checks(["open": "open 2\nexpect screen=items/2\nsave"]).endWithExpect()
       #expect(problems == ["open.appctl ends with `save` (line 3), not an expect"])
     }
@@ -100,7 +102,8 @@ extension AgentCtlSuite {
     // MARK: - deterministic
 
     @Test func deterministicReportsOutputThatChangesBetweenRuns() async throws {
-      #expect(try await Self.checks(Self.good).deterministic(runs: 3).isEmpty)
+      let passing3 = try await Self.checks(Self.good).deterministic(runs: 3)
+      #expect(passing3.isEmpty, "\(passing3)")
       let problems = try await Self.checks(["list": "expect screen=items"], drifting: true).deterministic(runs: 3)
       #expect(problems.count == 1, "\(problems)")
       let problem = problems.first ?? ""
@@ -185,7 +188,8 @@ extension AgentCtlSuite {
 
     /// The echo (`> open 2`) is what the agent sent; only what the app printed back is scanned.
     @Test func noStepShowsLeavesTheEchoOut() async throws {
-      #expect(try await Self.checks(Self.good).noStepShows(secrets: ["open 2"]).isEmpty)
+      let passing4 = try await Self.checks(Self.good).noStepShows(secrets: ["open 2"])
+      #expect(passing4.isEmpty, "\(passing4)")
     }
 
     @Test func noStepShowsForbidsWhatAScenarioTypesIntoAPersonalCommand() async throws {

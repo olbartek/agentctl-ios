@@ -137,7 +137,12 @@
     /// fresh runner that launches, replays the lines the earlier parts executed, then runs its own lines, and adds
     /// those it executed to the session. As with `run --session`, no part prints the launch step, so the parts'
     /// steps together are compared with the single run's steps after its launch; then the final state dumps
-    /// (`appctl state`) are compared. A scenario that already fails in one run is reported and not compared.
+    /// (`appctl state`) are compared. A scenario that already fails in one run is reported and not compared; one
+    /// with a single command has nothing to split and is skipped.
+    ///
+    /// The parts run in this one test process, where the CLI starts a process per `run --session`: state a host keeps
+    /// outside its store for the whole process (an in-memory `@Shared`, `UserDefaults`) carries over between parts
+    /// here and not there, and can make this report a mismatch the CLI would not have.
     public func sessionReplayMatches(parts: Int = 3) async -> [String] {
       precondition(parts >= 2, "sessionReplayMatches(parts:) needs at least 2 parts to replay a session")
       var problems: [String] = []
@@ -211,6 +216,9 @@
     ///   - personalCommands: commands whose argument is personal or secret (`email`, `password`). Every argument a
     ///     scenario file gives one of them, unquoted as the runner unquotes it, is forbidden too. Each must be
     ///     typed by at least one scenario, or its values would be scanned for nowhere — reported as a problem.
+    ///
+    /// A value is matched as a substring, so a very short one (`code 1`) matches inside unrelated values
+    /// (`items=1`). Keep the forbidden values long enough to be telling.
     public func noStepShows(secrets: [String], personalCommands: Set<String> = []) async -> [String] {
       var problems: [String] = []
       var typed: [String] = []
@@ -237,7 +245,9 @@
       for file in files {
         let result = await deterministically { await run(file) }
         if !result.passed {
-          problems.append("\(file.lastPathComponent) failed, so the steps after its failure were not scanned")
+          problems.append(
+            "\(file.lastPathComponent) failed, so the steps after its failure were not scanned:\n\(result.report)"
+          )
         }
         for step in result.steps {
           let text = Self.summaryText(of: step)
@@ -301,6 +311,8 @@
       }
       let single = config.makeHeadless().makeRunner()
       guard await single.launch().status == .ok else { return "\(name): the app did not settle at launch" }
+      // One command cannot be split into a session; there is nothing to replay.
+      guard lines.count >= 2 else { return nil }
       let whole = await single.run(lines)
       guard whole.status == .ok else { return "\(name) fails in one run, so its session replay was not compared" }
 

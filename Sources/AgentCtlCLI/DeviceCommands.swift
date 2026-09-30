@@ -55,7 +55,7 @@
         // Still running: keep record.json, so another `stop` can try again.
         guard kill(pid_t(state.pid), 0) != 0 else { throw AppCtlError(Message.recorderDidNotFinish(state)) }
         try? FileManager.default.removeItem(at: RecordingState.file(in: root))
-        guard FileManager.default.fileExists(atPath: state.file) else {
+        guard Simulator.wasWritten(URL(fileURLWithPath: state.file)) else {
           throw AppCtlError(Message.recordingNotWritten(state))
         }
         let seconds = Self.duration(of: URL(fileURLWithPath: state.file))

@@ -21,6 +21,9 @@
 
     let root: URL
 
+    /// How `simctl` is run. Tests put a fake tool here, to play a shut-down simulator or a recorder that writes nothing.
+    @TaskLocal static var simctl = ["xcrun", "simctl"]
+
     /// A UDID, or a device name. For a name: booted devices first, then released runtimes before betas, then the
     /// newest runtime.
     /// - Parameter runtimeMajor: only consider devices on this iOS major version (e.g. 18).
@@ -39,6 +42,21 @@
         throw AppCtlError("no available simulator named '\(nameOrUDID)'\(runtime). Available: \(names)")
       }
       return best
+    }
+
+    /// `device`, booted. A shut-down simulator is booted when `boot` is set (a launch that builds, which would boot it
+    /// anyway), and is an error otherwise: with `--no-build`, the launch would fail with simctl's "Unable to lookup in
+    /// current state: Shutdown", which does not say what is wrong. `app test` asks once, before its first scenario
+    /// and before it starts recording.
+    func ready(_ device: Device, boot: Bool, log: URL) throws -> Device {
+      guard !device.isBooted else { return device }
+      guard boot else { throw AppCtlError(Message.notBooted(device)) }
+      // `bootstatus -b` boots the simulator and returns once it has finished booting.
+      guard Shell.run(Self.simctl + ["bootstatus", device.udid, "-b"], in: root, log: log, append: true, timeout: Shell.slow) == 0
+      else { throw AppCtlError(Message.bootFailed(device, log: log)) }
+      var booted = device
+      booted.isBooted = true
+      return booted
     }
 
     /// Builds the app via XcodeBuildMCP (falling back to xcodebuild) and installs it on `device`, booting it if
@@ -84,8 +102,8 @@
         guard status == 0 else { throw AppCtlError("xcodebuild failed; log: \(log.path(percentEncoded: false))") }
         app = derivedData.appending(path: "Build/Products/Debug-iphonesimulator/\(Self.target.scheme).app")
       }
-      _ = Shell.run(["xcrun", "simctl", "boot", device.udid], in: root, log: log, append: true, timeout: Shell.slow)
-      guard Shell.run(["xcrun", "simctl", "install", device.udid, app.path], in: root, log: log, append: true, timeout: Shell.slow) == 0 else {
+      _ = Shell.run(Self.simctl + ["boot", device.udid], in: root, log: log, append: true, timeout: Shell.slow)
+      guard Shell.run(Self.simctl + ["install", device.udid, app.path], in: root, log: log, append: true, timeout: Shell.slow) == 0 else {
         throw AppCtlError("simctl install failed; log: \(log.path(percentEncoded: false))")
       }
     }
@@ -103,16 +121,16 @@
 
     /// Stops the app if it is running. A device where it is not running is not an error.
     func terminate(on device: Device, log: URL) {
-      _ = Shell.run(["xcrun", "simctl", "terminate", device.udid, Self.bundleID], in: root, log: log, timeout: Shell.quick)
+      _ = Shell.run(Self.simctl + ["terminate", device.udid, Self.bundleID], in: root, log: log, timeout: Shell.quick)
     }
 
     /// Relaunches the installed app with launch arguments, without building.
     func launch(on device: Device, launchArguments: [String], log: URL) throws {
       _ = Shell.run(
-        ["xcrun", "simctl", "terminate", device.udid, Self.bundleID], in: root, log: log, append: true, timeout: Shell.quick
+        Self.simctl + ["terminate", device.udid, Self.bundleID], in: root, log: log, append: true, timeout: Shell.quick
       )
       let status = Shell.run(
-        ["xcrun", "simctl", "launch", device.udid, Self.bundleID] + launchArguments,
+        Self.simctl + ["launch", device.udid, Self.bundleID] + launchArguments,
         in: root,
         log: log,
         append: true,
@@ -123,7 +141,7 @@
 
     func screenshot(on device: Device, to file: URL, log: URL) throws {
       try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-      guard Shell.run(["xcrun", "simctl", "io", device.udid, "screenshot", file.path], in: root, log: log, timeout: Shell.quick) == 0 else {
+      guard Shell.run(Self.simctl + ["io", device.udid, "screenshot", file.path], in: root, log: log, timeout: Shell.quick) == 0 else {
         throw AppCtlError("screenshot failed; log: \(log.path(percentEncoded: false))")
       }
     }
@@ -131,20 +149,25 @@
     /// Starts `simctl io recordVideo` detached, so it outlives the CLI. `started` gets its pid as soon as it runs,
     /// before it has begun recording, so the caller can record it even if this CLI is interrupted while it waits;
     /// this returns once `simctl` says it is recording. `app record stop` ends it with SIGINT, which makes `simctl`
-    /// finish the file.
-    func startRecording(on device: Device, to video: URL, log: URL, started: (Int32) throws -> Void) throws {
+    /// finish the file; `app test --record` ends it the same way, through the returned process.
+    @discardableResult
+    func startRecording(on device: Device, to video: URL, log: URL, started: (Int32) throws -> Void) throws -> Process {
       try FileManager.default.createDirectory(at: video.deletingLastPathComponent(), withIntermediateDirectories: true)
       try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
       FileManager.default.createFile(atPath: log.path, contents: nil)
-      let simctl = Shell.capture(["xcrun", "-f", "simctl"], in: root, timeout: Shell.quick).trimmingCharacters(in: .whitespacesAndNewlines)
-      guard !simctl.isEmpty else { throw AppCtlError("cannot find simctl (xcrun -f simctl)") }
+      var simctl = Self.simctl
+      if simctl == ["xcrun", "simctl"] {
+        let path = Shell.capture(["xcrun", "-f", "simctl"], in: root, timeout: Shell.quick).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { throw AppCtlError("cannot find simctl (xcrun -f simctl)") }
+        simctl = [path]
+      }
       let handle = try FileHandle(forWritingTo: log)
       defer { try? handle.close() }
       let process = Process()
       // `nohup` execs simctl in place, so the pid is simctl's own and its command line names the file; a hangup of
       // the terminal that started it does not stop it.
       process.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
-      process.arguments = [simctl, "io", device.udid, "recordVideo", "--codec=h264", "--force", video.path]
+      process.arguments = simctl + ["io", device.udid, "recordVideo", "--codec=h264", "--force", video.path]
       process.standardOutput = handle
       process.standardError = handle
       process.standardInput = FileHandle.nullDevice
@@ -163,6 +186,14 @@
         }
         Thread.sleep(forTimeInterval: 0.1)
       }
+      return process
+    }
+
+    /// Whether a recording left a video: a file that is there and not empty. A recorder that stops without writing
+    /// frames (a simulator shut down under it) can leave an empty one.
+    static func wasWritten(_ video: URL) -> Bool {
+      let size = (try? FileManager.default.attributesOfItem(atPath: video.path)[.size] as? Int) ?? nil
+      return (size ?? 0) > 0
     }
 
     /// A clean status bar for screenshots (9:41 in the simulator's own time format, full signal, a full battery that is
@@ -175,14 +206,14 @@
           "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "discharging", "--batteryLevel", "100",
         ]
         : ["clear"]
-      guard Shell.run(["xcrun", "simctl", "status_bar", device.udid] + arguments, in: root, log: log, timeout: Shell.quick) == 0 else {
+      guard Shell.run(Self.simctl + ["status_bar", device.udid] + arguments, in: root, log: log, timeout: Shell.quick) == 0 else {
         throw AppCtlError("simctl status_bar failed (is the simulator booted?); log: \(log.path(percentEncoded: false))")
       }
     }
 
     /// The installed app's bundle, or `nil` when it is not installed.
     func installedApp(on device: Device) -> URL? {
-      let path = Shell.capture(["xcrun", "simctl", "get_app_container", device.udid, Self.bundleID, "app"], in: root)
+      let path = Shell.capture(Self.simctl + ["get_app_container", device.udid, Self.bundleID, "app"], in: root)
         .trimmingCharacters(in: .whitespacesAndNewlines)
       return path.hasSuffix(".app") ? URL(fileURLWithPath: path) : nil
     }
@@ -218,7 +249,7 @@
     }
 
     private func simctlJSON(_ arguments: [String]) throws -> [String: Any] {
-      let (output, finished) = Shell.captureResult(["xcrun", "simctl", "list"] + arguments + ["-j"], in: root)
+      let (output, finished) = Shell.captureResult(Self.simctl + ["list"] + arguments + ["-j"], in: root)
       guard finished else { throw AppCtlError(Message.simctlDidNotAnswer(["list"] + arguments)) }
       guard let data = output.data(using: .utf8),
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]

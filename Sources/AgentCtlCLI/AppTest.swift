@@ -29,20 +29,25 @@
       let device: Simulator.Device
       do {
         options.port = try BridgePort.requested(flag: options.port, environment: ProcessInfo.processInfo.environment)
-        device = try Simulator(root: root).resolve(options.simulator)
+        // Once, before any scenario and the recording: a shut-down simulator fails here with one line, not once per
+        // scenario, and is not recorded.
+        let sim = Simulator(root: root)
+        device = try sim.ready(
+          sim.resolve(options.simulator), boot: options.build, log: Layout(root: root).logs.appending(path: "app-launch.log")
+        )
       } catch {
         return AppCommands.fail(error)
       }
       var recording: Recording?
       if let path = options.record {
         do {
-          recording = try Recording.start(device: device, to: URL(fileURLWithPath: path))
+          recording = try Recording.start(root: root, device: device, to: URL(fileURLWithPath: path))
         } catch {
           printError("\(error)")
           return RunStatus.internalError.rawValue
         }
       }
-      defer { recording?.stop() }
+      defer { _ = recording?.stop() }
 
       var results: [Result] = []
       var built = !options.build
@@ -70,7 +75,12 @@
       }
       print(summary(results))
       if let recording {
-        print("recorded \(recording.video.path(percentEncoded: false)) (chapters: \(recording.chaptersFile.lastPathComponent))")
+        let written = recording.stop()
+        if written {
+          print(recording.report(written: true))
+        } else {
+          FileHandle.standardError.write(Data((recording.report(written: false) + "\n").utf8))
+        }
       }
       if results.contains(where: \.isBroken) { return RunStatus.internalError.rawValue }
       return results.contains(where: \.failed) ? RunStatus.failed.rawValue : 0
@@ -188,13 +198,15 @@
       }
     }
 
-    /// `simctl io recordVideo` for the whole run, and a chapters file with the time each scenario started.
+    /// `simctl io recordVideo` for the whole run, started and checked like `app record` (``Simulator/startRecording``),
+    /// and a chapters file with the time each scenario started.
     final class Recording {
       let video: URL
       let chaptersFile: URL
       private let process: Process
       private let started: ContinuousClock.Instant
       private var chapters: [String] = []
+      private var written: Bool?
 
       private init(video: URL, process: Process) {
         self.video = video
@@ -204,25 +216,10 @@
       }
 
       /// Starts recording and returns once `simctl` says it has.
-      static func start(device: Simulator.Device, to video: URL) throws -> Recording {
-        try FileManager.default.createDirectory(at: video.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["xcrun", "simctl", "io", device.udid, "recordVideo", "--codec=h264", "--force", video.path]
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        // `simctl` prints "Recording started" once frames are being written.
-        var output = ""
-        let deadline = Date().addingTimeInterval(20)
-        while !output.contains("Recording started") {
-          guard process.isRunning, Date() < deadline else {
-            process.terminate()
-            throw AppCtlError("simctl recordVideo did not start: \(output)")
-          }
-          output += String(decoding: pipe.fileHandleForReading.availableData, as: UTF8.self)
-        }
+      static func start(root: URL, device: Simulator.Device, to video: URL) throws -> Recording {
+        let video = video.standardizedFileURL
+        let log = Layout(root: root).logs.appending(path: "app-test-record.log")
+        let process = try Simulator(root: root).startRecording(on: device, to: video, log: log) { _ in }
         return Recording(video: video, process: process)
       }
 
@@ -230,12 +227,29 @@
         chapters.append("\(AppTest.timestamp(started.duration(to: .now))) \(name)")
       }
 
-      /// Stops the recording (`simctl` finishes the file on SIGINT) and writes the chapters.
-      func stop() {
-        guard process.isRunning else { return }
-        process.interrupt()
-        process.waitUntilExit()
+      /// Stops the recording (`simctl` finishes the file on SIGINT), writes the chapters, and says whether a video was
+      /// written. A recorder that does not finish within 30 s is killed. Stopping again only repeats the answer.
+      func stop() -> Bool {
+        if let written { return written }
+        if process.isRunning {
+          process.interrupt()
+          let deadline = Date().addingTimeInterval(30)
+          while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+          }
+          if process.isRunning { Shell.stop(process) }
+        }
         try? (chapters.joined(separator: "\n") + "\n").write(to: chaptersFile, atomically: true, encoding: .utf8)
+        let result = Simulator.wasWritten(video)
+        written = result
+        return result
+      }
+
+      /// The run's last line: where the video is, or that there is none. Never "recorded" for a missing or empty file.
+      func report(written: Bool) -> String {
+        written
+          ? "recorded \(video.path(percentEncoded: false)) (chapters: \(chaptersFile.lastPathComponent))"
+          : Message.nothingRecorded
       }
     }
 

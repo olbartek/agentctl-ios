@@ -47,9 +47,10 @@
       let clock = ContinuousClock()
       let start = clock.now
       let sim = Simulator(root: root)
-      let device = try sim.resolve(simulator)
       let log = Layout(root: root).logs.appending(path: "app-launch.log")
-      sim.terminate(on: device, log: log)
+      let resolved = try sim.resolve(simulator)
+      sim.terminate(on: resolved, log: log)
+      let device = try sim.ready(resolved, boot: build, log: log)
       if build { try sim.buildAndInstall(on: device, log: log) }
       var options: [String] = []
       if let seed { options += ["-appctl-seed", seed] }

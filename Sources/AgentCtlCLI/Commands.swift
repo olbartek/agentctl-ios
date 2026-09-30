@@ -265,6 +265,15 @@
       "\(device.label) [\(device.udid)] is not booted; boot it, or run \(help.invocation) app launch"
     }
 
+    static func bootFailed(_ device: Simulator.Device, log: URL) -> String {
+      "\(device.label) [\(device.udid)] did not boot; log: \(log.path(percentEncoded: false))"
+    }
+
+    /// `app test --record` when the recorder left no video, or an empty one: the run's result stands, the video does not.
+    static var nothingRecorded: String {
+      "warning: nothing was recorded; see \(AgentCtl.runtime.outputPath)/logs/app-test-record.log"
+    }
+
     static func notInstalled(on device: Simulator.Device) -> String {
       "\(Simulator.bundleID) is not installed on \(device.label) [\(device.udid)]; run \(help.invocation) app launch"
     }

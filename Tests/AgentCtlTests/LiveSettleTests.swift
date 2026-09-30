@@ -90,6 +90,47 @@ extension AgentCtlSuite {
       #expect(elapsed >= .milliseconds(1000), "settled after \(elapsed)")
     }
 
+    /// The trace says what held the step, when it changes, and how settling ended: what a step that does not settle
+    /// in someone else's app is explained by.
+    @Test func theTraceSaysWhatHeldTheStep() async {
+      // Scripted in polls, not time, so a loaded machine cannot reorder it: the state changes on polls 1-2, a call
+      // runs until poll 4, the UI is busy on polls 4-6, then all is quiet.
+      let log = MockCallLog()
+      log.begin("auth.login")
+      var polls = 0
+      var lines: [String] = []
+      let result = await settleLive(
+        state: {
+          polls += 1
+          return min(polls, 3)
+        },
+        callLog: log,
+        pending: { 0 },
+        isUIIdle: {
+          if polls >= 5 { log.end("auth.login") }
+          return !(5...7).contains(polls)
+        },
+        quietWindow: .milliseconds(100),
+        trace: { lines.append($0) }
+      )
+      #expect(result.settled)
+      let what = lines.map { $0.split(separator: " ", maxSplits: 2).last.map(String.init) ?? $0 }
+      #expect(what == ["state changing", "calls in flight: auth.login", "UI busy", "UI let go", "quiet", "settled"], "\(lines)")
+      #expect(lines.allSatisfy { $0.hasPrefix("+") && $0.contains(" ms ") }, "\(lines)")
+    }
+
+    @Test func aStepThatDoesNotSettleSaysWhatHeldItLast() async {
+      var lines: [String] = []
+      let log = MockCallLog()
+      log.begin("visits.fetchDetail")
+      let result = await settleLive(
+        state: { 0 }, callLog: log, pending: { 0 }, quietWindow: .milliseconds(50), limit: .milliseconds(200),
+        trace: { lines.append($0) }
+      )
+      #expect(!result.settled)
+      #expect(lines.last?.hasSuffix("did not settle within 0.2 seconds; last: calls in flight: visits.fetchDetail") == true, "\(lines)")
+    }
+
     @Test func withoutAUICheckTheQuietStateIsEnough() async {
       let clock = ContinuousClock()
       let start = clock.now

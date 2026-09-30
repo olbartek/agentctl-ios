@@ -83,17 +83,27 @@
     pollInterval: Duration = .milliseconds(20),
     limit: Duration = .seconds(3),
     endlessAfter: Duration = .seconds(1),
-    stretchGap: Duration = .milliseconds(100)
+    stretchGap: Duration = .milliseconds(100),
+    trace: ((String) -> Void)? = nil
   ) async -> SettleResult {
     let realClock = ContinuousClock()
     let start = realClock.now
+    /// What held the step at the last poll, traced when it changes: `+<ms> <what>`.
+    var holding: String?
+    func note(_ what: String) {
+      guard let trace, what != holding else { return }
+      holding = what
+      trace("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms \(what)")
+    }
     var last = state()
     var quietSince = realClock.now
     var busySince: ContinuousClock.Instant?
     var idleSince: ContinuousClock.Instant?
+    var uiIdle = true
     func uiHolds() -> Bool {
       let now = realClock.now
-      if isUIIdle() {
+      uiIdle = isUIIdle()
+      if uiIdle {
         if idleSince == nil { idleSince = now }
         if let idle = idleSince, idle.duration(to: now) >= stretchGap { busySince = nil }
         return false
@@ -113,13 +123,24 @@
       // polls can be far apart on a loaded machine.
       let uiLetGo = uiHeld && !uiBusy
       uiHeld = uiBusy
+      if trace != nil {
+        let running = callLog.running
+        note(
+          next != last ? "state changing"
+            : !running.isEmpty ? "calls in flight: \(running.joined(separator: ", "))"
+            : uiBusy ? "UI busy"
+            : uiLetGo ? "UI let go" : uiIdle ? "quiet" : "quiet (UI busy past \(endlessAfter), taken as endless)"
+        )
+      }
       if next != last || callLog.inFlight > 0 || uiBusy || uiLetGo {
         last = next
         quietSince = realClock.now
       } else if quietSince.duration(to: realClock.now) >= quietWindow {
+        trace?("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms settled")
         return SettleResult(settled: true, pending: pending())
       }
     }
+    trace?("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms did not settle within \(limit); last: \(holding ?? "nothing")")
     return SettleResult(settled: false, pending: pending())
   }
 #endif

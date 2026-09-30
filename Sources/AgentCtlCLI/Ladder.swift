@@ -17,6 +17,14 @@
     var logs: URL { layout.logs }
 
     func run() async -> Int32 {
+      if ui {
+        // A bad APPCTL_PORT is a usage error (exit 2), found before the ladder spends minutes on L0–L3.
+        do {
+          _ = try BridgePort.requested(flag: nil, environment: ProcessInfo.processInfo.environment)
+        } catch {
+          return AppCommands.fail(error)
+        }
+      }
       try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
       guard build() else { return 1 }
       guard test() else { return 1 }
@@ -42,7 +50,6 @@
     /// save one screenshot.
     private func app() async -> Bool {
       let start = ContinuousClock.now
-      let port = Int(BridgeDefaults.port)
       let check = AgentCtl.runtime.appCheck
       let scenarios = root.appending(path: AgentCtl.runtime.scenariosPath)
       guard
@@ -53,9 +60,10 @@
         return false
       }
       do {
-        let (device, _) = try await AppCommands.launchApp(
+        let requested = try BridgePort.requested(flag: nil, environment: ProcessInfo.processInfo.environment)
+        let (device, port, _) = try await AppCommands.launchApp(
           root: root, seed: check.seed, simulator: simulator, latency: nil, clearSession: true, build: true,
-          port: port
+          port: requested
         )
         let script = try String(contentsOf: scenarios.appending(path: "\(scenario).appctl"), encoding: .utf8)
         let bridge = BridgeClient(port: port)

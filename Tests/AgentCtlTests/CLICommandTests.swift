@@ -19,7 +19,10 @@
       /// ArgumentParser exits 64 for its own usage errors; the contract's code for every usage error is 2.
       @Test func argumentParserUsageErrorsExitTwo() {
         AgentCtl.install(StubRuntime())
-        let usageErrors = [["run"], ["run", "--bogus", "x"], ["frobnicate"], ["app", "run", "--port", "x", "open 1"]]
+        let usageErrors = [
+          ["run"], ["run", "--bogus", "x"], ["frobnicate"], ["app", "run", "--port", "x", "open 1"],
+          ["app", "run", "--port", "0", "open 1"], ["app", "launch", "--port", "70000"], ["app", "state", "--port", "-1"],
+        ]
         for arguments in usageErrors {
           let error = Self.parseError(arguments)
           #expect(error != nil, "\(arguments) parsed")
@@ -34,11 +37,13 @@
         #expect(AgentCtl.exitStatus(for: ExitCode(3)) == 3)
       }
 
-      /// With no `--port`, the `app` commands connect where the app listens by default.
-      @Test func theAppCommandsDefaultToTheBridgesDefaultPort() throws {
+      /// With no `--port`, the `app` commands leave the choice to ``BridgePort``: `APPCTL_PORT`, the last launch, 8765.
+      @Test func theAppCommandsPortIsOptional() throws {
         AgentCtl.install(StubRuntime())
-        #expect(try BridgeOptions.parse([]).port == Int(BridgeDefaults.port))
+        #expect(try BridgeOptions.parse([]).port == nil)
         #expect(try BridgeOptions.parse(["--port", "9000"]).port == 9000)
+        #expect(try LaunchPortOptions.parse([]).port == nil)
+        #expect(try LaunchPortOptions.parse(["--port", "9000"]).port == 9000)
       }
 
       @Test func aLaunchThatNeverSettlesFailsTheRun() async {
@@ -138,12 +143,16 @@
         return directory
       }
 
-      /// Runs `body` with `APPCTL_ROOT` set to `path`, or unset, and restores it afterwards.
+      /// Runs `body` with `APPCTL_ROOT` set to `path`, or unset, and `APPCTL_PORT` unset, and restores both
+      /// afterwards: a developer's own `APPCTL_PORT` must not change which port a test's command reaches.
       static func withRepoRoot<T>(_ path: String?, _ body: () async -> T) async -> T {
         let previous = ProcessInfo.processInfo.environment["APPCTL_ROOT"]
+        let previousPort = ProcessInfo.processInfo.environment["APPCTL_PORT"]
         if let path { setenv("APPCTL_ROOT", path, 1) } else { unsetenv("APPCTL_ROOT") }
+        unsetenv("APPCTL_PORT")
         defer {
           if let previous { setenv("APPCTL_ROOT", previous, 1) } else { unsetenv("APPCTL_ROOT") }
+          if let previousPort { setenv("APPCTL_PORT", previousPort, 1) }
         }
         return await body()
       }

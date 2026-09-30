@@ -41,25 +41,36 @@
       return best
     }
 
-    /// Builds and runs the app via XcodeBuildMCP (falling back to xcodebuild + simctl), with launch arguments.
-    func buildAndRun(on device: Device, launchArguments: [String], log: URL) throws {
+    /// Builds the app via XcodeBuildMCP (falling back to xcodebuild) and installs it on `device`, booting it if
+    /// needed. ``launch(on:launchArguments:log:)`` then starts it.
+    ///
+    /// Building and launching are separate steps so the bridge's port can be picked after the build: a build takes
+    /// minutes, and a port that was free before it may not be free after it.
+    func buildAndInstall(on device: Device, log: URL) throws {
+      let app: URL
       if Shell.which("xcodebuildmcp") {
         var arguments: [String: Any] = [
           "scheme": Self.target.scheme,
           "simulatorId": device.udid,
           "extraArgs": ["-skipMacroValidation"],
-          "launchArgs": launchArguments,
         ]
         switch Self.target {
         case let .workspace(path, _): arguments["workspacePath"] = root.appending(path: path).path
         case let .project(path, _): arguments["projectPath"] = root.appending(path: path).path
         }
         let json = String(decoding: try JSONSerialization.data(withJSONObject: arguments), as: UTF8.self)
-        let status = Shell.run(["xcodebuildmcp", "simulator", "build-and-run", "--json", json], in: root, log: log)
+        let status = Shell.run(["xcodebuildmcp", "simulator", "build", "--json", json], in: root, log: log)
         let output = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
         guard status == 0, !output.contains("❌") else {
-          throw AppCtlError("build-and-run failed; log: \(log.path(percentEncoded: false))")
+          throw AppCtlError("build failed; log: \(log.path(percentEncoded: false))")
         }
+        arguments["platform"] = "iOS Simulator"
+        let pathJSON = String(decoding: try JSONSerialization.data(withJSONObject: arguments), as: UTF8.self)
+        let pathOutput = Shell.capture(["xcodebuildmcp", "simulator", "get-app-path", "--json", pathJSON], in: root)
+        guard let path = Self.appPath(fromGetAppPath: pathOutput) else {
+          throw AppCtlError("cannot find the built app in `xcodebuildmcp simulator get-app-path`: \(pathOutput)")
+        }
+        app = path
       } else {
         let derivedData = Layout(root: root).derivedData
         let status = Shell.run(
@@ -71,18 +82,33 @@
           log: log
         )
         guard status == 0 else { throw AppCtlError("xcodebuild failed; log: \(log.path(percentEncoded: false))") }
-        let app = derivedData.appending(path: "Build/Products/Debug-iphonesimulator/\(Self.target.scheme).app")
-        _ = Shell.run(["xcrun", "simctl", "boot", device.udid], in: root, log: log, append: true)
-        guard Shell.run(["xcrun", "simctl", "install", device.udid, app.path], in: root, log: log, append: true) == 0 else {
-          throw AppCtlError("simctl install failed; log: \(log.path(percentEncoded: false))")
-        }
-        try launch(on: device, launchArguments: launchArguments, log: log)
+        app = derivedData.appending(path: "Build/Products/Debug-iphonesimulator/\(Self.target.scheme).app")
       }
+      _ = Shell.run(["xcrun", "simctl", "boot", device.udid], in: root, log: log, append: true)
+      guard Shell.run(["xcrun", "simctl", "install", device.udid, app.path], in: root, log: log, append: true) == 0 else {
+        throw AppCtlError("simctl install failed; log: \(log.path(percentEncoded: false))")
+      }
+    }
+
+    /// The `.app` in `xcodebuildmcp simulator get-app-path`'s report: the line `App Path: <path>`, `~` expanded.
+    static func appPath(fromGetAppPath output: String) -> URL? {
+      let marker = "App Path: "
+      guard let line = output.split(separator: "\n").first(where: { $0.contains(marker) }),
+        let range = line.range(of: marker)
+      else { return nil }
+      let path = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
+      guard path.hasSuffix(".app") else { return nil }
+      return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+    }
+
+    /// Stops the app if it is running. A device where it is not running is not an error.
+    func terminate(on device: Device, log: URL) {
+      _ = Shell.run(["xcrun", "simctl", "terminate", device.udid, Self.bundleID], in: root, log: log)
     }
 
     /// Relaunches the installed app with launch arguments, without building.
     func launch(on device: Device, launchArguments: [String], log: URL) throws {
-      _ = Shell.run(["xcrun", "simctl", "terminate", device.udid, Self.bundleID], in: root, log: log)
+      _ = Shell.run(["xcrun", "simctl", "terminate", device.udid, Self.bundleID], in: root, log: log, append: true)
       let status = Shell.run(
         ["xcrun", "simctl", "launch", device.udid, Self.bundleID] + launchArguments,
         in: root,
@@ -153,6 +179,8 @@
       var status: Int
       var body: String
       var exitCode: Int32
+      /// `X-Appctl-App`: the bundle ID of the app that answered, if it says.
+      var app: String?
     }
 
     func send(_ method: String, _ path: String, body: String? = nil, timeout: TimeInterval = 60) async throws -> Response {
@@ -165,17 +193,18 @@
       return Response(
         status: http?.statusCode ?? 0,
         body: String(decoding: data, as: UTF8.self),
-        exitCode: Int32(http?.value(forHTTPHeaderField: "X-Appctl-Exit") ?? "") ?? 3
+        exitCode: Int32(http?.value(forHTTPHeaderField: "X-Appctl-Exit") ?? "") ?? 3,
+        app: http?.value(forHTTPHeaderField: "X-Appctl-App")
       )
     }
 
-    /// Polls `GET /snapshot` until the bridge answers, and returns the snapshot line.
-    func waitUntilReady(timeout: Duration = .seconds(60)) async throws -> String {
+    /// Polls `GET /snapshot` until the bridge answers, and returns its answer.
+    func waitUntilReady(timeout: Duration = .seconds(60)) async throws -> Response {
       let clock = ContinuousClock()
       let deadline = clock.now.advanced(by: timeout)
       while clock.now < deadline {
         if let response = try? await send("GET", "/snapshot", timeout: 2), response.status == 200 {
-          return response.body
+          return response
         }
         try await Task.sleep(for: .milliseconds(100))
       }

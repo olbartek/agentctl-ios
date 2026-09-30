@@ -44,7 +44,9 @@
       )
     }
 
-    static func serialize(_ response: BridgeResponse) -> Data {
+    /// The response on the wire. `app` is the app's bundle ID, sent as `X-Appctl-App` so a CLI can tell its own app
+    /// from another one on the same port (CONTRACT.md §8.4).
+    static func serialize(_ response: BridgeResponse, app: String? = nil) -> Data {
       let body = Data(response.body.utf8)
       let reason =
         switch response.status {
@@ -59,10 +61,11 @@
         "Content-Type: \(response.contentType)",
         "Content-Length: \(body.count)",
         "X-Appctl-Exit: \(response.exitCode)",
+        app.map { "X-Appctl-App: \($0)" },
         "Connection: close",
         "",
         "",
-      ].joined(separator: "\r\n")
+      ].compactMap { $0 }.joined(separator: "\r\n")
       return Data(head.utf8) + body
     }
   }

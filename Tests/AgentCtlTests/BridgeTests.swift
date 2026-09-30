@@ -5,6 +5,7 @@
   import AgentCtlTCA
   import ComposableArchitecture
   import Foundation
+  import Network
   import Testing
   import TinyApp
 
@@ -134,6 +135,57 @@
         #expect(response.hasPrefix("HTTP/1.1 200 OK\r\n"))
         #expect(response.contains("X-Appctl-Exit: 1\r\n"))
         #expect(response.hasSuffix("\r\n\r\nok"))
+        let named = String(
+          decoding: HTTPParser.serialize(BridgeResponse(status: 200, body: "ok", exitCode: 1), app: "com.example.app"),
+          as: UTF8.self
+        )
+        #expect(named.contains("X-Appctl-Exit: 1\r\nX-Appctl-App: com.example.app\r\nConnection: close\r\n"))
+      }
+
+      /// Every response names the app, errors included, so a CLI can tell its own app from another one on the port.
+      @Test func everyResponseNamesTheApp() async throws {
+        let server = BridgeServer(app: "com.example.tinyapp") { request in
+          BridgeResponse(status: request.path == "/snapshot" ? 200 : 404, body: "x\n", exitCode: 0)
+        }
+        let port = try await server.start(port: 0)
+        defer { server.stop() }
+        for path in ["/snapshot", "/nowhere"] {
+          var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(port)\(path)")))
+          request.httpMethod = "GET"
+          let (_, response) = try await URLSession.shared.data(for: request)
+          let http = try #require(response as? HTTPURLResponse)
+          #expect(http.value(forHTTPHeaderField: "X-Appctl-App") == "com.example.tinyapp", "\(path)")
+        }
+        let malformed = try await Self.rawRequest("GARBAGE\r\n\r\n", port: port)
+        #expect(malformed.hasPrefix("HTTP/1.1 400 Bad Request\r\n"))
+        #expect(malformed.contains("\r\nX-Appctl-App: com.example.tinyapp\r\n"))
+      }
+
+      /// The bridge does not share a port: with another listener on it, it fails to start instead of binding beside
+      /// it (CONTRACT.md §8.1). A CLI that reaches the port then reaches the other listener, which is why launches
+      /// check `X-Appctl-App`.
+      @Test func theBridgeDoesNotBindAPortSomethingElseListensOn() async throws {
+        let first = BridgeServer(app: "first") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        let port = try await first.start(port: 0)
+        defer { first.stop() }
+        let second = BridgeServer(app: "second") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        await #expect(throws: (any Error).self) { _ = try await second.start(port: port) }
+        second.stop()
+      }
+
+      /// Sends raw bytes and returns the raw response, for requests `URLSession` will not send.
+      static func rawRequest(_ bytes: String, port: UInt16) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+          let connection = NWConnection(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+          connection.start(queue: .main)
+          connection.send(content: Data(bytes.utf8), completion: .contentProcessed { _ in })
+          connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, _, error in
+            connection.cancel()
+            if let error { continuation.resume(throwing: error) } else {
+              continuation.resume(returning: String(decoding: data ?? Data(), as: UTF8.self))
+            }
+          }
+        }
       }
 
       /// A launch seed is a script, so a launch that never settles fails it before its first command — and the

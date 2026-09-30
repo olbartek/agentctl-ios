@@ -10,18 +10,25 @@
     public typealias Handler = @MainActor (BridgeRequest) async -> BridgeResponse
 
     private let handler: Handler
+    /// Sent as `X-Appctl-App` on every response.
+    private let app: String?
     private var listener: NWListener?
     private var startContinuation: CheckedContinuation<UInt16, any Error>?
     /// Requests run one after another, in arrival order.
     private var lastRequest: Task<Void, Never>?
 
-    public init(handler: @escaping Handler) {
+    /// - Parameter app: the app's bundle ID, sent on every response as `X-Appctl-App` so a CLI can tell whether the
+    ///   app on the port is the one it launched.
+    public init(app: String? = Bundle.main.bundleIdentifier, handler: @escaping Handler) {
+      self.app = app
       self.handler = handler
     }
 
     /// Starts listening and returns the bound port (pass 0 for an ephemeral port).
     public func start(port: UInt16) async throws -> UInt16 {
       let parameters = NWParameters.tcp
+      // Address reuse lets a relaunch rebind while the last run's connections are in TIME_WAIT. It never lets the
+      // bridge listen beside another listener on the port: that bind fails (CONTRACT.md §8.1).
       parameters.allowLocalEndpointReuse = true
       parameters.requiredLocalEndpoint = .hostPort(
         host: .ipv4(.loopback),
@@ -98,7 +105,7 @@
 
     private func send(_ response: BridgeResponse, on connection: NWConnection) {
       connection.send(
-        content: HTTPParser.serialize(response),
+        content: HTTPParser.serialize(response, app: app),
         completion: .contentProcessed { _ in connection.cancel() }
       )
     }

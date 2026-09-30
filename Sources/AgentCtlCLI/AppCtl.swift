@@ -181,9 +181,38 @@
     )
   }
 
+  /// `--port` for the commands that talk to a running app. Without it they use `APPCTL_PORT`, then the port the last
+  /// launch recorded in `<outputPath>/bridge.json`, then 8765.
   struct BridgeOptions: ParsableArguments {
-    @Option(help: "The port of the app's agent bridge (the app's -agent-port).")
-    var port: Int = Int(BridgeDefaults.port)
+    @Option(
+      help: ArgumentHelp(
+        "The port of the app's agent bridge. Default: \(BridgePort.environmentVariable), else the last launch's "
+          + "(\(LaunchState.relativePath)), else \(BridgeDefaults.port).",
+        valueName: "port"
+      )
+    )
+    var port: Int?
+
+    func validate() throws {
+      try BridgePort.validate(port)
+    }
+  }
+
+  /// `--port` for the commands that launch the app. Without it they use `APPCTL_PORT`, else 8765 if it is free and
+  /// the next free port above it if not; the launch records the port in `<outputPath>/bridge.json`.
+  struct LaunchPortOptions: ParsableArguments {
+    @Option(
+      help: ArgumentHelp(
+        "The port for the app's agent bridge (the app's -agent-port). Default: \(BridgePort.environmentVariable), "
+          + "else \(BridgeDefaults.port) or the next free port.",
+        valueName: "port"
+      )
+    )
+    var port: Int?
+
+    func validate() throws {
+      try BridgePort.validate(port)
+    }
   }
 
   struct AppLaunch: AsyncParsableCommand {
@@ -212,7 +241,7 @@
     @Flag(help: "Relaunch the installed app instead of building it.")
     var noBuild = false
 
-    @OptionGroup var bridge: BridgeOptions
+    @OptionGroup var bridge: LaunchPortOptions
 
     func run() async throws {
       let code = await AppCommands.launch(
@@ -279,7 +308,7 @@
     @Option(help: "Send the scenario one line at a time, this many seconds apart, so a recording can be followed.")
     var stepDelay: Double?
 
-    @OptionGroup var bridge: BridgeOptions
+    @OptionGroup var bridge: LaunchPortOptions
 
     func run() async throws {
       let options = AppTest.Options(
@@ -294,7 +323,7 @@
     static let configuration = CommandConfiguration(
       commandName: "state",
       abstract: "Print the running app's root state.",
-      discussion: "Example: \(help.invocation) app state --port \(BridgeDefaults.port)"
+      discussion: "Example: \(help.invocation) app state"
     )
 
     @OptionGroup var bridge: BridgeOptions

@@ -177,7 +177,10 @@
     static let configuration = CommandConfiguration(
       commandName: "app",
       abstract: "Launch the app on a simulator and drive it through its agent bridge.",
-      subcommands: [AppLaunch.self, AppRun.self, AppTestCommand.self, AppState.self, AppScreens.self]
+      subcommands: [
+        AppLaunch.self, AppRun.self, AppTestCommand.self, AppState.self, AppScreens.self, AppScreenshot.self,
+        AppRecord.self, AppStatusbar.self, AppInfoCommand.self,
+      ]
     )
   }
 
@@ -341,6 +344,120 @@
 
     func run() async throws {
       let code = await AppCommands.get("/screens", port: bridge.port)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  /// `--sim` for the commands that act on the simulator itself.
+  struct DeviceOptions: ParsableArguments {
+    @Option(
+      help: ArgumentHelp(
+        "Simulator name or UDID. Default: the last launch's (\(LaunchState.relativePath)), else "
+          + "\(AgentCtl.runtime.simulatorName).",
+        valueName: "sim"
+      )
+    )
+    var sim: String?
+  }
+
+  struct AppScreenshot: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "screenshot",
+      abstract: "Save a PNG of the simulator's screen.",
+      discussion: "Example: \(help.invocation) app screenshot \(AgentCtl.runtime.outputPath)/screenshots/home.png"
+    )
+
+    @Argument(help: "The .png to write; its directory is created.")
+    var file: String
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.screenshot(to: file, simulator: device.sim)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  struct AppRecord: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "record",
+      abstract: "Record the simulator's screen to an .mp4, across other commands.",
+      subcommands: [Start.self, Stop.self]
+    )
+
+    struct Start: AsyncParsableCommand {
+      static let configuration = CommandConfiguration(
+        abstract: "Start recording; the recorder keeps running after this command returns.",
+        discussion: """
+          Examples:
+            \(help.invocation) app record start \(AgentCtl.runtime.outputPath)/demo.mp4
+            \(help.invocation) app record stop
+          """
+      )
+
+      @Argument(help: "The .mp4 to write; its directory is created.")
+      var file: String
+
+      @OptionGroup var device: DeviceOptions
+
+      func run() async throws {
+        let code = DeviceCommands.recordStart(to: file, simulator: device.sim)
+        if code != 0 { throw ExitCode(code) }
+      }
+    }
+
+    struct Stop: AsyncParsableCommand {
+      static let configuration = CommandConfiguration(
+        abstract: "Stop the recording app record start began, and finish the file."
+      )
+
+      func run() async throws {
+        let code = DeviceCommands.recordStop()
+        if code != 0 { throw ExitCode(code) }
+      }
+    }
+  }
+
+  struct AppStatusbar: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "statusbar",
+      abstract: "Set a clean status bar for screenshots (9:41, full signal and battery), or reset it.",
+      subcommands: [Clean.self, Reset.self]
+    )
+
+    struct Clean: AsyncParsableCommand {
+      static let configuration = CommandConfiguration(abstract: "9:41, full signal, full battery.")
+
+      @OptionGroup var device: DeviceOptions
+
+      func run() async throws {
+        let code = DeviceCommands.statusbar(clean: true, simulator: device.sim)
+        if code != 0 { throw ExitCode(code) }
+      }
+    }
+
+    struct Reset: AsyncParsableCommand {
+      static let configuration = CommandConfiguration(abstract: "The simulator's own status bar again.")
+
+      @OptionGroup var device: DeviceOptions
+
+      func run() async throws {
+        let code = DeviceCommands.statusbar(clean: false, simulator: device.sim)
+        if code != 0 { throw ExitCode(code) }
+      }
+    }
+  }
+
+  struct AppInfoCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "info",
+      abstract: "Print the installed app's ID, version and build, and the device, as one JSON line."
+    )
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.info(simulator: device.sim)
       if code != 0 { throw ExitCode(code) }
     }
   }

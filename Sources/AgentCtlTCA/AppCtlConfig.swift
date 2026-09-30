@@ -217,6 +217,17 @@
       self.makeLive = makeLive
       self.clearSession = clearSession
     }
+
+    /// What marks the repo root: ``rootMarker``, or else ``target``'s path. The CLI walks up for it from the
+    /// working directory, `AgentScenarioChecks` from the test's source file.
+    public var resolvedRootMarker: String {
+      rootMarker ?? target.path
+    }
+
+    /// The generated command reference, exactly as the CLI's `docs` writes it to ``docsPath``.
+    public var docsMarkdown: String {
+      DocsRenderer.render(screens: screens, mockMethods: mockMethods, text: docsText)
+    }
   }
 
   /// The non-generic face of an ``AppCtlConfig``, for a CLI whose command types are static and cannot name the
@@ -290,7 +301,7 @@
 
     package var name: String { config.name }
     package var target: BuildTarget { config.target }
-    package var rootMarker: String { config.rootMarker ?? config.target.path }
+    package var rootMarker: String { config.resolvedRootMarker }
     package var bundleID: String { config.bundleID }
     package var packages: [String] { config.packages }
     package var snapshotPackages: [String] { config.snapshotPackages }

@@ -60,8 +60,9 @@ let package = Package(
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]
     ),
-    // The coverage guards a host's test target depends on. A plain `.target`, not a `.testTarget`: it has no
-    // dependency on a testing framework, so a host writes its own `@Test`/`XCTestCase` around it.
+    // The coverage guards and scenario checks a host's test target depends on. A plain `.target`, not a
+    // `.testTarget`: it has no dependency on a testing framework, so a host writes its own `@Test`/`XCTestCase`
+    // around it.
     .target(
       name: "AgentCtlTestSupport",
       dependencies: [

@@ -51,6 +51,18 @@ public struct DocsText: Sendable {
 /// Renders `docs/agent-commands.md` from data. The output depends only on its inputs, so `docs --check` can
 /// compare it byte for byte.
 public enum DocsRenderer {
+  /// The whole command reference as `docs` writes it and `docs --check` compares it: the app's screens and mock
+  /// methods plus the runtime commands (`expect`, `advance`, `mock`) every app has. The CLI and
+  /// `AgentScenarioChecks.docsCurrent` both call this, so a host's test and its `docs --check` cannot disagree.
+  public static func render(screens: [ScreenDoc], mockMethods: [MockMethod], text: DocsText) -> String {
+    render(
+      screens: screens,
+      runtimeCommands: AgentRegistry.runtimeCommands(mockExample: text.mockExample),
+      mockMethods: mockMethods,
+      text: text
+    )
+  }
+
   public static func render(
     screens: [ScreenDoc],
     runtimeCommands: [CommandDoc],

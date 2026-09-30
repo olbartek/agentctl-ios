@@ -69,10 +69,7 @@
     /// The generated command reference as it should be, rendered from the config.
     static var docsMarkdown: String {
       DocsRenderer.render(
-        screens: AgentCtl.runtime.screens,
-        runtimeCommands: AgentRegistry.runtimeCommands(mockExample: AgentCtl.runtime.docsText.mockExample),
-        mockMethods: AgentCtl.runtime.mockMethods,
-        text: AgentCtl.runtime.docsText
+        screens: AgentCtl.runtime.screens, mockMethods: AgentCtl.runtime.mockMethods, text: AgentCtl.runtime.docsText
       )
     }
 
@@ -201,15 +198,9 @@
       if let path = ProcessInfo.processInfo.environment["APPCTL_ROOT"], !path.isEmpty {
         return URL(fileURLWithPath: path)
       }
-      let marker = AgentCtl.runtime.rootMarker
-      var directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-      while directory.path != "/" {
-        if FileManager.default.fileExists(atPath: directory.appending(path: marker).path) {
-          return directory
-        }
-        directory.deleteLastPathComponent()
-      }
-      return nil
+      return RepoRoot.find(
+        marker: AgentCtl.runtime.rootMarker, from: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+      )
     }
   }
 

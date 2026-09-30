@@ -124,7 +124,7 @@
 
     /// The schemes `xcodebuild -list -json` reports for the package in `directory`.
     private static func listedSchemes(in directory: URL) -> [String] {
-      schemes(inListJSON: Shell.capture(["xcodebuild", "-list", "-json"], in: directory))
+      schemes(inListJSON: Shell.capture(["xcodebuild", "-list", "-json"], in: directory, timeout: Shell.slow))
     }
 
     /// The `schemes` of `xcodebuild -list -json`'s output: under `workspace` for a package, `project` for a project.

@@ -185,7 +185,7 @@
     /// A pid the system has since reused for something else does not count.
     static func isRunning(_ state: RecordingState) -> Bool {
       guard state.pid > 0, kill(pid_t(state.pid), 0) == 0 else { return false }
-      return Shell.capture(["ps", "-o", "command=", "-p", String(state.pid)], in: URL(fileURLWithPath: "/"))
+      return Shell.capture(["ps", "-o", "command=", "-p", String(state.pid)], in: URL(fileURLWithPath: "/"), timeout: 10)
         .contains(state.file)
     }
   }

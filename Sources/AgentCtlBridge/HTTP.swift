@@ -1,4 +1,5 @@
 #if DEBUG
+  import AgentCtlCore
   import AgentCtlTCA
   import Foundation
 
@@ -44,9 +45,11 @@
       )
     }
 
-    /// The response on the wire. `app` is the app's bundle ID, sent as `X-Appctl-App` so a CLI can tell its own app
-    /// from another one on the same port (CONTRACT.md §8.4).
-    static func serialize(_ response: BridgeResponse, app: String? = nil) -> Data {
+    /// The response on the wire. `app` is the app's bundle ID, sent as `X-Appctl-App` with `X-Appctl-Platform: ios`, so
+    /// a CLI can tell its own app from another one on the same port, the same app on Android included (CONTRACT.md §8.4).
+    static func serialize(
+      _ response: BridgeResponse, app: String? = nil, platform: String? = BridgeDefaults.platform
+    ) -> Data {
       let body = Data(response.body.utf8)
       let reason =
         switch response.status {
@@ -62,6 +65,7 @@
         "Content-Length: \(body.count)",
         "X-Appctl-Exit: \(response.exitCode)",
         app.map { "X-Appctl-App: \($0)" },
+        app.flatMap { _ in platform }.map { "X-Appctl-Platform: \($0)" },
         "Connection: close",
         "",
         "",

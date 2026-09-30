@@ -106,6 +106,82 @@
         #expect(!BridgePort.isFree(70000))
       }
 
+      /// A listener on `::1` can sit beside the bridge's `127.0.0.1` (an `adb forward` did, in the incident that added
+      /// this): the port is taken, though a bind on `127.0.0.1` would succeed.
+      @Test func aListenerOnIPv6LoopbackTakesThePort() throws {
+        let (descriptor, port) = try Self.listen(on: .ipv6)
+        defer { close(descriptor) }
+        #expect(BridgePort.Loopback.ipv4.canBind(port), "the old probe's bind would have called it free")
+        #expect(!BridgePort.isFree(Int(port)))
+      }
+
+      /// A wildcard listener that no longer accepts (its backlog is full): a connect is not refused, it hangs, and a
+      /// bind on `127.0.0.1` beside the wildcard succeeds. The port is taken, and the probe answers within seconds.
+      @Test func aListenerThatNoLongerAcceptsTakesThePort() throws {
+        let (descriptor, port) = try Self.listen(on: .ipv4, wildcard: true, backlog: 1)
+        defer { close(descriptor) }
+        var fillers: [Int32] = []
+        defer { fillers.forEach { close($0) } }
+        for _ in 0..<8 {
+          let filler = socket(AF_INET, SOCK_STREAM, 0)
+          _ = fcntl(filler, F_SETFL, fcntl(filler, F_GETFL) | O_NONBLOCK)
+          var address = sockaddr_in()
+          address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+          address.sin_family = sa_family_t(AF_INET)
+          address.sin_port = port.bigEndian
+          address.sin_addr.s_addr = inet_addr("127.0.0.1")
+          _ = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+              connect(filler, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+          }
+          fillers.append(filler)
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        #expect(!BridgePort.isFree(Int(port)))
+        #expect(start.duration(to: clock.now) < .seconds(5))
+      }
+
+      /// A BSD listener on loopback (or the wildcard address) of `family`, on a port the system picks.
+      static func listen(
+        on family: BridgePort.Loopback, wildcard: Bool = false, backlog: Int32 = 16
+      ) throws -> (Int32, UInt16) {
+        let descriptor = socket(family == .ipv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0)
+        try #require(descriptor >= 0)
+        var result: Int32
+        var port: UInt16 = 0
+        if family == .ipv4 {
+          var address = sockaddr_in()
+          address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+          address.sin_family = sa_family_t(AF_INET)
+          address.sin_addr.s_addr = wildcard ? INADDR_ANY : inet_addr("127.0.0.1")
+          var size = socklen_t(MemoryLayout<sockaddr_in>.size)
+          result = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+              bind(descriptor, $0, size) == 0 && Darwin.listen(descriptor, backlog) == 0
+                && getsockname(descriptor, $0, &size) == 0 ? 0 : -1
+            }
+          }
+          port = UInt16(bigEndian: address.sin_port)
+        } else {
+          var address = sockaddr_in6()
+          address.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+          address.sin6_family = sa_family_t(AF_INET6)
+          address.sin6_addr = in6addr_loopback
+          var size = socklen_t(MemoryLayout<sockaddr_in6>.size)
+          result = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+              bind(descriptor, $0, size) == 0 && Darwin.listen(descriptor, backlog) == 0
+                && getsockname(descriptor, $0, &size) == 0 ? 0 : -1
+            }
+          }
+          port = UInt16(bigEndian: address.sin6_port)
+        }
+        try #require(result == 0 && port != 0)
+        return (descriptor, port)
+      }
+
       /// End to end: with no `--port`, `app state` reaches the bridge the launch state names.
       @Test func theAppCommandsReachTheBridgeTheLastLaunchRecorded() async throws {
         AgentCtl.install(StubRuntime())
@@ -147,8 +223,15 @@
         AgentCtl.install(StubRuntime())
         let root = try CLICommandTests.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        for (app, expected) in [("com.example.other", Int32(3)), (nil, 0), ("com.example.stub", 0)] as [(String?, Int32)] {
-          let server = BridgeServer(app: app) { _ in BridgeResponse(status: 200, body: "state\n", exitCode: 0) }
+        // The same app on Android is another app; a header the answer lacks is not compared.
+        let answers: [(String?, String?, Int32)] = [
+          ("com.example.other", "ios", 3), ("com.example.stub", "android", 3), (nil, nil, 0), ("com.example.stub", nil, 0),
+          ("com.example.stub", "ios", 0),
+        ]
+        for (app, platform, expected) in answers {
+          let server = BridgeServer(app: app, platform: platform) { _ in
+            BridgeResponse(status: 200, body: "state\n", exitCode: 0)
+          }
           let port = Int(try await server.start(port: 0))
           var state = Self.state
           state.port = port
@@ -156,13 +239,15 @@
           let fromFile = await CLICommandTests.withRepoRoot(root.path) { await AppCommands.get("/state", port: nil) }
           let fromFlag = await CLICommandTests.withRepoRoot(root.path) { await AppCommands.get("/state", port: port) }
           server.stop()
-          #expect(fromFile == expected, "\(app ?? "no header")")
-          #expect(fromFlag == 0, "\(app ?? "no header")")
+          #expect(fromFile == expected, "\(app ?? "no app") (\(platform ?? "no platform"))")
+          #expect(fromFlag == 0, "\(app ?? "no app") (\(platform ?? "no platform"))")
         }
         #expect(
-          Message.anotherApp(port: 8766, answeredAs: "com.example.other", recorded: "com.example.stub")
-            == "the app's agent bridge on 127.0.0.1:8766 answers as com.example.other, not com.example.stub from "
-            + ".xctl/bridge.json, which is stale: relaunch with xctl app launch"
+          Message.anotherApp(
+            port: 8766, answeredAs: BridgeIdentity(app: "com.example.stub", platform: "android"), recorded: Self.state
+          )
+            == "the app's agent bridge on 127.0.0.1:8766 answers as com.example.stub (android), not com.example.stub "
+            + "(ios) from .xctl/bridge.json, which is stale: relaunch with xctl app launch"
         )
       }
 
@@ -174,15 +259,28 @@
             + "pass --port or set APPCTL_PORT"
         )
         #expect(
-          Message.anotherApp(port: 8765, answeredAs: "com.example.other")
-            == "the app's agent bridge on 127.0.0.1:8765 answers as com.example.other, not com.example.stub: "
-            + "another app holds that port; pass --port or set APPCTL_PORT"
+          Message.anotherApp(port: 8765, answeredAs: BridgeIdentity(app: "com.example.stub", platform: "android"))
+            == "the app's agent bridge on 127.0.0.1:8765 answers as com.example.stub (android), not com.example.stub "
+            + "(ios): another app holds that port; pass --port or set APPCTL_PORT"
         )
         #expect(
-          Message.anotherApp(port: 8765, answeredAs: nil)
-            == "the app's agent bridge on 127.0.0.1:8765 answers as an app without X-Appctl-App, not com.example.stub: "
-            + "another app holds that port; pass --port or set APPCTL_PORT (or the installed app predates X-Appctl-App: "
-            + "launch without --no-build)"
+          Message.anotherApp(port: 8765, answeredAs: BridgeIdentity(app: nil, platform: nil))
+            == "the app's agent bridge on 127.0.0.1:8765 answers as an app without X-Appctl-App (no X-Appctl-Platform), "
+            + "not com.example.stub (ios): another app holds that port; pass --port or set APPCTL_PORT (or the installed "
+            + "app predates X-Appctl-App: launch without --no-build)"
+        )
+        #expect(
+          Message.anotherApp(port: 8765, answeredAs: BridgeIdentity(app: "com.example.stub", platform: nil))
+            .hasSuffix("(or the installed app predates X-Appctl-Platform: launch without --no-build)")
+        )
+        // At launch every header must be there and match: the same app on Android, or without a platform, is not ours.
+        #expect(BridgeIdentity(app: "com.example.stub", platform: "ios").isOurs)
+        #expect(!BridgeIdentity(app: "com.example.stub", platform: "android").isOurs)
+        #expect(!BridgeIdentity(app: "com.example.stub", platform: nil).isOurs)
+        #expect(
+          Message.anotherAppAnswered(port: 8766, answeredAs: BridgeIdentity(app: "com.example.stub", platform: "android"))
+            == "the app's agent bridge on 127.0.0.1:8766 answers as com.example.stub (android), not com.example.stub "
+            + "(ios): another app took the port during the run"
         )
       }
 

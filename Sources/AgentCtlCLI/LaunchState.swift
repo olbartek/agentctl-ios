@@ -28,7 +28,7 @@
       Layout(root: root).output.appending(path: fileName)
     }
 
-    init(platform: String = "ios", device: String, port: Int, appId: String, launchedAt: Date) {
+    init(platform: String = BridgeDefaults.platform, device: String, port: Int, appId: String, launchedAt: Date) {
       self.platform = platform
       self.device = device
       self.port = port
@@ -119,33 +119,83 @@
       return port
     }
 
-    /// Whether nothing listens on `127.0.0.1:port`, so the app's bridge can take it.
+    /// Whether nothing holds the port on `127.0.0.1` or `::1`, so the app's bridge can take it and a client reaches
+    /// only the bridge (CONTRACT.md §8.6): a connect is refused on both, and a bind succeeds on both.
     ///
-    /// The connect finds a listener on any address that reaches loopback (`adb` forwarding the port, a second app).
-    /// The bind then fails only for what the bridge's own bind would fail on: it uses address reuse, as the bridge
-    /// does, so the last run's connections in TIME_WAIT do not count as taken.
+    /// The connects find a listener on any address that reaches loopback (`adb` forwarding the port, a second app),
+    /// and one on `::1`, which can sit beside the bridge's on `127.0.0.1`. The binds fail only for what the bridge's
+    /// own bind would fail on: they use address reuse, as the bridge does, so the last run's connections in TIME_WAIT
+    /// do not count as taken.
     static func isFree(_ port: Int) -> Bool {
       guard let port = UInt16(exactly: port) else { return false }
-      var address = sockaddr_in()
-      address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-      address.sin_family = sa_family_t(AF_INET)
-      address.sin_port = port.bigEndian
-      address.sin_addr.s_addr = inet_addr("127.0.0.1")
+      let families = [Loopback.ipv4, .ipv6]
+      return families.allSatisfy { !$0.answers(port) } && families.allSatisfy { $0.canBind(port) }
+    }
 
-      func withSocket(_ body: (Int32, UnsafePointer<sockaddr>, socklen_t) -> Int32) -> Int32 {
-        let descriptor = socket(AF_INET, SOCK_STREAM, 0)
-        guard descriptor >= 0 else { return -1 }
+    /// `127.0.0.1` or `::1`: the bridge listens on the first only, but another process can listen on the second
+    /// beside it, and a client that says `localhost` may reach either.
+    enum Loopback {
+      case ipv4, ipv6
+
+      /// Whether something takes a connection on this port: it accepts, or it is not refused within a second (a
+      /// listener with a full backlog, which no longer accepts). A family this Mac does not have answers nothing.
+      func answers(_ port: UInt16) -> Bool {
+        withSocket(port) { descriptor, address, length in
+          _ = fcntl(descriptor, F_SETFL, fcntl(descriptor, F_GETFL) | O_NONBLOCK)
+          if connect(descriptor, address, length) == 0 { return true }
+          guard errno == EINPROGRESS else { return false }
+          var poller = pollfd(fd: descriptor, events: Int16(POLLOUT), revents: 0)
+          guard poll(&poller, 1, 1000) > 0 else { return true }
+          var error: Int32 = 0
+          var size = socklen_t(MemoryLayout<Int32>.size)
+          getsockopt(descriptor, SOL_SOCKET, SO_ERROR, &error, &size)
+          return error == 0
+        } ?? false
+      }
+
+      /// Whether this port can be bound here, as a relaunched bridge would (address reuse on, so the last run's
+      /// connections in TIME_WAIT do not count). A family this Mac does not have is no obstacle.
+      func canBind(_ port: UInt16) -> Bool {
+        withSocket(port) { descriptor, address, length in
+          var reuse: Int32 = 1
+          setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+          return bind(descriptor, address, length) == 0 || errno == EADDRNOTAVAIL
+        } ?? true
+      }
+
+      /// Runs `body` with a fresh TCP socket of this family and this family's loopback address on `port`; `nil`
+      /// when the family is not available.
+      private func withSocket(
+        _ port: UInt16, _ body: (Int32, UnsafePointer<sockaddr>, socklen_t) -> Bool
+      ) -> Bool? {
+        let descriptor = socket(self == .ipv4 ? AF_INET : AF_INET6, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return nil }
         defer { close(descriptor) }
-        var reuse: Int32 = 1
-        setsockopt(descriptor, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
-        return withUnsafePointer(to: &address) { pointer in
-          pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-            body(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+        switch self {
+        case .ipv4:
+          var address = sockaddr_in()
+          address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+          address.sin_family = sa_family_t(AF_INET)
+          address.sin_port = port.bigEndian
+          address.sin_addr.s_addr = inet_addr("127.0.0.1")
+          return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+              body(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+          }
+        case .ipv6:
+          var address = sockaddr_in6()
+          address.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+          address.sin6_family = sa_family_t(AF_INET6)
+          address.sin6_port = port.bigEndian
+          address.sin6_addr = in6addr_loopback
+          return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+              body(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in6>.size))
+            }
           }
         }
       }
-      if withSocket({ connect($0, $1, $2) }) == 0 { return false }
-      return withSocket({ bind($0, $1, $2) }) == 0
     }
   }
 

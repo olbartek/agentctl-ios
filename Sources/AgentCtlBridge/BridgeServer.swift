@@ -1,4 +1,5 @@
 #if DEBUG
+  import AgentCtlCore
   import AgentCtlTCA
   import Foundation
   import Network
@@ -12,6 +13,7 @@
     private let handler: Handler
     /// Sent as `X-Appctl-App` on every response.
     private let app: String?
+    private let platform: String?
     private var listener: NWListener?
     private var startContinuation: CheckedContinuation<UInt16, any Error>?
     /// Requests run one after another, in arrival order.
@@ -19,8 +21,13 @@
 
     /// - Parameter app: the app's bundle ID, sent on every response as `X-Appctl-App` so a CLI can tell whether the
     ///   app on the port is the one it launched.
-    public init(app: String? = Bundle.main.bundleIdentifier, handler: @escaping Handler) {
+    /// - Parameter platform: sent as `X-Appctl-Platform` beside the app; tests name another platform, or none, to play
+    ///   the same app on Android or one built before the header.
+    public init(
+      app: String? = Bundle.main.bundleIdentifier, platform: String? = BridgeDefaults.platform, handler: @escaping Handler
+    ) {
       self.app = app
+      self.platform = platform
       self.handler = handler
     }
 
@@ -105,7 +112,7 @@
 
     private func send(_ response: BridgeResponse, on connection: NWConnection) {
       connection.send(
-        content: HTTPParser.serialize(response, app: app),
+        content: HTTPParser.serialize(response, app: app, platform: platform),
         completion: .contentProcessed { _ in connection.cancel() }
       )
     }

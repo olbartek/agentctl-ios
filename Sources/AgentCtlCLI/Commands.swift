@@ -223,10 +223,11 @@
 
     /// A launch whose bridge answered as another app, or as none: another process holds the port.
     /// Without the header, the app may also be an installed one from before it (`--no-build`).
-    static func anotherApp(port: Int, answeredAs app: String?) -> String {
-      "the app's agent bridge on 127.0.0.1:\(port) answers as \(app ?? "an app without X-Appctl-App"), not "
-        + "\(Simulator.bundleID): another app holds that port; pass --port or set \(BridgePort.environmentVariable)"
-        + (app == nil ? " (or the installed app predates X-Appctl-App: launch without --no-build)" : "")
+    static func anotherApp(port: Int, answeredAs answer: BridgeIdentity) -> String {
+      let missing = answer.app == nil ? "X-Appctl-App" : answer.platform == nil ? "X-Appctl-Platform" : nil
+      return "the app's agent bridge on 127.0.0.1:\(port) answers as \(answer), not \(BridgeIdentity.ours): another "
+        + "app holds that port; pass --port or set \(BridgePort.environmentVariable)"
+        + (missing.map { " (or the installed app predates \($0): launch without --no-build)" } ?? "")
     }
 
     /// A launch whose bridge never answered while something else listens on its port.
@@ -236,9 +237,16 @@
     }
 
     /// A port from the launch state that another app now answers on.
-    static func anotherApp(port: Int, answeredAs app: String, recorded: String) -> String {
-      "the app's agent bridge on 127.0.0.1:\(port) answers as \(app), not \(recorded) from "
-        + "\(LaunchState.relativePath), which is stale: relaunch with \(help.invocation) app launch"
+    static func anotherApp(port: Int, answeredAs answer: BridgeIdentity, recorded state: LaunchState) -> String {
+      "the app's agent bridge on 127.0.0.1:\(port) answers as \(answer), not "
+        + "\(BridgeIdentity(app: state.appId, platform: state.platform)) from \(LaunchState.relativePath), which is stale: "
+        + "relaunch with \(help.invocation) app launch"
+    }
+
+    /// A scenario's response that another app sent: its output is not the app's, and the scenario did not run.
+    static func anotherAppAnswered(port: Int, answeredAs answer: BridgeIdentity) -> String {
+      "the app's agent bridge on 127.0.0.1:\(port) answers as \(answer), not \(BridgeIdentity.ours): another app "
+        + "took the port during the run"
     }
 
     static func recordingRunning(_ state: RecordingState) -> String {

@@ -139,7 +139,9 @@
           decoding: HTTPParser.serialize(BridgeResponse(status: 200, body: "ok", exitCode: 1), app: "com.example.app"),
           as: UTF8.self
         )
-        #expect(named.contains("X-Appctl-Exit: 1\r\nX-Appctl-App: com.example.app\r\nConnection: close\r\n"))
+        #expect(
+          named.contains("X-Appctl-Exit: 1\r\nX-Appctl-App: com.example.app\r\nX-Appctl-Platform: ios\r\nConnection: close\r\n")
+        )
       }
 
       /// Every response names the app, errors included, so a CLI can tell its own app from another one on the port.
@@ -155,10 +157,11 @@
           let (_, response) = try await URLSession.shared.data(for: request)
           let http = try #require(response as? HTTPURLResponse)
           #expect(http.value(forHTTPHeaderField: "X-Appctl-App") == "com.example.tinyapp", "\(path)")
+          #expect(http.value(forHTTPHeaderField: "X-Appctl-Platform") == "ios", "\(path)")
         }
         let malformed = try await Self.rawRequest("GARBAGE\r\n\r\n", port: port)
         #expect(malformed.hasPrefix("HTTP/1.1 400 Bad Request\r\n"))
-        #expect(malformed.contains("\r\nX-Appctl-App: com.example.tinyapp\r\n"))
+        #expect(malformed.contains("\r\nX-Appctl-App: com.example.tinyapp\r\nX-Appctl-Platform: ios\r\n"))
       }
 
       /// The bridge does not share a port: with another listener on it, it fails to start instead of binding beside

@@ -65,12 +65,18 @@ extension AgentCtlSuite {
     @Test func anEndlessAnimationStopsHoldingAfterASecond() async {
       let clock = ContinuousClock()
       let start = clock.now
+      var polls = 0
       let result = await settleLive(
         state: { 0 },
         callLog: MockCallLog(),
         pending: { 0 },
-        // Idle 20 ms in every 60: gaps far shorter than a stretch's 100 ms, as between a spinner's frames.
-        isUIIdle: { start.duration(to: clock.now).components.attoseconds / 1_000_000_000_000_000 % 60 < 20 },
+        // Idle for one poll in three, as between a spinner's frames. Counted in polls, not time: a time pattern
+        // aliases with polls that a loaded machine spaces out, and every poll can land in an idle gap. A lone idle
+        // poll never ends a stretch, however far apart the polls are.
+        isUIIdle: {
+          polls += 1
+          return polls % 3 == 0
+        },
         quietWindow: .milliseconds(100)
       )
       let elapsed = start.duration(to: clock.now)

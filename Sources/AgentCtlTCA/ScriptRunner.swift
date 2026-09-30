@@ -224,7 +224,9 @@
       }
       let action: Root.Action
       do {
-        action = try command.makeAction(line.argument.map(ArgumentText.unquoted))
+        action = try inAppContext { () throws(AgentCommandError) -> Root.Action in
+          try command.makeAction(line.argument.map(ArgumentText.unquoted))
+        }
       } catch {
         return fail(line, status: .failed, "\(command.usage): \(error.message)")
       }
@@ -239,8 +241,16 @@
 
     /// The active screen, computed in the store's dependency context (see ``RunnerEnvironment/dependencies``).
     private func activeScreen() -> ActiveScreen<Root.Action> {
-      guard let dependencies = environment.dependencies else { return Root.activeScreen(state) }
-      return withDependencies { $0 = dependencies } operation: { Root.activeScreen(state) }
+      inAppContext { Root.activeScreen(state) }
+    }
+
+    /// Runs `operation` in the store's dependency context, as reducers see it: a screen's summary, a command's
+    /// disabled check and its argument parsing all read the app's `\.date`, not the ambient one.
+    private func inAppContext<T, E: Error>(_ operation: () throws(E) -> T) throws(E) -> T {
+      guard let dependencies = environment.dependencies else { return try operation() }
+      // Through a Result, so the operation's typed error comes out typed.
+      let result = withDependencies { $0 = dependencies } operation: { Result<T, E> { () throws(E) -> T in try operation() } }
+      return try result.get()
     }
 
     /// Settles; headlessly, also sends `onAppear` for each newly active screen until the screen is stable.

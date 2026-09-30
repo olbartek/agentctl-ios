@@ -416,9 +416,9 @@ starting state, always produces byte-identical step output.** Concretely:
 - **A fixed notion of "now."** Whatever the app reads as the current date/time starts at one constant
   value (the reference implementation uses 2026-01-01 09:00 UTC) and moves only with `advance`: after
   `advance 90s` it reads 90 seconds later. The exact starting value is an application choice; that
-  it never varies between runs is the requirement. Everything a step prints is computed where the
-  app's reducers run: a screen's summary that applies a date rule reads the same "now" as the
-  reducer, not the host machine's clock.
+  it never varies between runs is the requirement. Everything a step prints, and every command's
+  argument, is computed in the store's root dependency context: a screen's summary that applies a
+  date rule reads the same "now" as the reducers, not the host machine's clock.
 - **Deterministic identifiers and randomness.** Anything the app generates that would otherwise be
   random (record IDs, session identifiers, a shuffled order) must instead come from a deterministic
   source — an incrementing sequence, a seeded generator — so two runs of the same script generate

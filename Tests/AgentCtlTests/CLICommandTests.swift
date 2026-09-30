@@ -34,11 +34,13 @@
         #expect(AgentCtl.exitStatus(for: ExitCode(3)) == 3)
       }
 
-      /// With no `--port`, the `app` commands connect where the app listens by default.
-      @Test func theAppCommandsDefaultToTheBridgesDefaultPort() throws {
+      /// With no `--port`, the `app` commands leave the choice to ``BridgePort``: `APPCTL_PORT`, the last launch, 8765.
+      @Test func theAppCommandsPortIsOptional() throws {
         AgentCtl.install(StubRuntime())
-        #expect(try BridgeOptions.parse([]).port == Int(BridgeDefaults.port))
+        #expect(try BridgeOptions.parse([]).port == nil)
         #expect(try BridgeOptions.parse(["--port", "9000"]).port == 9000)
+        #expect(try LaunchPortOptions.parse([]).port == nil)
+        #expect(try LaunchPortOptions.parse(["--port", "9000"]).port == 9000)
       }
 
       @Test func aLaunchThatNeverSettlesFailsTheRun() async {

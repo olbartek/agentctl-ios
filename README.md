@@ -444,7 +444,7 @@ exit=1
 | `test [files…]` | Run `*.appctl` scenario files (by default all of `scenariosPath`), one PASS/FAIL line each. Finding no scenario files to run is a failure, not "0 passed". |
 | `snapshots` | The view snapshot tests, on an iOS simulator; `--record` re-records the reference images. |
 | `check` | The verification ladder below; `--ui` adds its last two rungs. |
-| `app launch` / `app run` / `app state` / `app screens` | The same commands, against the real app on a simulator, through the in-app bridge. |
+| `app launch` / `app run` / `app state` / `app screens` | The same commands, against the real app on a simulator, through the in-app bridge. `app launch` takes port 8765, or the next free one if something else holds it, and records it in `<outputPath>/bridge.json`; the other `app` commands read it from there. `--port` or `APPCTL_PORT` names one instead. |
 | `app test [files…]` | The scenario files, in the real app on a simulator: one fresh launch each, one PASS/FAIL/SKIP line each. `--record <mp4>` records the run, `--step-delay <s>` sends a line at a time so the recording can be followed. |
 
 Exit codes are part of the contract: `0` everything ran and every `expect` passed; `1` a command or an `expect`
@@ -598,8 +598,8 @@ struct MyApp: App {
 ```
 
 A Release build never names `AgentCtlBridge` or the config's target. `AgentLaunch` reads the launch arguments the
-CLI's `app` subcommands pass: `-agent-port <n>` (default `BridgeDefaults.port`, 8765, which is also where the CLI
-connects), `-appctl-seed "<script>"` (commands applied before the first real frame, so the app opens already in
+CLI's `app` subcommands pass: `-agent-port <n>` (default `BridgeDefaults.port`, 8765; the CLI passes the free port it
+picked and records it in `<outputPath>/bridge.json`, CONTRACT.md §8.6), `-appctl-seed "<script>"` (commands applied before the first real frame, so the app opens already in
 that state), `-mock-latency <ms>` and `-clear-session`. `start()` applies the seed before it starts listening, so
 the bridge's first answer means the app is ready. A seed is a script and fails like one — at its first failing
 step, or at a `(launch)` that did not settle — and the app logs `AgentCtlBridge: seed applied` or

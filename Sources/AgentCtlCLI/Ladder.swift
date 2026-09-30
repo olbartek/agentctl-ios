@@ -42,7 +42,6 @@
     /// save one screenshot.
     private func app() async -> Bool {
       let start = ContinuousClock.now
-      let port = Int(BridgeDefaults.port)
       let check = AgentCtl.runtime.appCheck
       let scenarios = root.appending(path: AgentCtl.runtime.scenariosPath)
       guard
@@ -53,9 +52,10 @@
         return false
       }
       do {
-        let (device, _) = try await AppCommands.launchApp(
+        let requested = try BridgePort.requested(flag: nil, environment: ProcessInfo.processInfo.environment)
+        let (device, port, _) = try await AppCommands.launchApp(
           root: root, seed: check.seed, simulator: simulator, latency: nil, clearSession: true, build: true,
-          port: port
+          port: requested
         )
         let script = try String(contentsOf: scenarios.appending(path: "\(scenario).appctl"), encoding: .utf8)
         let bridge = BridgeClient(port: port)

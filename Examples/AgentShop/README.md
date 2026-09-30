@@ -36,8 +36,8 @@ cd Examples/AgentShop
 ./appctl test scenarios/shop-checkout-happy-path.appctl
 
 # 2. The real app on a simulator, driven through its DEBUG-only agent bridge.
-./appctl app launch --clear-session --latency 0 --port 8799
-./appctl app run --port 8799 "$(cat scenarios/shop-checkout-happy-path.appctl)"
+./appctl app launch --clear-session --latency 0
+./appctl app run "$(cat scenarios/shop-checkout-happy-path.appctl)"
 
 # 3. The XCUITest generated from it: taps and typing through the real UI.
 xcodebuild test -project App/AgentShop.xcodeproj -scheme AgentShop \
@@ -45,7 +45,8 @@ xcodebuild test -project App/AgentShop.xcodeproj -scheme AgentShop \
   -only-testing:AgentShopUITests/ShopUITests/test_checkout_happy_path
 ```
 
-(`--port 8799`: the bridge's default, 8765, is also what `adb` forwards for Android work; any free port works.)
+(`app launch` takes port 8765, or the next free one when something else holds it, such as `adb` forwarding it for
+Android work, and records it in `.appctl/bridge.json`, where `app run` finds it.)
 
 ### How the UI tests are generated
 

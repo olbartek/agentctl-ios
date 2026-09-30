@@ -11,7 +11,8 @@
       var simulator: String
       var latency: Int?
       var build: Bool
-      var port: Int
+      /// `--port` or `APPCTL_PORT`; `nil` lets each launch pick a free port.
+      var port: Int?
       /// Record the whole run to this `.mp4`, with a chapters file next to it.
       var record: String?
       /// Send the scenario one line at a time, this many seconds apart, so a recording can be followed.
@@ -24,12 +25,13 @@
       guard let root = Repo.root(), let files = Commands.scenarioFiles(paths) else {
         return RunStatus.internalError.rawValue
       }
+      var options = options
       let device: Simulator.Device
       do {
+        options.port = try BridgePort.requested(flag: options.port, environment: ProcessInfo.processInfo.environment)
         device = try Simulator(root: root).resolve(options.simulator)
       } catch {
-        printError("\(error)")
-        return RunStatus.internalError.rawValue
+        return AppCommands.fail(error)
       }
       var recording: Recording?
       if let path = options.record {
@@ -87,15 +89,16 @@
       } catch {
         return (Result(name: name, outcome: .failed(line: error.line, text: "parse error: \(error.description)")), false)
       }
+      let port: Int
       do {
-        _ = try await AppCommands.launchApp(
+        port = try await AppCommands.launchApp(
           root: root, seed: nil, simulator: device.udid, latency: options.latency, clearSession: true, build: build,
           port: options.port
-        )
+        ).port
       } catch {
         return (Result(name: name, outcome: .broken("launch failed: \(error)")), false)
       }
-      let client = BridgeClient(port: options.port)
+      let client = BridgeClient(port: port)
       // One request for the script, or one per line: the app keeps one runner across requests, so `expect` still
       // sees the calls of the step before it.
       let requests = options.stepDelay == nil ? [source] : lines.map(\.text)
@@ -110,7 +113,7 @@
           body += response.body
           exitCode = response.exitCode
         } catch {
-          return (Result(name: name, outcome: .broken(Message.bridgeUnreachable(port: options.port, error: error))), true)
+          return (Result(name: name, outcome: .broken(Message.bridgeUnreachable(port: port, error: error))), true)
         }
         if exitCode != 0 { break }
       }

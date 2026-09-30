@@ -189,6 +189,15 @@
     /// `$APPCTL_ROOT` (set by the wrapper), or the nearest ancestor of the working directory containing the
     /// config's root marker — by default its build target (the `.xcworkspace` or `.xcodeproj`).
     static func root() -> URL? {
+      guard let root = find() else {
+        printError("cannot find the repo root (no \(AgentCtl.runtime.rootMarker) above \(FileManager.default.currentDirectoryPath))")
+        return nil
+      }
+      return root
+    }
+
+    /// ``root()`` without the error message, for a command that also works outside the repo.
+    static func find() -> URL? {
       if let path = ProcessInfo.processInfo.environment["APPCTL_ROOT"], !path.isEmpty {
         return URL(fileURLWithPath: path)
       }
@@ -200,7 +209,6 @@
         }
         directory.deleteLastPathComponent()
       }
-      printError("cannot find the repo root (no \(marker) above \(FileManager.default.currentDirectoryPath))")
       return nil
     }
   }
@@ -211,6 +219,40 @@
     static func bridgeUnreachable(port: Int, error: any Error) -> String {
       "cannot reach the app's agent bridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): "
         + "\(error)"
+    }
+
+    /// ``bridgeUnreachable(port:error:)``, saying where the port came from when the last launch recorded it: that
+    /// app may have quit since.
+    static func bridgeUnreachable(port: Int, source: BridgePort.Source, error: any Error) -> String {
+      guard case let .launchState(state) = source else { return bridgeUnreachable(port: port, error: error) }
+      return bridgeUnreachable(port: port, error: error)
+        + "; the port is from \(LaunchState.relativePath) (launched \(state.launchedAt) on \(state.device)), "
+        + "which is stale once that app has quit: relaunch with \(help.invocation) app launch"
+    }
+
+    /// A launch whose bridge answered as another app, or as none: another process holds the port.
+    static func anotherApp(port: Int, answeredAs app: String?) -> String {
+      "the app's agent bridge on 127.0.0.1:\(port) answers as \(app ?? "an app without X-Appctl-App"), not "
+        + "\(Simulator.bundleID): another app holds that port; pass --port or set \(BridgePort.environmentVariable)"
+    }
+
+    /// A port from the launch state that another app now answers on.
+    static func anotherApp(port: Int, answeredAs app: String, recorded: String) -> String {
+      "the app's agent bridge on 127.0.0.1:\(port) answers as \(app), not \(recorded) from "
+        + "\(LaunchState.relativePath), which is stale: relaunch with \(help.invocation) app launch"
+    }
+
+    static func badPortVariable(_ value: String) -> String {
+      "\(BridgePort.environmentVariable) is not a port: '\(value)' (expected 1-65535)"
+    }
+
+    static var noFreePort: String {
+      "no free port for the app's agent bridge in \(BridgePort.scanned.lowerBound)-\(BridgePort.scanned.upperBound): "
+        + "pass --port or set \(BridgePort.environmentVariable)"
+    }
+
+    static func unreadableLaunchState(error: any Error) -> String {
+      "cannot read \(LaunchState.relativePath): \(error); relaunch with \(help.invocation) app launch, or pass --port"
     }
 
     /// `test` and L2 with nothing to run. Zero scenarios passing is not a pass.

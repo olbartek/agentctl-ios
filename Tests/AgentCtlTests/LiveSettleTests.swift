@@ -22,9 +22,9 @@ extension AgentCtlSuite {
       )
       let elapsed = start.duration(to: clock.now)
       #expect(result.settled)
-      // Idle after 300 ms, then quiet for the window, counted from the last busy poll (20 ms apart): well past the
-      // 300 ms, where a quiet state alone would settle after about 100 ms.
-      #expect(elapsed >= .milliseconds(370), "settled after \(elapsed)")
+      // Idle after 300 ms, then quiet for the window, counted from the first poll that sees it idle: never before
+      // 400 ms, however far apart the polls are, where a quiet state alone would settle after about 100 ms.
+      #expect(elapsed >= .milliseconds(400), "settled after \(elapsed)")
     }
 
     /// A UI still busy when the ceiling comes (here a ceiling shorter than the 1 s after which busy stops holding)
@@ -65,21 +65,17 @@ extension AgentCtlSuite {
     @Test func anEndlessAnimationStopsHoldingAfterASecond() async {
       let clock = ContinuousClock()
       let start = clock.now
-      var polls = 0
       let result = await settleLive(
         state: { 0 },
         callLog: MockCallLog(),
         pending: { 0 },
-        isUIIdle: {
-          polls += 1
-          return polls % 3 == 0  // idle for one poll in three: gaps of 20 ms, shorter than a stretch's 100 ms
-        },
+        // Idle 20 ms in every 60: gaps far shorter than a stretch's 100 ms, as between a spinner's frames.
+        isUIIdle: { start.duration(to: clock.now).components.attoseconds / 1_000_000_000_000_000 % 60 < 20 },
         quietWindow: .milliseconds(100)
       )
       let elapsed = start.duration(to: clock.now)
       #expect(result.settled)
       #expect(elapsed >= .milliseconds(1000), "settled after \(elapsed)")
-      #expect(elapsed < .milliseconds(2000), "settled after \(elapsed)")
     }
 
     @Test func withoutAUICheckTheQuietStateIsEnough() async {

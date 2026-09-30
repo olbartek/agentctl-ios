@@ -103,12 +103,17 @@
       busySince = since
       return since.duration(to: now) < endlessAfter
     }
+    var uiHeld = false
     while start.duration(to: realClock.now) < limit {
       try? await realClock.sleep(for: pollInterval)
       let next = state()
       // Every poll, so a busy stretch's start and its idle gaps are seen while the state is still changing too.
       let uiBusy = uiHolds()
-      if next != last || callLog.inFlight > 0 || uiBusy {
+      // The quiet moment starts at the first poll that sees the UI let go, not at the last one that saw it busy:
+      // polls can be far apart on a loaded machine.
+      let uiLetGo = uiHeld && !uiBusy
+      uiHeld = uiBusy
+      if next != last || callLog.inFlight > 0 || uiBusy || uiLetGo {
         last = next
         quietSince = realClock.now
       } else if quietSince.duration(to: realClock.now) >= quietWindow {

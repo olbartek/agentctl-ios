@@ -445,6 +445,7 @@ exit=1
 | `snapshots` | The view snapshot tests, on an iOS simulator; `--record` re-records the reference images. |
 | `check` | The verification ladder below; `--ui` adds its last two rungs. |
 | `app launch` / `app run` / `app state` / `app screens` | The same commands, against the real app on a simulator, through the in-app bridge. `app launch` takes port 8765, or the next free one if something else holds it, and records it in `<outputPath>/bridge.json`; the other `app` commands read it from there. `--port` or `APPCTL_PORT` names one instead. |
+| `app screenshot <png>` / `app record start <mp4>` / `app record stop` / `app statusbar clean\|reset` / `app info` | The simulator itself, for demos: a screenshot; a recording that runs across other commands until `stop` (only the recorder `start` began is stopped); a 9:41 status bar with full signal and battery, or the simulator's own; the installed app's ID, version and build as one JSON line. Each acts on `--sim`, else the last launch's simulator (`bridge.json`), else the config's. |
 | `app test [files…]` | The scenario files, in the real app on a simulator: one fresh launch each, one PASS/FAIL/SKIP line each. `--record <mp4>` records the run, `--step-delay <s>` sends a line at a time so the recording can be followed. |
 
 Exit codes are part of the contract: `0` everything ran and every `expect` passed; `1` a command or an `expect`

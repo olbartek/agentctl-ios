@@ -125,6 +125,57 @@
       }
     }
 
+    /// Starts `simctl io recordVideo` detached, so it outlives the CLI, and returns its pid once `simctl` says it is
+    /// recording. `app record stop` ends it with SIGINT, which makes `simctl` finish the file.
+    func startRecording(on device: Device, to video: URL, log: URL) throws -> Int32 {
+      try FileManager.default.createDirectory(at: video.deletingLastPathComponent(), withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+      FileManager.default.createFile(atPath: log.path, contents: nil)
+      let simctl = Shell.capture(["xcrun", "-f", "simctl"], in: root).trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !simctl.isEmpty else { throw AppCtlError("cannot find simctl (xcrun -f simctl)") }
+      let handle = try FileHandle(forWritingTo: log)
+      defer { try? handle.close() }
+      let process = Process()
+      // `nohup` execs simctl in place, so the pid is simctl's own and its command line names the file; a hangup of
+      // the terminal that started it does not stop it.
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
+      process.arguments = [simctl, "io", device.udid, "recordVideo", "--codec=h264", "--force", video.path]
+      process.standardOutput = handle
+      process.standardError = handle
+      process.standardInput = FileHandle.nullDevice
+      try process.run()
+      let deadline = Date().addingTimeInterval(20)
+      while !((try? String(contentsOf: log, encoding: .utf8)) ?? "").contains("Recording started") {
+        guard process.isRunning, Date() < deadline else {
+          process.terminate()
+          throw AppCtlError("simctl recordVideo did not start; log: \(log.path(percentEncoded: false))")
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+      }
+      return process.processIdentifier
+    }
+
+    /// A clean status bar for screenshots (9:41, full signal and battery), or the simulator's own again.
+    func statusBar(clean: Bool, on device: Device, log: URL) throws {
+      let arguments =
+        clean
+        ? [
+          "override", "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
+          "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "charged", "--batteryLevel", "100",
+        ]
+        : ["clear"]
+      guard Shell.run(["xcrun", "simctl", "status_bar", device.udid] + arguments, in: root, log: log) == 0 else {
+        throw AppCtlError("simctl status_bar failed (is the simulator booted?); log: \(log.path(percentEncoded: false))")
+      }
+    }
+
+    /// The installed app's bundle, or `nil` when it is not installed.
+    func installedApp(on device: Device) -> URL? {
+      let path = Shell.capture(["xcrun", "simctl", "get_app_container", device.udid, Self.bundleID, "app"], in: root)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      return path.hasSuffix(".app") ? URL(fileURLWithPath: path) : nil
+    }
+
     private func availableDevices() throws -> [Device] {
       let runtimes = try simctlJSON(["runtimes"])["runtimes"] as? [[String: Any]] ?? []
       var betaRuntimes: Set<String> = []

@@ -250,6 +250,22 @@
         + "\(LaunchState.relativePath), which is stale: relaunch with \(help.invocation) app launch"
     }
 
+    static func recordingRunning(_ state: RecordingState) -> String {
+      "a recording is already running: \(state.file) (started \(state.startedAt)); stop it with \(help.invocation) app record stop"
+    }
+
+    static var noRecording: String {
+      "no recording to stop (no \(AgentCtl.runtime.outputPath)/\(RecordingState.fileName))"
+    }
+
+    static func recordingGone(_ state: RecordingState) -> String {
+      "the recording of \(state.file) is no longer running"
+    }
+
+    static func notInstalled(on device: Simulator.Device) -> String {
+      "\(Simulator.bundleID) is not installed on \(device.label) [\(device.udid)]; run \(help.invocation) app launch"
+    }
+
     static func badPortVariable(_ value: String) -> String {
       "\(BridgePort.environmentVariable) is not a port: '\(value)' (expected 1-65535)"
     }

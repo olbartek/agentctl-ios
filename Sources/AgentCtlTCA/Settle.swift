@@ -67,6 +67,11 @@
     var inFlight: Int
   }
 
+  /// How long a live step may take to settle (CONTRACT.md §8.5). Mock latency is real in the running app, and a step
+  /// can chain several calls and a transition (a sign-in: unlock, sign in, profile, list, then a push), so 3 s was too
+  /// tight; a step that never settles (a call that never returns, a real-time timer) still fails.
+  package let liveSettleLimit: Duration = .seconds(10)
+
   /// Live settling for the running app: wait until no mock call is in flight, the UI is idle and the state has not
   /// changed for `quietWindow`, or until `limit`. Mock latency is real here, so this uses real time.
   ///
@@ -83,17 +88,27 @@
     pollInterval: Duration = .milliseconds(20),
     limit: Duration = .seconds(3),
     endlessAfter: Duration = .seconds(1),
-    stretchGap: Duration = .milliseconds(100)
+    stretchGap: Duration = .milliseconds(100),
+    trace: ((String) -> Void)? = nil
   ) async -> SettleResult {
     let realClock = ContinuousClock()
     let start = realClock.now
+    /// What held the step at the last poll, traced when it changes: `+<ms> <what>`.
+    var holding: String?
+    func note(_ what: String) {
+      guard let trace, what != holding else { return }
+      holding = what
+      trace("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms \(what)")
+    }
     var last = state()
     var quietSince = realClock.now
     var busySince: ContinuousClock.Instant?
     var idleSince: ContinuousClock.Instant?
+    var uiIdle = true
     func uiHolds() -> Bool {
       let now = realClock.now
-      if isUIIdle() {
+      uiIdle = isUIIdle()
+      if uiIdle {
         if idleSince == nil { idleSince = now }
         if let idle = idleSince, idle.duration(to: now) >= stretchGap { busySince = nil }
         return false
@@ -113,13 +128,24 @@
       // polls can be far apart on a loaded machine.
       let uiLetGo = uiHeld && !uiBusy
       uiHeld = uiBusy
+      if trace != nil {
+        let running = callLog.running
+        note(
+          next != last ? "state changing"
+            : !running.isEmpty ? "calls in flight: \(running.joined(separator: ", "))"
+            : uiBusy ? "UI busy"
+            : uiLetGo ? "UI let go" : uiIdle ? "quiet" : "quiet (UI busy past \(endlessAfter), taken as endless)"
+        )
+      }
       if next != last || callLog.inFlight > 0 || uiBusy || uiLetGo {
         last = next
         quietSince = realClock.now
       } else if quietSince.duration(to: realClock.now) >= quietWindow {
+        trace?("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms settled")
         return SettleResult(settled: true, pending: pending())
       }
     }
+    trace?("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms did not settle within \(limit); last: \(holding ?? "nothing")")
     return SettleResult(settled: false, pending: pending())
   }
 #endif

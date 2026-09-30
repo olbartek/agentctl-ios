@@ -9,6 +9,8 @@ public final class MockCallLog: Sendable {
   private struct Storage {
     var entries: [String] = []
     var inFlight = 0
+    /// The calls still running, by name, for a trace of what holds settling.
+    var running: [String] = []
   }
 
   private let storage = Mutex(Storage())
@@ -19,16 +21,22 @@ public final class MockCallLog: Sendable {
     storage.withLock {
       $0.entries.append(name)
       $0.inFlight += 1
+      $0.running.append(name)
     }
   }
 
   public func end(_ name: String) {
-    storage.withLock { $0.inFlight -= 1 }
+    storage.withLock {
+      $0.inFlight -= 1
+      if let index = $0.running.firstIndex(of: name) { $0.running.remove(at: index) }
+    }
   }
 
   public var entries: [String] { storage.withLock(\.entries) }
   public var count: Int { storage.withLock(\.entries.count) }
   public var inFlight: Int { storage.withLock(\.inFlight) }
+  /// The names of the calls still running, oldest first.
+  public var running: [String] { storage.withLock(\.running) }
 
   /// Entries recorded after the first `index` entries.
   public func entries(since index: Int) -> [String] {

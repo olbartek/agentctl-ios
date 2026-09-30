@@ -3,6 +3,7 @@
   import AgentCtlCore
   import ComposableArchitecture
   import Foundation
+  import OSLog
 
   /// The deterministic pieces `HeadlessHost` owns, handed to the host's `configure` closure so it can bind its own
   /// backends to them.
@@ -271,9 +272,14 @@
         callLog: callLog,
         pending: { [clock] in clock.activeSleeps },
         isUIIdle: { [isUIIdle] in waitingForUI ? isUIIdle?() ?? true : true },
-        quietWindow: .milliseconds(250)
+        quietWindow: .milliseconds(250),
+        limit: liveSettleLimit,
+        // `log stream --predicate 'subsystem == "agentctl"' --level debug` shows what held each step, and when.
+        trace: { Self.settleLog.debug("\($0, privacy: .public)") }
       )
     }
+
+    private static var settleLog: Logger { Logger(subsystem: "agentctl", category: "settle") }
 
     func settleBetweenDeadlines() async {
       _ = await settleLive(

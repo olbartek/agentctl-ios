@@ -269,6 +269,12 @@
       "\(Simulator.bundleID) is not installed on \(device.label) [\(device.udid)]; run \(help.invocation) app launch"
     }
 
+    /// `simctl` hanging rather than failing: CoreSimulator is wedged, which a restart of it clears.
+    static func simctlDidNotAnswer(_ arguments: [String]) -> String {
+      "xcrun simctl \(arguments.joined(separator: " ")) did not answer within \(Int(Shell.quick)) s; CoreSimulator may be "
+        + "stuck: quit Simulator and run 'xcrun simctl shutdown all', or restart the Mac"
+    }
+
     static func badPortVariable(_ value: String) -> String {
       "\(BridgePort.environmentVariable) is not a port: '\(value)' (expected 1-65535)"
     }

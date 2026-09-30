@@ -17,6 +17,14 @@
     var logs: URL { layout.logs }
 
     func run() async -> Int32 {
+      if ui {
+        // A bad APPCTL_PORT is a usage error (exit 2), found before the ladder spends minutes on L0–L3.
+        do {
+          _ = try BridgePort.requested(flag: nil, environment: ProcessInfo.processInfo.environment)
+        } catch {
+          return AppCommands.fail(error)
+        }
+      }
       try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
       guard build() else { return 1 }
       guard test() else { return 1 }

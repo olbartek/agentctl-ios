@@ -55,22 +55,31 @@
       if let seed { options += ["-appctl-seed", seed] }
       if let latency { options += ["-mock-latency", String(latency)] }
       if clearSession { options.append("-clear-session") }
-      func launch(on port: Int) async throws -> BridgeClient.Response {
+      /// The bridge's answer, or `nil` when none came and something else holds the port: the bridge could not listen.
+      func launch(on port: Int) async throws -> BridgeClient.Response? {
         try sim.launch(on: device, launchArguments: ["-agent-port", String(port)] + options, log: log)
-        return try await BridgeClient(port: port).waitUntilReady()
+        do {
+          return try await BridgeClient(port: port).waitUntilReady()
+        } catch {
+          if BridgePort.isFree(port) { throw error }
+          return nil
+        }
       }
+      func isOurs(_ answer: BridgeClient.Response?) -> Bool { answer?.app == Simulator.bundleID }
       // Picked after the build, right before the launch: another app may have taken a port while it ran.
       var port = try BridgePort.launching(requested: requested)
       var answer = try await launch(on: port)
-      if answer.app != Simulator.bundleID, requested == nil {
+      if !isOurs(answer), requested == nil {
         sim.terminate(on: device, log: log)
         let taken = port
         port = try BridgePort.launching(requested: nil) { $0 > taken && BridgePort.isFree($0) }
         answer = try await launch(on: port)
       }
-      guard answer.app == Simulator.bundleID else {
+      guard let answer, isOurs(answer) else {
         sim.terminate(on: device, log: log)
-        throw AppCtlError(Message.anotherApp(port: port, answeredAs: answer.app))
+        throw AppCtlError(
+          answer.map { Message.anotherApp(port: port, answeredAs: $0.app) } ?? Message.portHeld(port: port)
+        )
       }
       let snapshot = answer.body
       try LaunchState(device: device.udid, port: port, appId: Simulator.bundleID, launchedAt: Date()).write(in: root)

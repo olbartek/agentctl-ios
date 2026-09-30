@@ -162,7 +162,8 @@
       }
 
       /// The bridge does not share a port: with another listener on it, it fails to start instead of binding beside
-      /// it (with address reuse it would, and the CLI's requests would reach the other process).
+      /// it (CONTRACT.md §8.1). A CLI that reaches the port then reaches the other listener, which is why launches
+      /// check `X-Appctl-App`.
       @Test func theBridgeDoesNotBindAPortSomethingElseListensOn() async throws {
         let first = BridgeServer(app: "first") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
         let port = try await first.start(port: 0)

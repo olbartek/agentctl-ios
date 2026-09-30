@@ -1,5 +1,6 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
+  import ArgumentParser
   import Foundation
 
   /// `<outputPath>/bridge.json`: where the last `app launch` (or `app test`, or `check --ui`) left the app, so the
@@ -84,6 +85,13 @@
       case defaultPort
     }
 
+    /// `--port`'s check: a port from 1 to 65535. (0 would let the app pick one the CLI never learns.)
+    static func validate(_ flag: Int?) throws {
+      if let flag, !(1...65535).contains(flag) {
+        throw ValidationError("--port must be a port from 1 to 65535, not \(flag)")
+      }
+    }
+
     /// The port named by `--port` or, failing that, `APPCTL_PORT`; `nil` when neither is given.
     static func requested(flag: Int?, environment: [String: String]) throws -> Int? {
       if let flag { return flag }
@@ -113,9 +121,9 @@
 
     /// Whether nothing listens on `127.0.0.1:port`, so the app's bridge can take it.
     ///
-    /// The bridge binds with address reuse, so a plain `bind` succeeding is not enough: another process (`adb`
-    /// forwarding the same port, a second app) may already be listening there. This connects first, then binds
-    /// the way the bridge does.
+    /// The connect finds a listener on any address that reaches loopback (`adb` forwarding the port, a second app).
+    /// The bind then fails only for what the bridge's own bind would fail on: it uses address reuse, as the bridge
+    /// does, so the last run's connections in TIME_WAIT do not count as taken.
     static func isFree(_ port: Int) -> Bool {
       guard let port = UInt16(exactly: port) else { return false }
       var address = sockaddr_in()

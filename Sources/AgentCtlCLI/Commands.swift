@@ -238,6 +238,12 @@
         + (app == nil ? " (or the installed app predates X-Appctl-App: launch without --no-build)" : "")
     }
 
+    /// A launch whose bridge never answered while something else listens on its port.
+    static func portHeld(port: Int) -> String {
+      "the app's agent bridge could not listen on 127.0.0.1:\(port): another process holds that port; pass --port or "
+        + "set \(BridgePort.environmentVariable)"
+    }
+
     /// A port from the launch state that another app now answers on.
     static func anotherApp(port: Int, answeredAs app: String, recorded: String) -> String {
       "the app's agent bridge on 127.0.0.1:\(port) answers as \(app), not \(recorded) from "

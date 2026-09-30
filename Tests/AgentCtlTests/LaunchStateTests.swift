@@ -169,6 +169,11 @@
       @Test func aLaunchAnsweredByAnotherAppSaysSo() {
         AgentCtl.install(StubRuntime())
         #expect(
+          Message.portHeld(port: 8765)
+            == "the app's agent bridge could not listen on 127.0.0.1:8765: another process holds that port; "
+            + "pass --port or set APPCTL_PORT"
+        )
+        #expect(
           Message.anotherApp(port: 8765, answeredAs: "com.example.other")
             == "the app's agent bridge on 127.0.0.1:8765 answers as com.example.other, not com.example.stub: "
             + "another app holds that port; pass --port or set APPCTL_PORT"

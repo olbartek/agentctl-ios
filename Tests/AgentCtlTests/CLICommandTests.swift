@@ -19,7 +19,10 @@
       /// ArgumentParser exits 64 for its own usage errors; the contract's code for every usage error is 2.
       @Test func argumentParserUsageErrorsExitTwo() {
         AgentCtl.install(StubRuntime())
-        let usageErrors = [["run"], ["run", "--bogus", "x"], ["frobnicate"], ["app", "run", "--port", "x", "open 1"]]
+        let usageErrors = [
+          ["run"], ["run", "--bogus", "x"], ["frobnicate"], ["app", "run", "--port", "x", "open 1"],
+          ["app", "run", "--port", "0", "open 1"], ["app", "launch", "--port", "70000"], ["app", "state", "--port", "-1"],
+        ]
         for arguments in usageErrors {
           let error = Self.parseError(arguments)
           #expect(error != nil, "\(arguments) parsed")
@@ -140,12 +143,16 @@
         return directory
       }
 
-      /// Runs `body` with `APPCTL_ROOT` set to `path`, or unset, and restores it afterwards.
+      /// Runs `body` with `APPCTL_ROOT` set to `path`, or unset, and `APPCTL_PORT` unset, and restores both
+      /// afterwards: a developer's own `APPCTL_PORT` must not change which port a test's command reaches.
       static func withRepoRoot<T>(_ path: String?, _ body: () async -> T) async -> T {
         let previous = ProcessInfo.processInfo.environment["APPCTL_ROOT"]
+        let previousPort = ProcessInfo.processInfo.environment["APPCTL_PORT"]
         if let path { setenv("APPCTL_ROOT", path, 1) } else { unsetenv("APPCTL_ROOT") }
+        unsetenv("APPCTL_PORT")
         defer {
           if let previous { setenv("APPCTL_ROOT", previous, 1) } else { unsetenv("APPCTL_ROOT") }
+          if let previousPort { setenv("APPCTL_PORT", previousPort, 1) }
         }
         return await body()
       }

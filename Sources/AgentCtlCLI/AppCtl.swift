@@ -192,6 +192,10 @@
       )
     )
     var port: Int?
+
+    func validate() throws {
+      try BridgePort.validate(port)
+    }
   }
 
   /// `--port` for the commands that launch the app. Without it they use `APPCTL_PORT`, else 8765 if it is free and
@@ -205,6 +209,10 @@
       )
     )
     var port: Int?
+
+    func validate() throws {
+      try BridgePort.validate(port)
+    }
   }
 
   struct AppLaunch: AsyncParsableCommand {

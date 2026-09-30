@@ -27,10 +27,9 @@
     /// Starts listening and returns the bound port (pass 0 for an ephemeral port).
     public func start(port: UInt16) async throws -> UInt16 {
       let parameters = NWParameters.tcp
-      // No address reuse: with it, the listener binds a port another process already listens on (`adb` forwarding
-      // 8765 for an Android app), and the CLI's requests reach that process instead. Without it the bind fails, and
-      // a relaunch still rebinds while the last run's connections are in TIME_WAIT.
-      parameters.allowLocalEndpointReuse = false
+      // Address reuse lets a relaunch rebind while the last run's connections are in TIME_WAIT. It never lets the
+      // bridge listen beside another listener on the port: that bind fails (CONTRACT.md §8.1).
+      parameters.allowLocalEndpointReuse = true
       parameters.requiredLocalEndpoint = .hostPort(
         host: .ipv4(.loopback),
         port: NWEndpoint.Port(rawValue: port) ?? .any

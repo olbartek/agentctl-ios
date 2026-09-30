@@ -664,8 +664,8 @@ starts, after any build: a build takes minutes, and a port free before it may no
 connects to `--port`, else `APPCTL_PORT`, else the file's `port`, else 8765. A command that
 launches never reads the file: it may name another device, or an app that has quit.
 
-- An `APPCTL_PORT` that is not a port from 1 to 65535 is a usage error, exit 2 (an empty one is
-  unset).
+- A `--port` or an `APPCTL_PORT` that is not a port from 1 to 65535 is a usage error, exit 2 (an
+  empty `APPCTL_PORT` is unset), on every command that takes one.
 - A file that cannot be read or parsed is exit 3.
 - When the port came from the file and nothing answers there, the command exits 3, as it would for
   any unreachable bridge, and the message says the file may be stale and to launch again.
@@ -678,10 +678,11 @@ bridge's `X-Appctl-App` (§8.4) with the app it means:
   same checkout as the CLI and names itself, so an answer without the header is another app too.
   On a mismatch the CLI stops its app and, unless the port was named by `--port` or
   `APPCTL_PORT`, launches it once more on the next free port above; if that one mismatches too, or
-  the port was named, it exits 3.
+  the port was named, it exits 3. The same goes for no answer at all while, with the app stopped,
+  something still listens on the port: the bridge could not listen there.
 - **When the port came from the file**, with the file's `appId`. A different app on that port
   means the file is stale: exit 3, and nothing from the response is printed. A script is only posted
-  after a `GET /snapshot` shows the recorded app, so another app never runs it. An answer without
+  after a `GET /snapshot` does not show another app, so another app never runs it. An answer without
   the header (an app built before it existed) is accepted.
 - A port from `--port`, `APPCTL_PORT` or the default is not checked: the CLI cannot know which app
   was meant.

@@ -56,11 +56,16 @@
       if let latency { options += ["-mock-latency", String(latency)] }
       if clearSession { options.append("-clear-session") }
       /// The bridge's answer, or `nil` when none came and something else holds the port: the bridge could not listen.
+      /// With no answer the app is stopped either way; the port is judged once it has let go of it.
       func launch(on port: Int) async throws -> BridgeClient.Response? {
         try sim.launch(on: device, launchArguments: ["-agent-port", String(port)] + options, log: log)
         do {
           return try await BridgeClient(port: port).waitUntilReady()
         } catch {
+          sim.terminate(on: device, log: log)
+          for _ in 0..<10 where !BridgePort.isFree(port) {
+            try await Task.sleep(for: .milliseconds(100))
+          }
           if BridgePort.isFree(port) { throw error }
           return nil
         }

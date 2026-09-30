@@ -265,6 +265,18 @@
       "\(device.label) [\(device.udid)] is not booted; boot it, or run \(help.invocation) app launch"
     }
 
+    /// Several simulators could be meant. `runtime` is the runtime filter, if any (" on iOS 18"). The same form as
+    /// agentctl-android's, with `--device <serial>` there.
+    static func ambiguousSimulator(_ name: String, runtime: String, _ candidates: [Simulator.Device]) -> String {
+      (["several simulators are named '\(name)'\(runtime); pass --sim <UDID>:"]
+        + candidates.map { "  \($0.udid)  \($0.label)" }).joined(separator: "\n")
+    }
+
+    static func pickedNewestSimulator(_ name: String, count: Int, _ device: Simulator.Device) -> String {
+      "note: \(count) simulators are named '\(name)'; using \(device.label) [\(device.udid)], the newest runtime; "
+        + "pass --sim <UDID> to choose"
+    }
+
     static func bootFailed(_ device: Simulator.Device, log: URL) -> String {
       "\(device.label) [\(device.udid)] did not boot; log: \(log.path(percentEncoded: false))"
     }

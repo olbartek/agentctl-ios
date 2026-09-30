@@ -24,24 +24,41 @@
     /// How `simctl` is run. Tests put a fake tool here, to play a shut-down simulator or a recorder that writes nothing.
     @TaskLocal static var simctl = ["xcrun", "simctl"]
 
-    /// A UDID, or a device name. For a name: booted devices first, then released runtimes before betas, then the
-    /// newest runtime.
+    /// A UDID, or a device name, which never picks silently among simulators of that name (Xcode makes one per
+    /// runtime, and a developer may have clones):
+    /// - a UDID, or the only simulator of that name, is taken;
+    /// - of several, the one that is booted; several booted is ambiguous;
+    /// - of several none of which is booted, the newest released runtime's, with a note on stderr saying so and how to
+    ///   choose; several on that runtime is ambiguous.
+    ///
+    /// Ambiguous is a usage error (exit 2) that lists the candidates and asks for `--sim <UDID>`.
     /// - Parameter runtimeMajor: only consider devices on this iOS major version (e.g. 18).
     func resolve(_ nameOrUDID: String, runtimeMajor: Int? = nil) throws -> Device {
       let devices = try availableDevices().filter { runtimeMajor == nil || $0.version.first == runtimeMajor }
-      if let device = devices.first(where: { $0.udid == nameOrUDID }) { return device }
+      let (device, note) = try Self.choose(nameOrUDID, among: devices, runtimeMajor: runtimeMajor)
+      if let note { FileHandle.standardError.write(Data((note + "\n").utf8)) }
+      return device
+    }
+
+    /// ``resolve(_:runtimeMajor:)``'s choice, and the note it prints, if any.
+    static func choose(_ nameOrUDID: String, among devices: [Device], runtimeMajor: Int?) throws -> (Device, note: String?) {
+      if let device = devices.first(where: { $0.udid == nameOrUDID }) { return (device, nil) }
       let matches = devices.filter { $0.name == nameOrUDID }
-      guard
-        let best = matches.max(by: { lhs, rhs in
-          (lhs.isBooted ? 1 : 0, lhs.isBeta ? 0 : 1, lhs.version.lexicographicKey)
-            < (rhs.isBooted ? 1 : 0, rhs.isBeta ? 0 : 1, rhs.version.lexicographicKey)
-        })
-      else {
+        .sorted { ($0.version.lexicographicKey, $1.udid) > ($1.version.lexicographicKey, $0.udid) }
+      let runtime = runtimeMajor.map { " on iOS \($0)" } ?? ""
+      guard let first = matches.first else {
         let names = Set(devices.map(\.name)).sorted().joined(separator: ", ")
-        let runtime = runtimeMajor.map { " on iOS \($0)" } ?? ""
         throw AppCtlError("no available simulator named '\(nameOrUDID)'\(runtime). Available: \(names)")
       }
-      return best
+      guard matches.count > 1 else { return (first, nil) }
+      let booted = matches.filter(\.isBooted)
+      if booted.count == 1 { return (booted[0], nil) }
+      if booted.count > 1 { throw UsageError(Message.ambiguousSimulator(nameOrUDID, runtime: runtime, booted)) }
+      // None booted: the newest released runtime, as before 0.5, but only when it alone has one of that name.
+      let best = matches.max { ($0.isBeta ? 0 : 1, $0.version.lexicographicKey) < ($1.isBeta ? 0 : 1, $1.version.lexicographicKey) }!
+      let onBest = matches.filter { $0.runtime == best.runtime }
+      guard onBest.count == 1 else { throw UsageError(Message.ambiguousSimulator(nameOrUDID, runtime: runtime, onBest)) }
+      return (best, Message.pickedNewestSimulator(nameOrUDID, count: matches.count, best))
     }
 
     /// `device`, booted. A shut-down simulator is booted when `boot` is set (a launch that builds, which would boot it

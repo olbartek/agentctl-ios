@@ -219,7 +219,7 @@
       static func start(root: URL, device: Simulator.Device, to video: URL) throws -> Recording {
         let video = video.standardizedFileURL
         let log = Layout(root: root).logs.appending(path: "app-test-record.log")
-        let process = try Simulator(root: root).startRecording(on: device, to: video, log: log) { _ in }
+        let process = try Simulator(root: root).startRecording(on: device, to: video, log: log, detached: false) { _ in }
         return Recording(video: video, process: process)
       }
 

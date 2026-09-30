@@ -175,6 +175,32 @@
         #expect(!FileManager.default.fileExists(atPath: video.path))
       }
 
+      /// Unlike `app record start`'s, `app test`'s recorder does not outlive a hangup: a closed terminal ends the run,
+      /// and nothing would be left to stop the recording.
+      @Test func appTestsRecorderEndsWithAHangup() async throws {
+        AgentCtl.install(StubRuntime())
+        let fake = try FakeSimctl(booted: true)
+        defer { try? FileManager.default.removeItem(at: fake.directory) }
+        try await fake.run {
+          let sim = Simulator(root: fake.directory)
+          let device = try sim.resolve(Self.udid)
+          let attached = try sim.startRecording(
+            on: device, to: fake.directory.appending(path: "a.mp4"), log: fake.directory.appending(path: "a.log"),
+            detached: false
+          ) { _ in }
+          let detached = try sim.startRecording(
+            on: device, to: fake.directory.appending(path: "d.mp4"), log: fake.directory.appending(path: "d.log")
+          ) { _ in }
+          defer { Shell.stop(detached) }
+          kill(attached.processIdentifier, SIGHUP)
+          kill(detached.processIdentifier, SIGHUP)
+          let deadline = Date().addingTimeInterval(5)
+          while attached.isRunning, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+          #expect(!attached.isRunning)
+          #expect(detached.isRunning)
+        }
+      }
+
       @Test func theMessages() {
         AgentCtl.install(StubRuntime())
         let device = Simulator.Device(

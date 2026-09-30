@@ -150,8 +150,13 @@
     /// before it has begun recording, so the caller can record it even if this CLI is interrupted while it waits;
     /// this returns once `simctl` says it is recording. `app record stop` ends it with SIGINT, which makes `simctl`
     /// finish the file; `app test --record` ends it the same way, through the returned process.
+    ///
+    /// - Parameter detached: `app record start` only. `app test` keeps its recorder attached, so that a closed terminal,
+    ///   which ends the run, ends the recording too: nothing else would stop it.
     @discardableResult
-    func startRecording(on device: Device, to video: URL, log: URL, started: (Int32) throws -> Void) throws -> Process {
+    func startRecording(
+      on device: Device, to video: URL, log: URL, detached: Bool = true, started: (Int32) throws -> Void
+    ) throws -> Process {
       try FileManager.default.createDirectory(at: video.deletingLastPathComponent(), withIntermediateDirectories: true)
       try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
       FileManager.default.createFile(atPath: log.path, contents: nil)
@@ -166,8 +171,9 @@
       let process = Process()
       // `nohup` execs simctl in place, so the pid is simctl's own and its command line names the file; a hangup of
       // the terminal that started it does not stop it.
-      process.executableURL = URL(fileURLWithPath: "/usr/bin/nohup")
-      process.arguments = simctl + ["io", device.udid, "recordVideo", "--codec=h264", "--force", video.path]
+      let arguments = simctl + ["io", device.udid, "recordVideo", "--codec=h264", "--force", video.path]
+      process.executableURL = URL(fileURLWithPath: detached ? "/usr/bin/nohup" : arguments[0])
+      process.arguments = detached ? arguments : Array(arguments.dropFirst())
       process.standardOutput = handle
       process.standardError = handle
       process.standardInput = FileHandle.nullDevice

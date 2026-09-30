@@ -67,6 +67,9 @@
       self.screens = config.screens
       self.mockExample = config.docsText.mockExample
       self.app = config.makeLive(options.latency ?? .liveValue)
+      #if canImport(UIKit)
+        if app.isUIIdle == nil { app.isUIIdle = UIActivity.isIdle }
+      #endif
       self.store = app.store
       self.isReady = options.seed == nil
     }

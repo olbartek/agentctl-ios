@@ -131,6 +131,51 @@ extension AgentCtlSuite {
       #expect(lines.last?.hasSuffix("did not settle within 0.2 seconds; last: calls in flight: visits.fetchDetail") == true, "\(lines)")
     }
 
+    /// A sign-in that chains four calls (unlock, sign in, profile, list) at a second each takes longer than the old 3 s
+    /// ceiling and well under the live one: it settles, once the last call is done.
+    @Test func aChainOfCallsLongerThanThreeSecondsSettles() async {
+      let clock = ContinuousClock()
+      let start = clock.now
+      let log = MockCallLog()
+      let calls = ["credentials.unlock", "auth.signIn", "patient.profiles", "visits.appointments"]
+      var started = 0
+      func advance() {
+        // Call n runs from second n to second n+1, back to back.
+        let due = min(Int(start.duration(to: clock.now) / .seconds(1)), calls.count)
+        while started < due + (due < calls.count ? 1 : 0) {
+          if started > 0 { log.end(calls[started - 1]) }
+          if started < calls.count { log.begin(calls[started]) }
+          started += 1
+        }
+        if due == calls.count, log.inFlight > 0 { log.end(calls[calls.count - 1]) }
+      }
+      let result = await settleLive(
+        state: { advance(); return started },
+        callLog: log,
+        pending: { 0 },
+        quietWindow: .milliseconds(250),
+        limit: liveSettleLimit
+      )
+      let elapsed = start.duration(to: clock.now)
+      #expect(result.settled)
+      #expect(elapsed > .seconds(4) && elapsed < liveSettleLimit, "settled after \(elapsed)")
+    }
+
+    /// A call that never returns still fails the step, at the live ceiling.
+    @Test func aCallThatNeverReturnsFailsAtTheCeiling() async {
+      let clock = ContinuousClock()
+      let start = clock.now
+      let log = MockCallLog()
+      log.begin("visits.appointments")
+      let result = await settleLive(
+        state: { 0 }, callLog: log, pending: { 0 }, quietWindow: .milliseconds(250), limit: liveSettleLimit
+      )
+      let elapsed = start.duration(to: clock.now)
+      #expect(!result.settled)
+      #expect(liveSettleLimit == .seconds(10))
+      #expect(elapsed >= .seconds(10) && elapsed < .seconds(11), "gave up after \(elapsed)")
+    }
+
     @Test func withoutAUICheckTheQuietStateIsEnough() async {
       let clock = ContinuousClock()
       let start = clock.now

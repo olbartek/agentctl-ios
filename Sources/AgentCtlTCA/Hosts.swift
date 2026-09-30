@@ -273,6 +273,7 @@
         pending: { [clock] in clock.activeSleeps },
         isUIIdle: { [isUIIdle] in waitingForUI ? isUIIdle?() ?? true : true },
         quietWindow: .milliseconds(250),
+        limit: liveSettleLimit,
         // `log stream --predicate 'subsystem == "agentctl"' --level debug` shows what held each step, and when.
         trace: { Self.settleLog.debug("\($0, privacy: .public)") }
       )

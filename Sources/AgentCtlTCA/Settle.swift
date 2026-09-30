@@ -67,6 +67,11 @@
     var inFlight: Int
   }
 
+  /// How long a live step may take to settle (CONTRACT.md §8.5). Mock latency is real in the running app, and a step
+  /// can chain several calls and a transition (a sign-in: unlock, sign in, profile, list, then a push), so 3 s was too
+  /// tight; a step that never settles (a call that never returns, a real-time timer) still fails.
+  package let liveSettleLimit: Duration = .seconds(10)
+
   /// Live settling for the running app: wait until no mock call is in flight, the UI is idle and the state has not
   /// changed for `quietWindow`, or until `limit`. Mock latency is real here, so this uses real time.
   ///

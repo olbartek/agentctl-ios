@@ -201,6 +201,22 @@
         }
       }
 
+      /// Each `/run` response of `app test` is checked: one from the same app on Android marks the scenario not run.
+      @Test func aScenarioAnsweredByAnotherAppIsNotRun() {
+        AgentCtl.install(StubRuntime())
+        func response(_ app: String?, _ platform: String?) -> BridgeClient.Response {
+          BridgeClient.Response(status: 200, body: "> open 1\n", exitCode: 0, identity: BridgeIdentity(app: app, platform: platform))
+        }
+        #expect(AppTest.foreign(response("com.example.stub", "ios"), port: 8766) == nil)
+        let android = AppTest.foreign(response("com.example.stub", "android"), port: 8766)
+        #expect(
+          android.map { AppTest.Result(name: "browse", outcome: $0).report }
+            == "FAIL browse\n  the app's agent bridge on 127.0.0.1:8766 answers as com.example.stub (android), not "
+            + "com.example.stub (ios): another app took the port during the run"
+        )
+        #expect(AppTest.foreign(response("com.example.stub", nil), port: 8766) != nil)
+      }
+
       @Test func theMessages() {
         AgentCtl.install(StubRuntime())
         let device = Simulator.Device(

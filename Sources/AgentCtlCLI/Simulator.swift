@@ -1,4 +1,5 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
+  import AgentCtlCore
   import AgentCtlTCA
   import Foundation
 
@@ -288,6 +289,30 @@
     }
   }
 
+  /// Who a bridge says it is: `X-Appctl-App` and `X-Appctl-Platform` (CONTRACT.md §8.4). Both are needed, since an app
+  /// often has the same ID on iOS and on Android.
+  struct BridgeIdentity: Equatable, CustomStringConvertible {
+    var app: String?
+    var platform: String?
+
+    /// This CLI's own app.
+    static var ours: Self { Self(app: Simulator.bundleID, platform: BridgeDefaults.platform) }
+
+    /// At launch: the app the CLI built names itself in full, so a missing header is another app too.
+    var isOurs: Bool { self == .ours }
+
+    /// Against `bridge.json`: a header that is there and differs. A header the answer lacks is not compared (an app
+    /// built before it existed).
+    func contradicts(_ state: LaunchState) -> Bool {
+      app.map { $0 != state.appId } ?? false || platform.map { $0 != state.platform } ?? false
+    }
+
+    /// `<app> (<platform>)`, as the "answers as …, not …" messages print it.
+    var description: String {
+      "\(app ?? "an app without X-Appctl-App") (\(platform ?? "no X-Appctl-Platform"))"
+    }
+  }
+
   /// Talks to the agent bridge (AgentCtlBridge) in the running app over loopback HTTP.
   struct BridgeClient {
     let port: Int
@@ -296,8 +321,8 @@
       var status: Int
       var body: String
       var exitCode: Int32
-      /// `X-Appctl-App`: the bundle ID of the app that answered, if it says.
-      var app: String?
+      /// `X-Appctl-App` and `X-Appctl-Platform`: the app that answered, as far as it says.
+      var identity: BridgeIdentity
     }
 
     func send(_ method: String, _ path: String, body: String? = nil, timeout: TimeInterval = 60) async throws -> Response {
@@ -311,7 +336,10 @@
         status: http?.statusCode ?? 0,
         body: String(decoding: data, as: UTF8.self),
         exitCode: Int32(http?.value(forHTTPHeaderField: "X-Appctl-Exit") ?? "") ?? 3,
-        app: http?.value(forHTTPHeaderField: "X-Appctl-App")
+        identity: BridgeIdentity(
+          app: http?.value(forHTTPHeaderField: "X-Appctl-App"),
+          platform: http?.value(forHTTPHeaderField: "X-Appctl-Platform")
+        )
       )
     }
 

@@ -71,7 +71,7 @@
           return nil
         }
       }
-      func isOurs(_ answer: BridgeClient.Response?) -> Bool { answer?.app == Simulator.bundleID }
+      func isOurs(_ answer: BridgeClient.Response?) -> Bool { answer?.identity.isOurs == true }
       // Picked after the build, right before the launch: another app may have taken a port while it ran.
       var port = try BridgePort.launching(requested: requested)
       var answer = try await launch(on: port)
@@ -84,7 +84,7 @@
       guard let answer, isOurs(answer) else {
         sim.terminate(on: device, log: log)
         throw AppCtlError(
-          answer.map { Message.anotherApp(port: port, answeredAs: $0.app) } ?? Message.portHeld(port: port)
+          answer.map { Message.anotherApp(port: port, answeredAs: $0.identity) } ?? Message.portHeld(port: port)
         )
       }
       let snapshot = answer.body
@@ -118,14 +118,14 @@
           // A script changes the app it runs in, so it is only posted once the recorded app is known to answer;
           // a GET changes nothing, and its own answer is checked instead.
           let answer = method == "GET" ? nil : try await client.send("GET", "/snapshot")
-          if let app = answer?.app, app != state.appId {
-            printError(Message.anotherApp(port: port, answeredAs: app, recorded: state.appId))
+          if let answer, answer.identity.contradicts(state) {
+            printError(Message.anotherApp(port: port, answeredAs: answer.identity, recorded: state))
             return RunStatus.internalError.rawValue
           }
         }
         let response = try await client.send(method, path, body: body)
-        if case let .launchState(state) = source, let app = response.app, app != state.appId {
-          printError(Message.anotherApp(port: port, answeredAs: app, recorded: state.appId))
+        if case let .launchState(state) = source, response.identity.contradicts(state) {
+          printError(Message.anotherApp(port: port, answeredAs: response.identity, recorded: state))
           return RunStatus.internalError.rawValue
         }
         print(response.body, terminator: response.body.hasSuffix("\n") ? "" : "\n")

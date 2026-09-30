@@ -120,6 +120,7 @@
         }
         do {
           let response = try await client.send("POST", "/run", body: request)
+          if let outcome = foreign(response, port: port) { return (Result(name: name, outcome: outcome), true) }
           body += response.body
           exitCode = response.exitCode
         } catch {
@@ -128,6 +129,12 @@
         if exitCode != 0 { break }
       }
       return (result(name: name, lines: lines, body: body, exitCode: exitCode, duration: start.duration(to: clock.now)), true)
+    }
+
+    /// Every response is checked, not only the launch's: a response from another app on the port (the same app on
+    /// Android, say) must not pass or fail the scenario, so it is not run, and its output is not the app's.
+    static func foreign(_ response: BridgeClient.Response, port: Int) -> Result.Outcome? {
+      response.identity.isOurs ? nil : .broken(Message.anotherAppAnswered(port: port, answeredAs: response.identity))
     }
 
     /// What one run through the bridge amounts to, from the steps it printed and its exit code.

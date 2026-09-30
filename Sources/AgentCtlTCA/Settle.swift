@@ -67,25 +67,46 @@
     var inFlight: Int
   }
 
-  /// Live settling for the running app: wait until no mock call is in flight and the state has not
+  /// Live settling for the running app: wait until no mock call is in flight, the UI is idle and the state has not
   /// changed for `quietWindow`, or until `limit`. Mock latency is real here, so this uses real time.
+  ///
+  /// A UI busy for more than `endlessAfter` at a stretch is an endless animation (a spinner), not a transition, and
+  /// stops holding settling. A stretch ends once the UI has been idle for `stretchGap`: an endless animation is idle
+  /// between its frames. (CONTRACT.md §8.5.)
   @MainActor
   package func settleLive<State: Equatable>(
     state: () -> State,
     callLog: MockCallLog,
     pending: () -> Int,
+    isUIIdle: () -> Bool = { true },
     quietWindow: Duration = .milliseconds(100),
     pollInterval: Duration = .milliseconds(20),
-    limit: Duration = .seconds(3)
+    limit: Duration = .seconds(3),
+    endlessAfter: Duration = .seconds(1),
+    stretchGap: Duration = .milliseconds(100)
   ) async -> SettleResult {
     let realClock = ContinuousClock()
     let start = realClock.now
     var last = state()
     var quietSince = realClock.now
+    var busySince: ContinuousClock.Instant?
+    var idleSince: ContinuousClock.Instant?
+    func uiHolds() -> Bool {
+      let now = realClock.now
+      if isUIIdle() {
+        if idleSince == nil { idleSince = now }
+        if let idle = idleSince, idle.duration(to: now) >= stretchGap { busySince = nil }
+        return false
+      }
+      idleSince = nil
+      let since = busySince ?? now
+      busySince = since
+      return since.duration(to: now) < endlessAfter
+    }
     while start.duration(to: realClock.now) < limit {
       try? await realClock.sleep(for: pollInterval)
       let next = state()
-      if next != last || callLog.inFlight > 0 {
+      if next != last || callLog.inFlight > 0 || uiHolds() {
         last = next
         quietSince = realClock.now
       } else if quietSince.duration(to: realClock.now) >= quietWindow {

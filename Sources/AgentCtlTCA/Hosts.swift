@@ -195,6 +195,10 @@
     public let tracker: EffectTracker
     public let clock: CountingClock<AdvanceableClock>
     let mockMethods: [MockMethod]
+    /// Whether the app's UI is at rest: no navigation transition or animation in flight. A step settles only once it
+    /// is (CONTRACT.md §8.5), so the next command never lands mid-transition. `nil` counts as idle; AgentCtlBridge
+    /// fills in UIKit's view-controller transitions when the host leaves it `nil`.
+    public var isUIIdle: (@MainActor () -> Bool)?
 
     public init(
       initialState: @escaping () -> Root.State,
@@ -230,13 +234,19 @@
       }
     }
 
-    /// Settles on real time — no mock call in flight, and the state quiet for a moment — because a running app's
-    /// latency and timers are real, unlike the headless host's.
+    /// Settles on real time — no mock call in flight, the UI at rest, and the state quiet for a moment — because a
+    /// running app's latency, timers and animations are real, unlike the headless host's.
     public func settle() async -> SettleResult {
+      await settle(waitingForUI: true)
+    }
+
+    /// - Parameter waitingForUI: `false` for a launch seed, which runs before the app's screens are shown.
+    func settle(waitingForUI: Bool) async -> SettleResult {
       await settleLive(
         state: { store.state },
         callLog: callLog,
         pending: { [clock] in clock.activeSleeps },
+        isUIIdle: { [isUIIdle] in waitingForUI ? isUIIdle?() ?? true : true },
         quietWindow: .milliseconds(250)
       )
     }
@@ -262,7 +272,8 @@
         tracker: tracker,
         pending: { [clock] in clock.activeSleeps },
         environment: RunnerEnvironment(
-          settle: { [self] in await settle() },
+          // A seed runs before any screen is shown (it synthesizes appearance), so it does not wait for the UI.
+          settle: { [self] in await settle(waitingForUI: !synthesizesAppearance) },
           advance: { [self] duration in
             // Between deadlines, a short settle: long enough for what a timer fires to reach the store and start
             // its next sleep, short enough that `advance 1m` over a one-second countdown stays quick.

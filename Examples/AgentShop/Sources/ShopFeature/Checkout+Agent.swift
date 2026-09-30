@@ -30,27 +30,17 @@ extension Checkout: AgentScreen {
   /// Sent when checkout appears: it loads the saved address (`account.fetchProfile`).
   public static let onAppear: Action? = .onAppear
 
-  static let shippings = Shipping.allCases.map(\.rawValue).joined(separator: "|")
-  static let payments = Payment.allCases.map(\.rawValue).joined(separator: "|")
-
   public static let commands: [AgentCommand<State, Action>] = [
     .text("name", help: "Set the full name.") { .binding(.set(\.address.name, $0)) },
     .text("street", help: "Set the street.") { .binding(.set(\.address.street, $0)) },
     .text("city", help: "Set the city.") { .binding(.set(\.address.city, $0)) },
     .text("zip", help: "Set the zip code (five digits).") { .binding(.set(\.address.zip, $0)) },
-    .parsing(
+    .choice(
       "shipping",
-      argument: "<\(shippings)>",
+      of: Shipping.self,
       help: "Standard is free; express adds \(formatCents(Checkout.expressShippingCents))."
-    ) { text throws(AgentCommandError) in
-      guard let shipping = Shipping(rawValue: text) else { throw .invalidArgument("expected \(shippings)") }
-      return .shippingTapped(shipping)
-    },
-    .parsing("payment", argument: "<\(payments)>", help: "Pay by card or with Apple Pay.") {
-      text throws(AgentCommandError) in
-      guard let payment = Payment(rawValue: text) else { throw .invalidArgument("expected \(payments)") }
-      return .paymentTapped(payment)
-    },
+    ) { .shippingTapped($0) },
+    .choice("payment", of: Payment.self, help: "Pay by card or with Apple Pay.") { .paymentTapped($0) },
     .text(
       "card",
       argument: "<number>",

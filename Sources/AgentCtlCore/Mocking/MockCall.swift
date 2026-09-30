@@ -40,4 +40,27 @@ public struct MockMethod: Equatable, Hashable, Sendable {
     self.name = name
     self.errorCodes = errorCodes
   }
+
+  /// This method also accepting `codes`, after its own and skipping any it already lists.
+  public func accepting(_ codes: [String]) -> Self {
+    var copy = self
+    copy.errorCodes += codes.filter { !errorCodes.contains($0) }
+    return copy
+  }
+}
+
+extension Sequence<MockMethod> {
+  /// Every method also accepting `codes`, the failures any call can have whatever its client's own errors, e.g.
+  /// `network` for everything that goes over the wire:
+  ///
+  /// ```swift
+  /// (AuthClient.mockMethods + OrdersClient.mockMethods).accepting(["network"])
+  /// ```
+  ///
+  /// Each method keeps its own codes first, in their order, and gains the common ones after them, skipping any it
+  /// already lists, so `mock`'s `valid:` list and the docs' table read the same as when every client appended
+  /// them by hand.
+  public func accepting(_ codes: [String]) -> [MockMethod] {
+    map { $0.accepting(codes) }
+  }
 }

@@ -24,23 +24,16 @@ extension ShopFeed: AgentScreen {
   /// Headlessly there is no view to send this, so the runtime sends it when the screen becomes active.
   public static let onAppear: Action? = .onAppear
 
-  static let filters = (["all"] + ProductCategory.allCases.map(\.rawValue)).joined(separator: "|")
-  static let sorts = Sort.allCases.map(\.rawValue).joined(separator: "|")
+  /// `all` for no filter, then every category.
+  static let filters: [(String, ProductCategory?)] = [("all", nil)] + ProductCategory.allCases.map { ($0.rawValue, $0) }
 
   public static let commands: [AgentCommand<State, Action>] = [
-    .parsing("filter", argument: "<\(filters)>", help: "Show one category, or all.") { text throws(AgentCommandError) in
-      if text == "all" { return .filterTapped(nil) }
-      guard let category = ProductCategory(rawValue: text) else { throw .invalidArgument("expected \(filters)") }
-      return .filterTapped(category)
-    },
+    .choice("filter", filters, help: "Show one category, or all.") { .filterTapped($0) },
     .text("search", help: "Type in the search field; matches product names as you type.") {
       .binding(.set(\.query, $0))
     },
     .action("clear-search", help: "Clear the search field.", .clearSearchTapped),
-    .parsing("sort", argument: "<\(sorts)>", help: "Sort the products.") { text throws(AgentCommandError) in
-      guard let sort = Sort(rawValue: text) else { throw .invalidArgument("expected \(sorts)") }
-      return .sortTapped(sort)
-    },
+    .choice("sort", of: Sort.self, help: "Sort the products.") { .sortTapped($0) },
     .parsing(
       "open",
       argument: "<sku>",

@@ -80,6 +80,64 @@ public protocol AgentContainer {
   static func activeScreen(_ state: AgentState) -> ActiveScreen<AgentAction>
   /// Every screen reachable through this container, with inherited commands appended.
   static var registry: [ScreenDoc] { get }
+  /// Shown as the source of ``inheritedCommands``. Defaults to the type name.
+  static var containerName: String { get }
+  /// Commands this container offers on every screen beneath it, whatever is pushed: a root's `login-as` and
+  /// `reset`, a tab bar's `tab`. Declared once, they reach both the active screen
+  /// (``inheritingCommands(_:_:)``) and every screen of the registry
+  /// (``inheritingCommands(_:)``), so the two cannot disagree. A command with `paths` is offered only on those
+  /// descendant paths. Commands that depend on what is pushed, such as `back`, stay in `activeScreen`. Defaults to
+  /// none.
+  static var inheritedCommands: [AgentCommand<AgentState, AgentAction>] { get }
+}
+
+extension AgentContainer {
+  public static var containerName: String { String(describing: Self.self) }
+  public static var inheritedCommands: [AgentCommand<AgentState, AgentAction>] { [] }
+
+  /// `screen` with ``inheritedCommands`` added, resolved against this container's `state`. Call it on the child's
+  /// screen in `activeScreen`.
+  ///
+  /// They go after the commands of the screen and of the containers beneath this one, and before any command this
+  /// container added itself (its `back`), whichever of the two is applied first; a command whose name is already
+  /// there keeps the descendant's version, as with ``ActiveScreen/appending(_:)``.
+  public static func inheritingCommands(
+    _ screen: ActiveScreen<AgentAction>,
+    _ state: AgentState
+  ) -> ActiveScreen<AgentAction> {
+    var copy = screen
+    let extra = inheritedCommands
+      .filter { $0.paths?.contains(screen.path) ?? true }
+      .map { $0.resolve(state, source: containerName) }
+    copy.commands = insertingInherited(extra, into: screen.commands, name: \.name, source: \.source)
+    return copy
+  }
+
+  /// `docs` with ``inheritedCommands`` added to each screen, in the same place as on the active screen. Call it on
+  /// every screen the container's `registry` lists.
+  public static func inheritingCommands(_ docs: [ScreenDoc]) -> [ScreenDoc] {
+    docs.map { screen in
+      var copy = screen
+      let extra = inheritedCommands
+        .filter { $0.paths?.contains(screen.path) ?? true }
+        .map { $0.doc(source: containerName) }
+      copy.commands = insertingInherited(extra, into: screen.commands, name: \.name, source: \.source)
+      return copy
+    }
+  }
+
+  private static func insertingInherited<Command>(
+    _ extra: [Command],
+    into commands: [Command],
+    name: (Command) -> String,
+    source: (Command) -> String
+  ) -> [Command] {
+    let existing = Set(commands.map(name))
+    let own = commands.firstIndex { source($0) == containerName } ?? commands.endIndex
+    var result = commands
+    result.insert(contentsOf: extra.filter { !existing.contains(name($0)) }, at: own)
+    return result
+  }
 }
 
 /// The screen an agent is looking at, with commands lifted to some ancestor's action type.
@@ -128,6 +186,12 @@ public struct ActiveScreen<Action> {
     return copy
   }
 
+  /// Appends ``ResolvedCommand/backFallback(path:source:)`` for this screen's path. The root calls it last, so a
+  /// `back` from any container beneath it wins.
+  public func appendingBackFallback(source: String) -> Self {
+    appending([.backFallback(path: path, source: source)])
+  }
+
   /// Prefixes the identity, e.g. with a stack element id, so re-pushing the same path counts as a new appearance.
   public func identified(by component: String) -> Self {
     var copy = self
@@ -158,6 +222,14 @@ public struct CommandDoc: Codable, Equatable, Hashable, Sendable {
 
   public var usage: String {
     argument.map { "\(name) \($0)" } ?? name
+  }
+
+  /// The help of the root's `back` fallback, in the docs and on the resolved command alike.
+  public static let backFallbackHelp = "Fails with 'nothing to go back to' when no screen is pushed."
+
+  /// How the root's ``ResolvedCommand/backFallback(path:source:)`` is documented, on every screen of its registry.
+  public static func backFallback(source: String) -> Self {
+    CommandDoc(name: "back", argument: nil, help: backFallbackHelp, source: source)
   }
 }
 

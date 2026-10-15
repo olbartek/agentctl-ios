@@ -248,6 +248,18 @@ extension AgentCtlSuite {
       #expect(unknown.hasSuffix("  FAIL unknown push 'pong'; pushes: ping"))
     }
 
+    /// Both ports accept and refuse the same link texts (agentctl-android's java.net.URI and Swift's strict URL).
+    @Test func linkValidityMatchesTheKotlinPort() async {
+      for url in ["gadget://[::1]:8080/a", "gadget://x/a%20b?q=1#f", "gadget:x"] {
+        let (text, status) = await run("device open-url \(url)")
+        #expect(status == .ok, "\(url) is a link:\n\(text)")
+      }
+      for url in ["gadget://x/é", "gadget://x/2?x=[1]", "gadget://x/%zz", "gadget://x/２", "gadget://[x/1", "gadget:"] {
+        let (text, status) = await run("device open-url \(url)")
+        #expect(status == .usage, "\(url) is not a link:\n\(text)")
+      }
+    }
+
     @Test func screenCommandsFailInTheBackground() async {
       let (text, status) = await run("device background; expect phase=background; camera")
       #expect(status == .failed)

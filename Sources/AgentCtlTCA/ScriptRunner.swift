@@ -396,10 +396,12 @@
       return finish(command: line.text, callStart: start, settle: settle, before: before)
     }
 
-    /// An absolute URL: a scheme (`[A-Za-z][A-Za-z0-9+.-]*`), a colon, then no whitespace, parsed strictly (nothing
-    /// percent-encoded on the way), so both ports accept and reject the same texts.
+    /// An absolute URL: a scheme (`[A-Za-z][A-Za-z0-9+.-]*`), a colon, at least one character after it, and no
+    /// whitespace, parsed strictly (nothing percent-encoded on the way), so both ports accept and reject the same texts.
     static func parseURL(_ text: String) -> URL? {
-      guard let colon = text.firstIndex(of: ":"), !text.contains(where: \.isWhitespace) else { return nil }
+      guard let colon = text.firstIndex(of: ":"), text.index(after: colon) != text.endIndex,
+        !text.contains(where: \.isWhitespace)
+      else { return nil }
       let scheme = text[..<colon]
       guard let first = scheme.first, first.isASCII, first.isLetter,
         scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+.-".contains($0)) })

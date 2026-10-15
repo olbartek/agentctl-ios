@@ -93,7 +93,7 @@ jobs:
       - name: Build in release
         run: swift build -c release
 
-  # The showcase app: its own package (which depends on this one by path), its 105 scenarios, its generated command
+  # The showcase app: its own package (which depends on this one by path), its 123 scenarios, its generated command
   # reference and generated UI tests, and an iOS Simulator build of the app with its UI tests. The UI tests themselves
   # take about 25 minutes on a simulator and run locally (Examples/AgentShop/bench/bench.py), not here.
   example:

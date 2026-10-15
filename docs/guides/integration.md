@@ -7,11 +7,11 @@ client that is also this package's test fixture.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.5.0"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.6.0"),
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.5.0"` admits every later
+Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.6.0"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`, and it exposes five products. Take only what each target needs:

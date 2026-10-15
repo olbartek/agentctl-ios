@@ -83,7 +83,7 @@ place where the headless run disagreed with iOS. It is a case for which one an a
 The whole integration, in five steps — each is a few lines of real code in
 [the integration guide](docs/guides/integration.md):
 
-1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.5.0")`, and take only
+1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.6.0")`, and take only
    the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` for the config, `AgentCtlCLI` for your
    CLI, `AgentCtlBridge` for the app shell, `AgentCtlTestSupport` for tests).
 2. **Conform your screens** — beside each reducer, an `AgentScreen` extension: its path, a `key=value` summary, an
@@ -132,10 +132,11 @@ cart and checkout) with an Xcode project, 105 scenarios, UI tests generated from
 
 ## Status
 
-Version 0.5.0, extracted from the app it was built for. The two example apps in this repository are the integrations
-CI exercises, and the API may still change between minor versions before 1.0. MIT licensed.
+Version 0.6.0: [the device environment](docs/guides/device-environment.md) on top of 0.5, which was extracted from
+the app it was built for. The two example apps in this repository are the integrations CI exercises, and the API may
+still change between minor versions before 1.0. MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
 lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,
-so 0.5.x here and 0.5.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
+so 0.6.x here and 0.6.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
 own fix, so the two patch numbers can differ.

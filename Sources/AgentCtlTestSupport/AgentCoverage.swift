@@ -35,6 +35,7 @@
   /// Construct one with every screen the app documents (its `AgentContainer.registry`) and the directory its
   /// `*.appctl` scenarios live in, then ask:
   /// - ``unusedCommands()``: command names no scenario sends.
+  /// - ``unusedDeviceCommands()``: `device` subcommands, and pushes, no scenario sends.
   /// - ``undocumentedSummaryKeys()``: summary keys a scenario run emits that no screen's `summaryKeys` lists.
   /// - ``unvisitedScreens()``: documented screen paths no scenario run visits. A pattern segment written
   ///   `<id>` (e.g. `items/<id>`) matches any concrete segment (`items/2`), so a screen with a
@@ -85,7 +86,27 @@
         let lines = try ScriptParser.parse(try String(contentsOf: file, encoding: .utf8))
         used.formUnion(lines.map(\.name))
       }
-      return AgentRegistry.allCommandNames(screens: screens).subtracting(used).sorted()
+      return AgentRegistry.allCommandNames(screens: screens, device: make().deviceSurface).subtracting(used).sorted()
+    }
+
+    /// The app's `device` subcommands no scenario sends, as `device <subcommand>`, then its pushes no scenario
+    /// delivers, as `device push <name>`, in the order the app declares them. Permission services are not checked
+    /// one by one: a scenario can exercise one through the app's prompt without naming it.
+    public func unusedDeviceCommands() throws -> [String] {
+      let surface = make().deviceSurface
+      var used: Set<String> = []
+      for file in files {
+        for line in try ScriptParser.parse(try String(contentsOf: file, encoding: .utf8)) where line.name == "device" {
+          let tokens = ArgumentText.tokens(line.argument ?? "")
+          guard let sub = tokens.first else { continue }
+          used.insert("device \(sub)")
+          if sub == DeviceSurface.Subcommand.push.rawValue, tokens.count > 1 {
+            used.insert("device push \(tokens[1])")
+          }
+        }
+      }
+      let expected = surface.subcommands.map { "device \($0.rawValue)" } + surface.pushes.map { "device push \($0.name)" }
+      return expected.filter { !used.contains($0) }
     }
 
     /// Summary keys emitted during the scenarios that no screen documents.

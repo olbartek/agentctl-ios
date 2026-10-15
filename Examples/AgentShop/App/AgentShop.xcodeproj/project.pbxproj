@@ -31,6 +31,7 @@
 		8BD71C0A2DEE41E000CEDD92 /* Exceptions for "Config" folder in "AgentShop" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				"AgentShop-Info.plist",
 				Debug.xcconfig,
 				Release.xcconfig,
 				Shared.xcconfig,

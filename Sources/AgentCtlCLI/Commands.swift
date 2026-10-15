@@ -63,13 +63,19 @@
     }
 
     static func screens() {
-      print(ScreensRenderer.render(AgentCtl.runtime.screens, mockExample: AgentCtl.runtime.docsText.mockExample))
+      print(
+        ScreensRenderer.render(
+          AgentCtl.runtime.screens, mockExample: AgentCtl.runtime.docsText.mockExample,
+          device: AgentCtl.runtime.deviceSurface
+        )
+      )
     }
 
     /// The generated command reference as it should be, rendered from the config.
     static var docsMarkdown: String {
       DocsRenderer.render(
-        screens: AgentCtl.runtime.screens, mockMethods: AgentCtl.runtime.mockMethods, text: AgentCtl.runtime.docsText
+        screens: AgentCtl.runtime.screens, mockMethods: AgentCtl.runtime.mockMethods, text: AgentCtl.runtime.docsText,
+        device: AgentCtl.runtime.deviceSurface
       )
     }
 

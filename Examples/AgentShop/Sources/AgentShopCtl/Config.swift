@@ -9,6 +9,7 @@
   import CartClient
   import CatalogClient
   import ComposableArchitecture
+  import DeviceClients
   import Models
   import OrdersClient
   import SessionClient
@@ -32,6 +33,25 @@
         + OrdersClient.mockMethods
     }
 
+    /// What of the device scripts can drive (`device …`): the notifications and location permissions, links,
+    /// two pushes, the scene phase, relaunch, the network (offline, every call fails with `network`), the
+    /// location and Face ID.
+    public static var device: AgentDeviceConfig<AppFeature.Action> {
+      AgentDeviceConfig(
+        permissions: ["notifications", "location"],
+        openURL: { AppFeature.action(opening: $0) },
+        pushes: [
+          AgentPush("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
+          AgentPush("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
+        ],
+        scenePhase: { .scenePhaseChanged($0) },
+        relaunch: true,
+        offlineErrorCode: "network",
+        location: true,
+        biometry: true
+      )
+    }
+
     /// The host-written prose in `agent-commands.md`.
     public static let docsText = DocsText(
       title: "Agent commands",
@@ -44,6 +64,7 @@
         "\(invocation) run \"mock orders.fetchOrders network; login-as alice; retry\"",
         "\(invocation) run --session .appctl/s.session \"register\"   # keep going from the same state next time",
         "\(invocation) app launch --no-build --seed \"login-as bob; tab profile\"   # the real app, already there",
+        "\(invocation) run \"login-as alice; tab profile; order-updates on; device prompt deny\"   # a refused permission",
       ],
       invocation: invocation,
       // A real step from `./appctl run "…; submit"` on the login screen, so the syntax section shows AgentShop's
@@ -94,6 +115,7 @@
         appCheck: AppCheck(seed: "login-as alice", scenario: "shop-order-cancel", expectScreen: "home/orders"),
         help: help,
         mockMethods: mockMethods,
+        device: device,
         docsText: docsText,
         screens: screens,
         makeHeadless: { headless() },
@@ -104,7 +126,9 @@
 
     @MainActor
     public static func headless() -> HeadlessHost<AppFeature> {
-      HeadlessHost(initialState: { AppFeature.State() }, reducer: { AppFeature() }, mockMethods: mockMethods) { deps, env in
+      HeadlessHost(
+        initialState: { AppFeature.State() }, reducer: { AppFeature() }, mockMethods: mockMethods, device: device
+      ) { deps, env in
         // The clients' liveValues are the in-memory mocks. Set them explicitly so the app behaves the same
         // in a test process, where dependencies default to their (unimplemented) testValues.
         deps.authClient = .liveValue
@@ -117,13 +141,18 @@
         deps.authBackend = AuthBackend(clock: env.clock)
         deps.ordersBackend = OrdersBackend()
         deps.accountBackend = AccountBackend()
+        deps.notificationsClient = .liveValue
+        deps.locationClient = .liveValue
+        deps.biometricsClient = .liveValue
+        deps.faceIDVault = FaceIDVault()
       }
     }
 
     @MainActor
     public static func live(latency: MockLatency, sessionStorage: SessionStorage = .liveValue) -> LiveHost<AppFeature> {
       LiveHost(
-        initialState: { AppFeature.State() }, reducer: { AppFeature() }, latency: latency, mockMethods: mockMethods
+        initialState: { AppFeature.State() }, reducer: { AppFeature() }, latency: latency, mockMethods: mockMethods,
+        device: device
       ) { deps, env in
         deps.authClient = .liveValue
         deps.sessionClient = .liveValue
@@ -137,6 +166,10 @@
         deps.accountBackend = AccountBackend()
         // `-mock-fault <method>#<n>=<code>`: how a UI test, which cannot send `mock`, fails a backend call.
         deps.scheduledFaults = ScheduledFaults(arguments: ProcessInfo.processInfo.arguments)
+        deps.notificationsClient = .liveValue
+        deps.locationClient = .liveValue
+        deps.biometricsClient = .liveValue
+        deps.faceIDVault = .liveValue
       }
     }
   }

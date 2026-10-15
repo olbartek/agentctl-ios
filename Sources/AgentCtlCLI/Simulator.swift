@@ -235,6 +235,17 @@
       }
     }
 
+    /// Runs `simctl <arguments>` on the booted `device` for the real-OS `app` commands (`privacy`, `openurl`, `push`,
+    /// `location`, `ui`), failing with simctl's subcommand named and the log.
+    func simctl(_ arguments: [String], on device: Device, log: URL) throws {
+      guard let name = arguments.first else { return }
+      var full = arguments
+      full.insert(device.udid, at: 1)
+      guard Shell.run(Self.simctl + full, in: root, log: log, timeout: Shell.quick) == 0 else {
+        throw AppCtlError("simctl \(name) failed; log: \(log.path(percentEncoded: false))")
+      }
+    }
+
     /// The installed app's bundle, or `nil` when it is not installed.
     func installedApp(on device: Device) -> URL? {
       let path = Shell.capture(Self.simctl + ["get_app_container", device.udid, Self.bundleID, "app"], in: root)

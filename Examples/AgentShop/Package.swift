@@ -44,16 +44,19 @@ let package = Package(
     .target(name: "AccountClient", dependencies: base + ["SessionClient"]),
     .target(name: "CatalogClient", dependencies: base),
     .target(name: "CartClient", dependencies: base),
+    // The device: notifications, location and Face ID, through AgentCtl's simulated device.
+    .target(name: "DeviceClients", dependencies: base),
 
     // Features
-    .target(name: "AuthFeature", dependencies: feature + ["AuthClient"]),
-    .target(name: "OnboardingFeature", dependencies: feature + ["AccountClient"]),
+    .target(name: "AuthFeature", dependencies: feature + ["AuthClient", "DeviceClients"]),
+    .target(name: "OnboardingFeature", dependencies: feature + ["AccountClient", "DeviceClients"]),
     .target(name: "ShopFeature", dependencies: feature + ["CatalogClient", "CartClient", "OrdersClient", "AccountClient"]),
-    .target(name: "HomeFeature", dependencies: feature + ["OrdersClient", "ShopFeature"]),
+    .target(name: "HomeFeature", dependencies: feature + ["OrdersClient", "ShopFeature", "DeviceClients"]),
     .target(
       name: "AppFeature",
       dependencies: feature + [
         "AuthFeature", "OnboardingFeature", "HomeFeature", "AuthClient", "SessionClient", "AccountClient",
+        "DeviceClients",
       ]
     ),
 
@@ -62,7 +65,7 @@ let package = Package(
       name: "AgentShopCtl",
       dependencies: base + [
         agentTCA, "AppFeature", "AuthClient", "SessionClient", "OrdersClient", "AccountClient", "CatalogClient",
-        "CartClient",
+        "CartClient", "DeviceClients",
       ]
     ),
     .executableTarget(
@@ -82,7 +85,7 @@ let package = Package(
       name: "ShopFeatureTests",
       dependencies: feature + ["ShopFeature", "CatalogClient", "CartClient", "OrdersClient", "AccountClient"]
     ),
-    .testTarget(name: "HomeFeatureTests", dependencies: feature + ["HomeFeature", "OrdersClient", "ShopFeature"]),
+    .testTarget(name: "HomeFeatureTests", dependencies: feature + ["HomeFeature", "OrdersClient", "ShopFeature", "DeviceClients"]),
     .testTarget(
       name: "AppFeatureTests",
       dependencies: feature + [

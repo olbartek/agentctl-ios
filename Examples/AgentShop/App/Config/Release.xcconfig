@@ -6,3 +6,6 @@
 
 // No additional release-specific overrides needed
 // All release settings use Xcode project defaults
+
+// The agentshop:// URL scheme, merged into the generated Info.plist.
+INFOPLIST_FILE = Config/AgentShop-Info.plist

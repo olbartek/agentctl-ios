@@ -1,6 +1,9 @@
 import AccountClient
+import AgentCtlCore
 import AuthFeature
 import ComposableArchitecture
+import Foundation
+import DeviceClients
 import HomeFeature
 import Models
 import OnboardingFeature
@@ -31,11 +34,18 @@ public struct AppFeature {
     case loginAs(Session)
     /// Restarts from a fresh launch: the saved session and the mock backends are kept.
     case reset
+    /// A link opened from outside (`device open-url`, a tapped push). Signed out, it is ignored.
+    case deepLinkOpened(DeepLink)
+    /// A push saying an order changed arrived while the app is in front: the orders are loaded again.
+    case orderPushReceived
+    /// The app came to the foreground or went to the background.
+    case scenePhaseChanged(DevicePhase)
   }
 
   @Dependency(\.sessionClient) var sessionClient
   @Dependency(\.accountClient) var accountClient
   @Dependency(\.uuid) var uuid
+  @Dependency(\.faceIDVault) var faceIDVault
 
   public init() {}
 
@@ -49,7 +59,7 @@ public struct AppFeature {
         }
 
       case let .sessionLoaded(session):
-        state = session.map { .home(HomeTabs.State(id: uuid(), session: $0)) } ?? .auth(AuthFlow.State())
+        state = session.map { .home(HomeTabs.State(id: uuid(), session: $0)) } ?? .auth(authState())
         return .none
 
       case let .auth(.delegate(.authenticated(session, remember))):
@@ -75,8 +85,21 @@ public struct AppFeature {
         }
 
       case .signedOut:
-        state = .auth(AuthFlow.State())
+        state = .auth(authState())
         return .none
+
+      case let .deepLinkOpened(link):
+        guard case .home = state else { return .none }
+        return .send(.home(.deepLink(link)))
+
+      case .orderPushReceived:
+        guard case .home = state else { return .none }
+        return .send(.home(.ordersList(.refresh)))
+
+      case let .scenePhaseChanged(phase):
+        // Back in front on the orders tab, the list may be stale: load it again.
+        guard phase == .foreground, case let .home(home) = state, home.selectedTab == .orders else { return .none }
+        return .send(.home(.ordersList(.refresh)))
 
       case .reset:
         // The launching screen appears again and sends `.appeared`, which restores the session.
@@ -98,6 +121,13 @@ public struct AppFeature {
     }
   }
 
+  /// The sign-in screens, offering Face ID when an account has turned it on.
+  private func authState() -> AuthFlow.State {
+    var auth = AuthFlow.State()
+    auth.login.faceIDAccount = faceIDVault.session
+    return auth
+  }
+
   /// Saves the session (restored on the next launch only when `remember` is set), then asks the account server
   /// whether this account still needs onboarding. If that fails the shopper goes home: onboarding is never a
   /// reason to lock someone out.
@@ -107,6 +137,14 @@ public struct AppFeature {
       let profile = try? await accountClient.fetchProfile()
       await send(.signedIn(session, needsOnboarding: profile?.needsOnboarding ?? false))
     }
+  }
+}
+
+extension AppFeature {
+  /// What opening `url` does: one of AgentShop's links (``DeepLink``), or `nil` for any other URL. The app shell's
+  /// `onOpenURL` and the agent's `device open-url` both go through it.
+  public static func action(opening url: URL) -> Action? {
+    DeepLink(url: url).map { .deepLinkOpened($0) }
   }
 }
 

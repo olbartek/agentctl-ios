@@ -8,6 +8,8 @@ public struct StepRecord: Equatable, Sendable {
   public var calls: [String]
   public var error: String?
   public var pending: Int
+  /// The system prompt the app is waiting on (a permission's service, or `biometry`), if any.
+  public var prompt: String?
   /// `false` when settling hit its real-time limit.
   public var settled: Bool
   public var ok: Bool
@@ -22,6 +24,7 @@ public struct StepRecord: Equatable, Sendable {
     calls: [String],
     error: String?,
     pending: Int,
+    prompt: String? = nil,
     settled: Bool = true,
     ok: Bool = true,
     message: String? = nil,
@@ -33,6 +36,7 @@ public struct StepRecord: Equatable, Sendable {
     self.calls = calls
     self.error = error
     self.pending = pending
+    self.prompt = prompt
     self.settled = settled
     self.ok = ok
     self.message = message
@@ -40,7 +44,7 @@ public struct StepRecord: Equatable, Sendable {
   }
 
   public var snapshot: StepSnapshot {
-    StepSnapshot(screen: screen, summary: summary, calls: calls, error: error, pending: pending)
+    StepSnapshot(screen: screen, summary: summary, calls: calls, error: error, pending: pending, prompt: prompt)
   }
 }
 
@@ -56,6 +60,7 @@ public enum StepFormatter {
     if !step.calls.isEmpty { fields.append("calls=\(step.calls.joined(separator: ","))") }
     if let error = step.error { fields.append("error=\(error)") }
     if step.pending != 0 { fields.append("pending=\(step.pending)") }
+    if let prompt = step.prompt { fields.append("prompt=\(prompt)") }
     if !step.settled { fields.append("settled=false") }
     var lines = ["> \(step.command)", "  " + fields.joined(separator: " ")]
     if let message = step.message {
@@ -110,6 +115,7 @@ private struct JSONStep: Encodable {
   var calls: [String]
   var error: String?
   var pending: Int
+  var prompt: String?
   var settled: Bool
   var ok: Bool
   var message: String?
@@ -121,6 +127,7 @@ private struct JSONStep: Encodable {
     calls = step.calls
     error = step.error
     pending = step.pending
+    prompt = step.prompt
     settled = step.settled
     ok = step.ok
     message = step.message
@@ -134,12 +141,14 @@ private struct JSONStep: Encodable {
     try container.encode(calls, forKey: .calls)
     try container.encode(error, forKey: .error)
     try container.encode(pending, forKey: .pending)
+    // Only when a prompt is pending, so a run without one encodes exactly as before `device` existed.
+    try container.encodeIfPresent(prompt, forKey: .prompt)
     try container.encode(settled, forKey: .settled)
     try container.encode(ok, forKey: .ok)
     try container.encodeIfPresent(message, forKey: .message)
   }
 
   enum CodingKeys: String, CodingKey {
-    case command, screen, summary, calls, error, pending, settled, ok, message
+    case command, screen, summary, calls, error, pending, prompt, settled, ok, message
   }
 }

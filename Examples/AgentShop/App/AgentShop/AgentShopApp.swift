@@ -22,14 +22,23 @@ struct AgentShopApp: App {
       #if DEBUG
         Group {
           if launch.isReady {
+            // Keyed by the store, so `device relaunch` (a new store) shows a fresh view tree, as a relaunch would.
             RootView(store: launch.store)
+              .id(ObjectIdentifier(launch.store))
           } else {
             ProgressView()
           }
         }
         .task { await launch.start() }
+        // A link the system opens (`app openurl agentshop://order/1003`): the same action `device open-url` sends.
+        .onOpenURL { url in
+          if let action = AppFeature.action(opening: url) { launch.store.send(action) }
+        }
       #else
         RootView(store: store)
+          .onOpenURL { url in
+            if let action = AppFeature.action(opening: url) { store.send(action) }
+          }
       #endif
     }
   }

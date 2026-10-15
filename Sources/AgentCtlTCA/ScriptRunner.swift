@@ -2,6 +2,7 @@
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
   import ComposableArchitecture
+  import Foundation
 
   /// How a ``ScriptRunner`` waits for the app and whether it can control time.
   @MainActor
@@ -59,7 +60,8 @@
   {
     public static var runtimeCommandNames: [String] { ["expect", "advance", "mock"] }
 
-    public let store: Store<Root.State, Root.Action>
+    /// The store the script drives. `device relaunch` replaces it with a fresh one.
+    public private(set) var store: Store<Root.State, Root.Action>
     let callLog: MockCallLog
     let faults: MockFaults
     let tracker: EffectTracker
@@ -68,6 +70,13 @@
     /// The methods `mock` accepts, supplied by the host that built this runner, since the app's clients — not
     /// this package — know which methods are mockable.
     let mockMethods: [MockMethod]
+    /// The simulated device `device` changes and the app's fakes read.
+    public let device: AgentDevice
+    let deviceConfig: AgentDeviceConfig<Root.Action>
+    /// The `device` subcommands this app has.
+    public let deviceSurface: DeviceSurface
+    /// Builds a fresh store over the same dependencies, for `device relaunch`.
+    let relaunch: (@MainActor () -> Store<Root.State, Root.Action>)?
     /// Adds a `customDump` diff of the root state to each step (`--diff`).
     public var recordsDiff = false
     private var lastIdentity: String?
@@ -87,9 +96,16 @@
       tracker: EffectTracker,
       pending: @escaping @MainActor () -> Int,
       environment: RunnerEnvironment,
-      mockMethods: [MockMethod]
+      mockMethods: [MockMethod],
+      device: AgentDevice = AgentDevice(),
+      deviceConfig: AgentDeviceConfig<Root.Action> = .none,
+      relaunch: (@MainActor () -> Store<Root.State, Root.Action>)? = nil
     ) {
       self.store = store
+      self.device = device
+      self.deviceConfig = deviceConfig
+      self.deviceSurface = deviceConfig.surface
+      self.relaunch = relaunch
       self.callLog = callLog
       self.faults = faults
       self.tracker = tracker
@@ -146,6 +162,8 @@
         return await advance(line)
       case "mock":
         return mock(line)
+      case "device" where deviceSurface.exists:
+        return await device(line)
       default:
         return await command(line)
       }
@@ -216,8 +234,12 @@
     private func command(_ line: ScriptLine) async -> (step: StepRecord, status: RunStatus) {
       let screen = activeScreen()
       guard let command = screen.command(named: line.name) else {
-        let valid = (screen.commands.map(\.usage) + Self.runtimeCommandNames).joined(separator: ", ")
+        let runtime = Self.runtimeCommandNames + (deviceSurface.exists ? ["device"] : [])
+        let valid = (screen.commands.map(\.usage) + runtime).joined(separator: ", ")
         return fail(line, status: .failed, "unknown command '\(line.name)' on \(screen.path). Valid here: \(valid)")
+      }
+      if deviceSurface.subcommands.contains(.background), device.phase == .background {
+        return fail(line, status: .failed, "\(command.name) is unavailable: the app is in the background (device foreground first)")
       }
       if let reason = command.disabledReason {
         return fail(line, status: .failed, "\(command.name) is disabled here (\(reason))")
@@ -235,6 +257,156 @@
       store.send(action)
       let settle = await settleAndAppear()
       return finish(command: line.text, callStart: start, settle: settle, before: before)
+    }
+
+    // MARK: - device (CONTRACT.md §2.4)
+
+    private func device(_ line: ScriptLine) async -> (step: StepRecord, status: RunStatus) {
+      let surface = deviceSurface
+      let available = surface.subcommands.map(\.rawValue).joined(separator: ", ")
+      let tokens = ArgumentText.tokens(line.argument ?? "")
+      guard let first = tokens.first else {
+        return fail(line, status: .usage, "usage: device <subcommand>; available: \(available)")
+      }
+      guard let sub = DeviceSurface.Subcommand(rawValue: first) else {
+        return fail(line, status: .usage, "unknown device command '\(first)'; available: \(available)")
+      }
+      guard surface.subcommands.contains(sub) else {
+        return fail(line, status: .usage, "device \(first) is not configured by this app; available: \(available)")
+      }
+      let arguments = Array(tokens.dropFirst())
+      func usage(_ text: String) -> (step: StepRecord, status: RunStatus) {
+        fail(line, status: .usage, "usage: \(text)")
+      }
+      func failed(_ text: String) -> (step: StepRecord, status: RunStatus) {
+        fail(line, status: .failed, text)
+      }
+      let services = surface.services.joined(separator: ", ")
+
+      switch sub {
+      case .permission:
+        guard arguments.count == 2, let status = PermissionStatus(rawValue: arguments[1]) else {
+          return usage("device permission <service> <not-determined|granted|denied|limited>; services: \(services)")
+        }
+        let service = arguments[0]
+        guard surface.services.contains(service) else {
+          return failed("unknown permission '\(service)'; services: \(services)")
+        }
+        guard !device.isPrompting(for: service) else {
+          return failed(
+            "device permission: a prompt for \(service) is pending; answer it with device prompt allow|deny|limited"
+          )
+        }
+        return await settling(line) { device.setPermission(service, status) }
+
+      case .prompt:
+        let answers: [String: PermissionStatus] = ["allow": .granted, "deny": .denied, "limited": .limited]
+        guard arguments.count == 1, let status = answers[arguments[0]] else {
+          return usage("device prompt <allow|deny|limited>")
+        }
+        do {
+          try device.answerPermission(status)
+        } catch {
+          switch error {
+          case .noPrompt:
+            return failed("device prompt: no prompt is pending")
+          case let .otherPrompt(name):
+            return failed("device prompt: the pending prompt is \(name); answer it with device biometry match|fail")
+          }
+        }
+        return await settling(line) {}
+
+      case .openURL:
+        guard arguments.count == 1, let url = Self.parseURL(arguments[0]) else {
+          return usage("device open-url <url>")
+        }
+        guard let action = inAppContext({ deviceConfig.openURL?(url) }) else {
+          return failed("device open-url: the app does not handle \(arguments[0])")
+        }
+        return await settling(line) { store.send(action) }
+
+      case .push:
+        let names = surface.pushes.map(\.name).joined(separator: ", ")
+        guard arguments.count == 1 || (arguments.count == 2 && arguments[1] == "tap") else {
+          return usage("device push <name> [tap]; pushes: \(names)")
+        }
+        guard let push = deviceConfig.pushes.first(where: { $0.name == arguments[0] }) else {
+          return failed("unknown push '\(arguments[0])'; pushes: \(names)")
+        }
+        let action = arguments.count == 2 ? push.opened : push.received
+        return await settling(line) { if let action { store.send(action) } }
+
+      case .background, .foreground:
+        guard arguments.isEmpty else { return usage("device \(sub.rawValue)") }
+        let phase: DevicePhase = sub == .background ? .background : .foreground
+        let action = inAppContext { deviceConfig.scenePhase?(phase) }
+        return await settling(line) {
+          device.setPhase(phase)
+          if let action { store.send(action) }
+        }
+
+      case .relaunch:
+        guard arguments.isEmpty else { return usage("device relaunch") }
+        guard let relaunch else { return failed("device relaunch is not available in this runtime") }
+        return await settling(line) {
+          // The old store goes with its effects (a root store cancels them as it is released); a prompt one of them
+          // was waiting on goes with it, as when the app quits.
+          store = relaunch()
+          device.withdrawAllPrompts()
+          device.setPhase(.foreground)
+          lastIdentity = nil
+        }
+
+      case .network:
+        guard arguments.count == 1, ["online", "offline"].contains(arguments[0]) else {
+          return usage("device network <online|offline>")
+        }
+        return await settling(line) { device.setOnline(arguments[0] == "online") }
+
+      case .location:
+        guard arguments.count == 1, let location = DeviceLocation.parseArgument(arguments[0]) else {
+          return usage("device location <lat>,<lon> or none, e.g. 52.2297,21.0122")
+        }
+        return await settling(line) { device.setLocation(location) }
+
+      case .biometry:
+        guard arguments.count == 1, ["enrolled", "unenrolled", "match", "fail"].contains(arguments[0]) else {
+          return usage("device biometry <enrolled|unenrolled|match|fail>")
+        }
+        switch arguments[0] {
+        case "enrolled", "unenrolled":
+          return await settling(line) { device.setBiometryEnrolled(arguments[0] == "enrolled") }
+        default:
+          do {
+            try device.answerBiometry(arguments[0] == "match" ? .success : .failure)
+          } catch {
+            return failed("device biometry: no biometric prompt is pending")
+          }
+          return await settling(line) {}
+        }
+      }
+    }
+
+    /// Runs `change`, then settles and prints the step, as a screen command does.
+    private func settling(_ line: ScriptLine, _ change: () -> Void) async -> (step: StepRecord, status: RunStatus) {
+      let start = callLog.count
+      let before = state
+      change()
+      let settle = await settleAndAppear()
+      return finish(command: line.text, callStart: start, settle: settle, before: before)
+    }
+
+    /// An absolute URL: a scheme (`[A-Za-z][A-Za-z0-9+.-]*`), a colon, at least one character after it, and no
+    /// whitespace, parsed strictly (nothing percent-encoded on the way), so both ports accept and reject the same texts.
+    static func parseURL(_ text: String) -> URL? {
+      guard let colon = text.firstIndex(of: ":"), text.index(after: colon) != text.endIndex,
+        !text.contains(where: \.isWhitespace)
+      else { return nil }
+      let scheme = text[..<colon]
+      guard let first = scheme.first, first.isASCII, first.isLetter,
+        scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+.-".contains($0)) })
+      else { return nil }
+      return URL(string: text, encodingInvalidCharacters: false)
     }
 
     // MARK: - Helpers
@@ -296,6 +468,7 @@
         calls: calls,
         error: screen.errorCode,
         pending: settle.pending,
+        prompt: device.pendingPrompt,
         settled: settle.settled
       )
     }

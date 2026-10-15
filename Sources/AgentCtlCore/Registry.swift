@@ -4,15 +4,21 @@ public enum AgentRegistry {
   /// only the host knows what its clients are called.
   public static let defaultMockExample = "mock <client.method> <error>"
 
-  /// - Parameter mockExample: the example in `mock`'s help, e.g. `mock orders.fetchOrders network`. The client
-  ///   and method names are the host's, so it comes from ``DocsText/mockExample``.
-  public static func runtimeCommands(mockExample: String = defaultMockExample) -> [CommandDoc] {
-    [
+  /// - Parameters:
+  ///   - mockExample: the example in `mock`'s help, e.g. `mock orders.fetchOrders network`. The client and method
+  ///     names are the host's, so it comes from ``DocsText/mockExample``.
+  ///   - device: the app's `device` subcommands, listed after `mock`; none by default.
+  public static func runtimeCommands(
+    mockExample: String = defaultMockExample,
+    device: DeviceSurface = .none
+  ) -> [CommandDoc] {
+    let expectKeys = device.hasPrompts ? "error=<code|none>, pending=<n> or prompt=<service|none>" : "error=<code|none> or pending=<n>"
+    return [
       CommandDoc(
         name: "expect",
         argument: "k=v [k=v …]",
         help: "Assert on screen, any summary key, call=<client.method> (called during the previous step), "
-          + "error=<code|none> or pending=<n>. A failed assertion fails the script.",
+          + "\(expectKeys). A failed assertion fails the script.",
         source: "runtime"
       ),
       CommandDoc(
@@ -27,13 +33,13 @@ public enum AgentRegistry {
         help: "Make the next call to that method fail, e.g. \(mockExample).",
         source: "runtime"
       ),
-    ]
+    ] + device.commandDocs
   }
 
-  /// Every command name across `screens`, including the runtime commands. The names do not depend on the
-  /// host's `mock` example, so this needs none.
-  public static func allCommandNames(screens: [ScreenDoc]) -> Set<String> {
-    Set(screens.flatMap { $0.commands.map(\.name) } + runtimeCommands().map(\.name))
+  /// Every command name across `screens`, including the runtime commands (`device` when the app has it). The
+  /// names do not depend on the host's `mock` example, so this needs none.
+  public static func allCommandNames(screens: [ScreenDoc], device: DeviceSurface = .none) -> Set<String> {
+    Set(screens.flatMap { $0.commands.map(\.name) } + runtimeCommands(device: device).map(\.name))
   }
 }
 
@@ -42,7 +48,8 @@ public enum AgentRegistry {
 public enum ScreensRenderer {
   public static func render(
     _ screens: [ScreenDoc],
-    mockExample: String = AgentRegistry.defaultMockExample
+    mockExample: String = AgentRegistry.defaultMockExample,
+    device: DeviceSurface = .none
   ) -> String {
     var lines: [String] = []
     for screen in screens {
@@ -61,7 +68,7 @@ public enum ScreensRenderer {
       }
     }
     lines.append("every screen  [runtime]")
-    let runtimeCommands = AgentRegistry.runtimeCommands(mockExample: mockExample)
+    let runtimeCommands = AgentRegistry.runtimeCommands(mockExample: mockExample, device: device)
     let width = (runtimeCommands.map(\.usage.count).max() ?? 0) + 2
     for command in runtimeCommands {
       lines.append("  " + command.usage.padding(toLength: width, withPad: " ", startingAt: 0) + command.help)

@@ -3,6 +3,7 @@
   import AgentCtlCore
   import AgentCtlTCA
   import ComposableArchitecture
+  import Foundation
 
   /// Everything AgentCtl needs to know about TinyApp: the facts the CLI would otherwise hard-code, the data the
   /// docs are rendered from, and the two closures that build the app's store.
@@ -16,6 +17,23 @@
     /// Every method `mock <method> <error>` accepts. The runner does not know the app's clients, so the config
     /// tells it.
     public static var mockMethods: [MockMethod] { ItemsClient.mockMethods }
+
+    /// What of the device scripts can drive: links that open an item, and one push. TinyApp has no permission,
+    /// lifecycle, network, location or biometry of its own; AgentShop shows those.
+    public static var device: AgentDeviceConfig<TinyRoot.Action> {
+      AgentDeviceConfig(
+        // `tinyapp://items/<id>` opens that item, on top of whatever is shown, as tapping it in the list would.
+        openURL: { url in
+          guard url.scheme == "tinyapp", url.host == "items", url.pathComponents.count == 2,
+            let id = Int(url.pathComponents[1])
+          else { return nil }
+          return .items(.openTapped(id))
+        },
+        pushes: [
+          AgentPush("item-updated", help: "Item 2 was updated.", received: .items(.refresh), opened: .items(.openTapped(2)))
+        ]
+      )
+    }
 
     /// The prose around the generated command reference. Everything else in that document comes from the
     /// registry above.
@@ -82,6 +100,7 @@
           appScripts: ["open 2; expect saved=false", "save"]
         ),
         mockMethods: mockMethods,
+        device: device,
         docsText: docsText,
         screens: screens,
         makeHeadless: { headless() },
@@ -94,8 +113,10 @@
     /// A deterministic store on the Mac: a `TestClock`, a fixed date, and everything else `HeadlessHost` pins.
     /// `tinyctl run`, `tinyctl test` and the package's own tests all run against this.
     @MainActor
-    public static func headless() -> HeadlessHost<TinyRoot> {
-      HeadlessHost(initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, mockMethods: mockMethods) { deps, _ in
+    public static func headless(device: AgentDeviceConfig<TinyRoot.Action> = device) -> HeadlessHost<TinyRoot> {
+      HeadlessHost(
+        initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, mockMethods: mockMethods, device: device
+      ) { deps, _ in
         // The client's `liveValue` is the mock. Bind it explicitly, so the app behaves the same in a test
         // process, where dependencies otherwise default to their unimplemented test values.
         deps.itemsClient = .liveValue
@@ -106,7 +127,8 @@
     @MainActor
     public static func live(latency: MockLatency) -> LiveHost<TinyRoot> {
       LiveHost(
-        initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, latency: latency, mockMethods: mockMethods
+        initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, latency: latency, mockMethods: mockMethods,
+        device: device
       ) { deps, _ in
         deps.itemsClient = .liveValue
       }

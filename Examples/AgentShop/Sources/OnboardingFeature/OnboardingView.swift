@@ -153,7 +153,14 @@ struct AddressFormView: View {
         }
         FormField(
           "Zip Code",
-          error: store.error.map { _ in "Enter a five-digit zip code." },
+          error: store.error.map {
+            switch $0 {
+            case .invalidZip: "Enter a five-digit zip code."
+            case .locationDenied: "Location is off for AgentShop. Turn it on in Settings, or type the address."
+            case .locationUnavailable: "Your location isn't available yet. Type the address instead."
+            case .addressNotFound: "We couldn't find an address here. Type it instead."
+            }
+          },
           errorCode: store.error?.rawValue
         ) {
           ASTextField("12345", text: $store.address.zip, identifier: "AddressForm.zip")
@@ -164,6 +171,9 @@ struct AddressFormView: View {
         store.send(.continueTapped)
       }
       .padding(.top, Metrics.sectionSpacing)
+      LinkButton("Use my location", identifier: "AddressForm.use-location") { store.send(.useLocationTapped) }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 16)
       LinkButton("Skip for now", identifier: "AddressForm.skip") { store.send(.skipTapped) }
         .frame(maxWidth: .infinity)
         .padding(.top, 24)

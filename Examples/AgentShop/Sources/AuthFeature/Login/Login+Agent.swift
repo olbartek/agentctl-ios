@@ -18,7 +18,7 @@ extension Login: AgentScreen {
     ]
   }
 
-  public static func errorCode(_ state: State) -> String? { state.error?.rawValue }
+  public static func errorCode(_ state: State) -> String? { state.error?.rawValue ?? state.faceIDError?.rawValue }
 
   public static let commands: [AgentCommand<State, Action>] = [
     .text("email", help: "Set the email field.") { .binding(.set(\.email, $0)) },
@@ -39,6 +39,12 @@ extension Login: AgentScreen {
       help: "Sign in with Google (the mock signs in as becca@gmail.com).",
       gate: CommandGate(hint: "loading=true") { !$0.isBusy },
       .googleTapped
+    ),
+    .action(
+      "face-id",
+      help: "Sign in with Face ID, as the account that turned it on in its profile.",
+      gate: CommandGate(hint: "no account has turned Face ID on") { $0.faceIDAccount != nil && !$0.isBusy },
+      .faceIDTapped
     ),
     .action("use-otp", help: "Switch to login with a one-time code (keeps the email).", .useOTPTapped),
     .action("register", help: "Open registration (\"Sign up here\").", .registerTapped),

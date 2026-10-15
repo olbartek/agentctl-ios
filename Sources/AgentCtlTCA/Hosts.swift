@@ -33,6 +33,8 @@
     /// the app's `\.date`. A backend that reads the time (a code's expiry, say) should read it here, as it would read
     /// ``LiveEnvironment/now`` in the running app.
     public let now: @Sendable () -> Date
+    /// The simulated device (`\.agentDevice`), which `device` changes: for fakes that do not read the dependency.
+    public let device: AgentDevice
   }
 
   /// A real store running on the Mac with the deterministic dependencies CONTRACT.md §6 requires.
@@ -50,6 +52,7 @@
   /// | `\.calendar` | ``fixedCalendar``, Gregorian in UTC |
   /// | `\.mockLatency` | `.zero` |
   /// | `\.mockCallLog`, `\.mockFaults` | fresh, per host |
+  /// | `\.agentDevice` | a driven ``AgentDevice``, per host |
   ///
   /// Nothing else is pinned. In particular `\.mainQueue`, `\.suspendingClock` and any other source of time keep
   /// their defaults, which are real (or, in a test process, unimplemented). A host whose app uses one must pin it in
@@ -79,22 +82,30 @@
       return calendar
     }
 
-    public let store: Store<Root.State, Root.Action>
+    /// The app's store. `device relaunch` replaces it with a fresh one over the same dependencies.
+    public private(set) var store: Store<Root.State, Root.Action>
     public let clock: TestClock<Duration>
     /// The clock the app sees: `clock`, with its active sleeps counted for `pending`.
     public let countingClock: CountingClock<TestClock<Duration>>
     public let callLog: MockCallLog
     public let faults: MockFaults
     public let tracker: EffectTracker
+    /// The simulated device, `\.agentDevice`.
+    public let device: AgentDevice
+    let deviceConfig: AgentDeviceConfig<Root.Action>
     let mockMethods: [MockMethod]
+    let initialState: () -> Root.State
+    let reducer: () -> Root
     /// The store's dependencies, as `configure` left them. The runner computes each step's screen, summary and
     /// commands inside them, so a summary reads the same date (and anything else) as the reducer.
     public private(set) var dependencies = DependencyValues()
 
+    /// - Parameter device: what of the device scripts can drive, and the actions its events become (`device`).
     public init(
       initialState: @escaping () -> Root.State,
       reducer: @escaping () -> Root,
       mockMethods: [MockMethod],
+      device deviceConfig: AgentDeviceConfig<Root.Action> = .none,
       configure: @escaping (inout DependencyValues, HeadlessEnvironment) -> Void
     ) {
       let clock = TestClock()
@@ -108,6 +119,11 @@
       self.faults = faults
       self.tracker = tracker
       self.mockMethods = mockMethods
+      self.initialState = initialState
+      self.reducer = reducer
+      self.deviceConfig = deviceConfig
+      let device = AgentDevice(driven: true, offlineErrorCode: deviceConfig.offlineErrorCode)
+      self.device = device
       let fixedDate = Self.fixedDate
       let origin = clock.now
       let now: @Sendable () -> Date = { [clock] in
@@ -116,7 +132,8 @@
         return fixedDate.addingTimeInterval(seconds)
       }
       let environment = HeadlessEnvironment(
-        clock: clock, countingClock: countingClock, callLog: callLog, faults: faults, tracker: tracker, now: now
+        clock: clock, countingClock: countingClock, callLog: callLog, faults: faults, tracker: tracker, now: now,
+        device: device
       )
       var captured = DependencyValues()
       // `initialState()` must be called here, inside `Store.init`'s `@autoclosure` argument, not before: that
@@ -135,6 +152,7 @@
         $0.mockLatency = .zero
         $0.mockCallLog = callLog
         $0.mockFaults = faults
+        $0.agentDevice = device
         // Last, so the host can override any of the above, and pin what the list leaves out.
         configure(&$0, environment)
         captured = $0
@@ -159,8 +177,21 @@
           synthesizesAppearance: true,
           dependencies: dependencies
         ),
-        mockMethods: mockMethods
+        mockMethods: mockMethods,
+        device: device,
+        deviceConfig: deviceConfig,
+        relaunch: { [self] in relaunch() }
       )
+    }
+
+    /// A fresh store from the initial state, over the same dependencies: `device relaunch`.
+    func relaunch() -> Store<Root.State, Root.Action> {
+      store = Store(initialState: initialState()) {
+        TrackingReducer(tracker: tracker, base: reducer())
+      } withDependencies: { [dependencies] in
+        $0 = dependencies
+      }
+      return store
     }
   }
 
@@ -190,6 +221,8 @@
     public let faults: MockFaults
     public let tracker: EffectTracker
     public let latency: MockLatency
+    /// The simulated device (`\.agentDevice`), which `device` changes.
+    public let device: AgentDevice
 
     /// The current date in the app's time: real time plus whatever `advance` has added. It is also the app's
     /// `\.date`. A backend that reads the time (a code's expiry, say) should read it here, as it would read
@@ -208,12 +241,20 @@
     Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
     Root.AgentState == Root.State, Root.AgentAction == Root.Action
   {
-    public let store: Store<Root.State, Root.Action>
+    /// The app's store. `device relaunch` replaces it; ``onRelaunch`` hears of it, so the app shows the new one.
+    public private(set) var store: Store<Root.State, Root.Action>
     public let callLog: MockCallLog
     public let faults: MockFaults
     public let tracker: EffectTracker
     public let clock: CountingClock<AdvanceableClock>
+    /// The simulated device, `\.agentDevice`.
+    public let device: AgentDevice
+    let deviceConfig: AgentDeviceConfig<Root.Action>
     let mockMethods: [MockMethod]
+    let initialState: () -> Root.State
+    let reducer: () -> Root
+    /// Called with the new store after `device relaunch`: AgentLaunch shows it.
+    public var onRelaunch: (@MainActor (Store<Root.State, Root.Action>) -> Void)?
     /// Whether the app's UI is at rest: no navigation transition or animation in flight. A step settles only once it
     /// is (CONTRACT.md §8.5), so the next command never lands mid-transition. `nil` counts as idle; AgentCtlBridge
     /// fills in UIKit's view-controller transitions when the host leaves it `nil`.
@@ -227,6 +268,7 @@
       reducer: @escaping () -> Root,
       latency: MockLatency,
       mockMethods: [MockMethod],
+      device deviceConfig: AgentDeviceConfig<Root.Action> = .none,
       configure: @escaping (inout DependencyValues, LiveEnvironment) -> Void
     ) {
       let callLog = MockCallLog()
@@ -238,7 +280,14 @@
       self.tracker = tracker
       self.clock = clock
       self.mockMethods = mockMethods
-      let environment = LiveEnvironment(clock: clock, callLog: callLog, faults: faults, tracker: tracker, latency: latency)
+      self.initialState = initialState
+      self.reducer = reducer
+      self.deviceConfig = deviceConfig
+      let device = AgentDevice(driven: true, offlineErrorCode: deviceConfig.offlineErrorCode)
+      self.device = device
+      let environment = LiveEnvironment(
+        clock: clock, callLog: callLog, faults: faults, tracker: tracker, latency: latency, device: device
+      )
       var captured = DependencyValues()
       // See the note in `HeadlessHost.init`: `initialState()` runs inside `Store.init`'s autoclosure, so it
       // sees these overrides too.
@@ -253,6 +302,7 @@
         $0.mockLatency = latency
         $0.mockCallLog = callLog
         $0.mockFaults = faults
+        $0.agentDevice = device
         configure(&$0, environment)
         captured = $0
       }
@@ -312,8 +362,23 @@
           synthesizesAppearance: synthesizesAppearance,
           dependencies: dependencies
         ),
-        mockMethods: mockMethods
+        mockMethods: mockMethods,
+        device: device,
+        deviceConfig: deviceConfig,
+        relaunch: { [self] in relaunch() }
       )
+    }
+
+    /// A fresh store from the initial state, over the same dependencies: `device relaunch`. The app's root view
+    /// shows it once ``onRelaunch`` has passed it on, and its views send their own appearance.
+    func relaunch() -> Store<Root.State, Root.Action> {
+      store = Store(initialState: initialState()) {
+        TrackingReducer(tracker: tracker, base: reducer())
+      } withDependencies: { [dependencies] in
+        $0 = dependencies
+      }
+      onRelaunch?(store)
+      return store
     }
   }
 #endif

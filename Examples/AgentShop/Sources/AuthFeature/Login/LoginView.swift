@@ -19,6 +19,21 @@ public struct LoginView: View {
       }
       .padding(.top, 72)
 
+      if let account = store.faceIDAccount {
+        LinkButton("Sign in with Face ID as \(account.user.email)", identifier: "Login.face-id") {
+          store.send(.faceIDTapped)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 16)
+        if let error = store.faceIDError {
+          Text(error == .biometryFailed ? "Face ID didn't recognize you." : "Face ID isn't set up on this device.")
+            .font(.footnote)
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity)
+            .accessibilityIdentifier("error:\(error.rawValue)")
+        }
+      }
+
       DividerLabel("or sign in with")
         .padding(.top, 24)
 

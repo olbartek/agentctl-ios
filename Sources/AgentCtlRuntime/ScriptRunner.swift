@@ -1,7 +1,7 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import ComposableArchitecture
+  import Dependencies
   import Foundation
 
   /// How a ``ScriptRunner`` waits for the app and whether it can control time.
@@ -13,7 +13,7 @@
     public var advance: (@MainActor (Duration) async -> Void)?
     /// Headless runs send each screen's `onAppear` action when it becomes active (no views exist to do it).
     public var synthesizesAppearance: Bool
-    /// The store's dependencies. Screens, summaries and commands are computed inside them, so they read what the
+    /// The app's dependencies. Screens, summaries and commands are computed inside them, so they read what the
     /// reducers read (the app's `\.date`, above all) rather than the ambient context. `nil` keeps the ambient one.
     public var dependencies: DependencyValues?
 
@@ -51,20 +51,16 @@
     public var message: String?
   }
 
-  /// Runs script commands against a `Store<Root>`, headlessly (the CLI) or in the app (AgentCtlBridge).
+  /// Runs script commands against an app through its ``AgentDriver``, headlessly (the CLI) or in the app
+  /// (AgentCtlBridge).
   @MainActor
-  public final class ScriptRunner<Root: Reducer & AgentContainer>
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
+  public final class ScriptRunner<Driver: AgentDriver> {
     public static var runtimeCommandNames: [String] { ["expect", "advance", "mock"] }
 
-    /// The store the script drives. `device relaunch` replaces it with a fresh one.
-    public private(set) var store: Store<Root.State, Root.Action>
+    /// The app the script drives. `device relaunch` has it replace the app with a fresh one.
+    public let driver: Driver
     let callLog: MockCallLog
     let faults: MockFaults
-    let tracker: EffectTracker
     let environment: RunnerEnvironment
     let pending: @MainActor () -> Int
     /// The methods `mock` accepts, supplied by the host that built this runner, since the app's clients — not
@@ -72,12 +68,10 @@
     let mockMethods: [MockMethod]
     /// The simulated device `device` changes and the app's fakes read.
     public let device: AgentDevice
-    let deviceConfig: AgentDeviceConfig<Root.Action>
+    let deviceConfig: AgentDeviceConfig<Driver.Action>
     /// The `device` subcommands this app has.
     public let deviceSurface: DeviceSurface
-    /// Builds a fresh store over the same dependencies, for `device relaunch`.
-    let relaunch: (@MainActor () -> Store<Root.State, Root.Action>)?
-    /// Adds a `customDump` diff of the root state to each step (`--diff`).
+    /// Adds a diff of the app's state to each step (`--diff`).
     public var recordsDiff = false
     private var lastIdentity: String?
     private var lastCalls: [String] = []
@@ -90,31 +84,28 @@
     static var advanceLimit: Duration { .seconds(Int.max) }
 
     public init(
-      store: Store<Root.State, Root.Action>,
+      driver: Driver,
       callLog: MockCallLog,
       faults: MockFaults,
-      tracker: EffectTracker,
       pending: @escaping @MainActor () -> Int,
       environment: RunnerEnvironment,
       mockMethods: [MockMethod],
       device: AgentDevice = AgentDevice(),
-      deviceConfig: AgentDeviceConfig<Root.Action> = .none,
-      relaunch: (@MainActor () -> Store<Root.State, Root.Action>)? = nil
+      deviceConfig: AgentDeviceConfig<Driver.Action> = .none
     ) {
-      self.store = store
+      self.driver = driver
       self.device = device
       self.deviceConfig = deviceConfig
       self.deviceSurface = deviceConfig.surface
-      self.relaunch = relaunch
       self.callLog = callLog
       self.faults = faults
-      self.tracker = tracker
       self.pending = pending
       self.environment = environment
       self.mockMethods = mockMethods
     }
 
-    public var state: Root.State { store.state }
+    /// The whole state, as `state` and `GET /state` print it.
+    public var stateDump: String { driver.stateDump }
 
     /// Settles the initial state (sending the first screen's appearance) and returns the `(launch)` step with its
     /// status.
@@ -124,7 +115,7 @@
     /// starting state that is not known (§3.4).
     public func launch() async -> (step: StepRecord, status: RunStatus) {
       let start = callLog.count
-      let before = state
+      let before = driver.stateSnapshot()
       let settle = await settleAndAppear()
       return finish(command: "(launch)", callStart: start, settle: settle, before: before)
     }
@@ -205,7 +196,7 @@
       }
       advanced += duration
       let start = callLog.count
-      let before = state
+      let before = driver.stateSnapshot()
       await advanceClock(duration)
       let settle = await settleAndAppear()
       return finish(command: line.text, callStart: start, settle: settle, before: before)
@@ -244,17 +235,17 @@
       if let reason = command.disabledReason {
         return fail(line, status: .failed, "\(command.name) is disabled here (\(reason))")
       }
-      let action: Root.Action
+      let action: Driver.Action
       do {
-        action = try inAppContext { () throws(AgentCommandError) -> Root.Action in
+        action = try inAppContext { () throws(AgentCommandError) -> Driver.Action in
           try command.makeAction(line.argument.map(ArgumentText.unquoted))
         }
       } catch {
         return fail(line, status: .failed, "\(command.usage): \(error.message)")
       }
       let start = callLog.count
-      let before = state
-      store.send(action)
+      let before = driver.stateSnapshot()
+      driver.send(action)
       let settle = await settleAndAppear()
       return finish(command: line.text, callStart: start, settle: settle, before: before)
     }
@@ -323,7 +314,7 @@
         guard let action = inAppContext({ deviceConfig.openURL?(url) }) else {
           return failed("device open-url: the app does not handle \(arguments[0])")
         }
-        return await settling(line) { store.send(action) }
+        return await settling(line) { driver.send(action) }
 
       case .push:
         let names = surface.pushes.map(\.name).joined(separator: ", ")
@@ -334,7 +325,7 @@
           return failed("unknown push '\(arguments[0])'; pushes: \(names)")
         }
         let action = arguments.count == 2 ? push.opened : push.received
-        return await settling(line) { if let action { store.send(action) } }
+        return await settling(line) { if let action { driver.send(action) } }
 
       case .background, .foreground:
         guard arguments.isEmpty else { return usage("device \(sub.rawValue)") }
@@ -342,16 +333,15 @@
         let action = inAppContext { deviceConfig.scenePhase?(phase) }
         return await settling(line) {
           device.setPhase(phase)
-          if let action { store.send(action) }
+          if let action { driver.send(action) }
         }
 
       case .relaunch:
         guard arguments.isEmpty else { return usage("device relaunch") }
-        guard let relaunch else { return failed("device relaunch is not available in this runtime") }
         return await settling(line) {
-          // The old store goes with its effects (a root store cancels them as it is released); a prompt one of them
-          // was waiting on goes with it, as when the app quits.
-          store = relaunch()
+          // The old app goes with its work (the driver cancels it); a prompt that work was waiting on goes with it,
+          // as when the app quits.
+          driver.relaunch()
           device.withdrawAllPrompts()
           device.setPhase(.foreground)
           lastIdentity = nil
@@ -390,7 +380,7 @@
     /// Runs `change`, then settles and prints the step, as a screen command does.
     private func settling(_ line: ScriptLine, _ change: () -> Void) async -> (step: StepRecord, status: RunStatus) {
       let start = callLog.count
-      let before = state
+      let before = driver.stateSnapshot()
       change()
       let settle = await settleAndAppear()
       return finish(command: line.text, callStart: start, settle: settle, before: before)
@@ -411,12 +401,12 @@
 
     // MARK: - Helpers
 
-    /// The active screen, computed in the store's dependency context (see ``RunnerEnvironment/dependencies``).
-    private func activeScreen() -> ActiveScreen<Root.Action> {
-      inAppContext { Root.activeScreen(state) }
+    /// The active screen, computed in the app's dependency context (see ``RunnerEnvironment/dependencies``).
+    private func activeScreen() -> ActiveScreen<Driver.Action> {
+      inAppContext { driver.activeScreen() }
     }
 
-    /// Runs `operation` in the store's dependency context, as reducers see it: a screen's summary, a command's
+    /// Runs `operation` in the app's dependency context, as the app sees it: a screen's summary, a command's
     /// disabled check and its argument parsing all read the app's `\.date`, not the ambient one.
     private func inAppContext<T, E: Error>(_ operation: () throws(E) -> T) throws(E) -> T {
       guard let dependencies = environment.dependencies else { return try operation() }
@@ -433,7 +423,7 @@
         guard screen.identity != lastIdentity else { break }
         lastIdentity = screen.identity
         guard environment.synthesizesAppearance, let appear = screen.appearAction else { continue }
-        store.send(appear)
+        driver.send(appear)
         result = await environment.settle()
       }
       return result
@@ -443,13 +433,13 @@
       command: String,
       callStart: Int,
       settle: SettleResult,
-      before: Root.State
+      before: Driver.StateSnapshot
     ) -> (step: StepRecord, status: RunStatus) {
       let calls = callLog.entries(since: callStart)
       lastCalls = calls
       var step = record(command: command, calls: calls, settle: settle)
       if recordsDiff {
-        step.diff = diff(before, state)
+        step.diff = driver.stateDiff(from: before)
       }
       guard settle.settled else {
         step.ok = false

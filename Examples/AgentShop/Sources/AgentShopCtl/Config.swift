@@ -99,7 +99,7 @@
 
     /// Everything the CLI needs: `appctl` is `AgentCtl.run(config: AgentShopConfig.appCtl)`.
     @MainActor
-    public static var appCtl: AppCtlConfig<AppFeature> {
+    public static var appCtl: AppCtlConfig<StoreDriver<AppFeature>> {
       AppCtlConfig(
         name: "AgentShop",
         // The root is `Examples/AgentShop`: the CLI walks up to the directory that holds this project.
@@ -125,7 +125,7 @@
     }
 
     @MainActor
-    public static func headless() -> HeadlessHost<AppFeature> {
+    public static func headless() -> HeadlessHost<StoreDriver<AppFeature>> {
       HeadlessHost(
         initialState: { AppFeature.State() }, reducer: { AppFeature() }, mockMethods: mockMethods, device: device
       ) { deps, env in
@@ -149,7 +149,7 @@
     }
 
     @MainActor
-    public static func live(latency: MockLatency, sessionStorage: SessionStorage = .liveValue) -> LiveHost<AppFeature> {
+    public static func live(latency: MockLatency, sessionStorage: SessionStorage = .liveValue) -> LiveHost<StoreDriver<AppFeature>> {
       LiveHost(
         initialState: { AppFeature.State() }, reducer: { AppFeature() }, latency: latency, mockMethods: mockMethods,
         device: device

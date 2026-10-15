@@ -3,7 +3,7 @@ import ComposableArchitecture
 
 /// The app: the list at the root of a navigation stack, with a detail screen pushed on top.
 ///
-/// The root reducer is the one type AgentCtl is generic over: `ScriptRunner<TinyRoot>` drives this store, and
+/// The root reducer is the one type AgentCtl is generic over: `ScriptRunner<StoreDriver<TinyRoot>>` drives this store, and
 /// `TinyRoot` resolves which screen an agent is looking at (see `TinyRoot+Agent.swift`).
 @Reducer
 public struct TinyRoot {

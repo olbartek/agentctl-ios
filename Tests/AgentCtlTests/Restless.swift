@@ -57,22 +57,18 @@ extension Restless: AgentScreen, AgentContainer {
   /// A headless runner on a fresh store, settling as `HeadlessHost` does but giving up after ``settleLimit``.
   /// Run it with the main serial executor (`serially`).
   @MainActor
-  static func makeRunner() -> ScriptRunner<Restless> {
+  static func makeRunner() -> ScriptRunner<StoreDriver<Restless>> {
     let callLog = MockCallLog()
-    let tracker = EffectTracker()
-    let store = Store(initialState: State()) {
-      TrackingReducer(tracker: tracker, base: Restless())
-    }
+    let driver = StoreDriver(dependencies: DependencyValues._current, initialState: { State() }, reducer: { Restless() })
     return ScriptRunner(
-      store: store,
+      driver: driver,
       callLog: callLog,
       faults: MockFaults(),
-      tracker: tracker,
       pending: { 0 },
       environment: RunnerEnvironment(
         settle: {
           await settleHeadless(
-            state: { store.state }, callLog: callLog, tracker: tracker, pending: { 0 }, limit: settleLimit
+            fingerprint: { driver.fingerprint() }, callLog: callLog, pending: { 0 }, limit: settleLimit
           )
         },
         advance: nil,

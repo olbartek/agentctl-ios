@@ -1,6 +1,6 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import Foundation
 
   /// The implementations behind the subcommands. They run on the main actor with the main serial executor,

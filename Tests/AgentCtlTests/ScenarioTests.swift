@@ -16,7 +16,7 @@ extension AgentCtlSuite {
     nonisolated static let files = ScenarioRunner.files(in: PackageRoot.scenarios)
 
     /// Throwing, because `init` refuses to build checks that would find no scenarios, or no repo root, to check.
-    static func checks() throws -> AgentScenarioChecks<TinyRoot> {
+    static func checks() throws -> AgentScenarioChecks<StoreDriver<TinyRoot>> {
       try AgentScenarioChecks(config: TinyAppConfig.appCtl)
     }
 

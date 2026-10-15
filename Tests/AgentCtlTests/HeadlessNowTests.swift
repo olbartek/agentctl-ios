@@ -82,9 +82,9 @@ extension AgentCtlSuite {
         initialState: { DateReader.State() }, reducer: { DateReader() }, mockMethods: [],
         configure: { _, environment in now = environment.now }
       )
-      #expect(now?() == HeadlessHost<DateReader>.fixedDate)
+      #expect(now?() == HeadlessHost<StoreDriver<DateReader>>.fixedDate)
       await host.clock.advance(by: .seconds(3600))
-      #expect(now?() == HeadlessHost<DateReader>.fixedDate.addingTimeInterval(3600))
+      #expect(now?() == HeadlessHost<StoreDriver<DateReader>>.fixedDate.addingTimeInterval(3600))
     }
   }
 }

@@ -1,7 +1,6 @@
 #if DEBUG
   import AgentCtlCore
-  import AgentCtlTCA
-  import ComposableArchitecture
+  import AgentCtlRuntime
   import Foundation
   import Observation
 
@@ -21,11 +20,7 @@
   /// - `-clear-session`: `config.clearSession()` before the app launches.
   @MainActor
   @Observable
-  public final class AgentLaunch<Root: Reducer & AgentContainer>
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
+  public final class AgentLaunch<Driver: AgentDriver> {
     public struct Options: Equatable, Sendable {
       public var port: UInt16 = BridgeDefaults.port
       public var seed: String?
@@ -51,27 +46,28 @@
     /// dependencies unless an agent launched it checks this before creating an `AgentLaunch`:
     ///
     /// ```swift
-    /// if AgentLaunch<MyRoot>.isRequested() { … AgentLaunch(config: MyAppConfig.appCtl) … } else { … }
+    /// if AgentLaunchArguments.isRequested() { … AgentLaunch(config: MyAppConfig.appCtl) … } else { … }
     /// ```
     public nonisolated static func isRequested(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-      arguments.contains("-agent-port")
+      AgentLaunchArguments.isRequested(arguments)
     }
 
     public let options: Options
-    /// The store the root view shows. `device relaunch` replaces it, and the root view rebuilds on the new one.
-    public private(set) var store: Store<Root.State, Root.Action>
+    /// What the root view shows — the store of a TCA app, the coordinator of an MVVM-C app. `device relaunch`
+    /// replaces it, and the root view rebuilds on the new one.
+    public private(set) var app: Driver.App
     /// `false` while a launch seed is being applied.
     public private(set) var isReady: Bool
-    @ObservationIgnored private let app: LiveHost<Root>
+    @ObservationIgnored private let host: LiveHost<Driver>
     /// The screens `GET /screens` renders, from the config; headlessly there is no registry to ask.
     @ObservationIgnored private let screens: [ScreenDoc]
     /// The host's `mock` example, so the bridge's `/screens` lists the runtime commands exactly as the CLI does.
     @ObservationIgnored private let mockExample: String
     @ObservationIgnored private let deviceSurface: DeviceSurface
     @ObservationIgnored private var server: BridgeServer?
-    @ObservationIgnored private var router: BridgeRouter<Root>?
+    @ObservationIgnored private var router: BridgeRouter<Driver>?
 
-    public init(config: AppCtlConfig<Root>, arguments: [String] = ProcessInfo.processInfo.arguments) {
+    public init(config: AppCtlConfig<Driver>, arguments: [String] = ProcessInfo.processInfo.arguments) {
       let options = Options(arguments: arguments)
       if options.clearSession {
         config.clearSession()
@@ -80,13 +76,14 @@
       self.screens = config.screens
       self.mockExample = config.docsText.mockExample
       self.deviceSurface = config.device.surface
-      self.app = config.makeLive(options.latency ?? .liveValue)
+      let host = config.makeLive(options.latency ?? .liveValue)
       #if canImport(UIKit)
-        if app.isUIIdle == nil { app.isUIIdle = UIActivity.isIdle }
+        if host.isUIIdle == nil { host.isUIIdle = UIActivity.isIdle }
       #endif
-      self.store = app.store
+      self.host = host
+      self.app = host.driver.app
       self.isReady = options.seed == nil
-      app.onRelaunch = { [weak self] in self?.store = $0 }
+      host.driver.onRelaunch = { [weak self, driver = host.driver] in self?.app = driver.app }
     }
 
     /// Applies the seed (if any), then starts the bridge, so the bridge's first answer means the app is ready.
@@ -94,7 +91,7 @@
     public func start() async {
       guard server == nil else { return }
       let router = BridgeRouter(
-        runner: app.makeRunner(synthesizesAppearance: false),
+        runner: host.makeRunner(synthesizesAppearance: false),
         screensText: { [screens, mockExample, deviceSurface] in
           ScreensRenderer.render(screens, mockExample: mockExample, device: deviceSurface)
         }
@@ -103,7 +100,7 @@
       self.router = router
       self.server = server
       if let seed = options.seed {
-        print(await Self.applySeed(seed, with: app.makeRunner(synthesizesAppearance: true)).log)
+        print(await Self.applySeed(seed, with: host.makeRunner(synthesizesAppearance: true)).log)
         isReady = true
       }
       do {
@@ -117,7 +114,7 @@
     /// Applies a launch seed: the `(launch)` step, then the seed's commands. A seed is a script, so it fails the
     /// way a script does (CONTRACT.md §5): it stops at its first failing step, and a launch that did not settle
     /// fails it before its first command runs (§3.4). Returns that status and the block the app logs.
-    static func applySeed(_ seed: String, with runner: ScriptRunner<Root>) async -> (status: RunStatus, log: String) {
+    static func applySeed(_ seed: String, with runner: ScriptRunner<Driver>) async -> (status: RunStatus, log: String) {
       let launch = await runner.launch()
       var steps = [launch.step]
       var status = launch.status
@@ -134,6 +131,15 @@
         log += "\nerror: \(message)"
       }
       return (status, log)
+    }
+  }
+
+  /// The launch arguments the CLI's `app` subcommands pass, read without naming an app's driver.
+  public enum AgentLaunchArguments {
+    /// Whether this launch asks for the bridge: the CLI's `app` subcommands always pass `-agent-port`, and any other
+    /// launch (⌘R from Xcode included) does not.
+    public static func isRequested(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+      arguments.contains("-agent-port")
     }
   }
 #endif

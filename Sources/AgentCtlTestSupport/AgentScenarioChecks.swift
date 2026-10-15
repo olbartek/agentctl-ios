@@ -1,8 +1,7 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import AgentCtlTCA
-  import ComposableArchitecture
+  import AgentCtlRuntime
   import Foundation
 
   /// Thrown by `AgentScenarioChecks.init` when no directory at or above the test's source file holds the config's
@@ -45,11 +44,8 @@
   /// Like ``AgentCoverage``, `init` throws ``NoScenariosFound`` when there are no scenario files, so no check can
   /// pass having examined nothing.
   @MainActor
-  public struct AgentScenarioChecks<Root: Reducer & AgentContainer>
-  where Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
-    public let config: AppCtlConfig<Root>
+  public struct AgentScenarioChecks<Driver: AgentDriver> {
+    public let config: AppCtlConfig<Driver>
     /// The repo root `scenariosPath` and `docsPath` are resolved against.
     public let root: URL
     /// The `*.appctl` files at ``scenarios``, sorted by name, read once when this value was constructed.
@@ -64,7 +60,7 @@
     ///   - filePath: where the search for the root starts; the caller's source file by default.
     /// - Throws: ``RepoRootNotFound`` when `root` is `nil` and no ancestor holds the marker; ``NoScenariosFound``
     ///   when the scenarios directory holds no `*.appctl` files.
-    public init(config: AppCtlConfig<Root>, root: URL? = nil, filePath: StaticString = #filePath) throws {
+    public init(config: AppCtlConfig<Driver>, root: URL? = nil, filePath: StaticString = #filePath) throws {
       let start = URL(fileURLWithPath: "\(filePath)")
       guard let root = root ?? RepoRoot.find(marker: config.resolvedRootMarker, from: start) else {
         throw RepoRootNotFound(marker: config.resolvedRootMarker, start: start.deletingLastPathComponent())
@@ -318,7 +314,7 @@
 
       var session: [ScriptLine] = []
       var steps: [StepRecord] = []
-      var last: ScriptRunner<Root>?
+      var last: ScriptRunner<Driver>?
       for (index, part) in Self.split(lines, into: parts).enumerated() {
         let label = "\(name), part \(index + 1) of \(min(parts, lines.count))"
         let runner = config.makeHeadless().makeRunner()

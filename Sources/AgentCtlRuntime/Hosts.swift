@@ -1,7 +1,8 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import ComposableArchitecture
+  import Clocks
+  import Dependencies
   import Foundation
   import OSLog
 
@@ -26,9 +27,6 @@
     public let callLog: MockCallLog
     /// The one-shot failures `mock` arms.
     public let faults: MockFaults
-    /// Effects started and not yet finished. Settling waits for this count to stop changing, along with the state
-    /// and the call log. It is not `pending`, which counts only sleeps on the clock.
-    public let tracker: EffectTracker
     /// The current date in the app's time: ``HeadlessHost/fixedDate`` plus whatever `advance` has added. It is also
     /// the app's `\.date`. A backend that reads the time (a code's expiry, say) should read it here, as it would read
     /// ``LiveEnvironment/now`` in the running app.
@@ -37,9 +35,11 @@
     public let device: AgentDevice
   }
 
-  /// A real store running on the Mac with the deterministic dependencies CONTRACT.md §6 requires.
+  /// An app running on the Mac with the deterministic dependencies CONTRACT.md §6 requires, driven through its
+  /// ``AgentDriver``.
   ///
-  /// It pins exactly these dependencies, then calls the host's `configure` closure:
+  /// It pins exactly these dependencies, then calls the host's `configure` closure, then builds the driver inside the
+  /// result (`makeDriver`):
   ///
   /// | Dependency | Headless value |
   /// |---|---|
@@ -53,19 +53,19 @@
   /// | `\.mockLatency` | `.zero` |
   /// | `\.mockCallLog`, `\.mockFaults` | fresh, per host |
   /// | `\.agentDevice` | a driven ``AgentDevice``, per host |
+  /// | `\.agentTasks` | fresh ``AgentTasks``, per host |
   ///
   /// Nothing else is pinned. In particular `\.mainQueue`, `\.suspendingClock` and any other source of time keep
   /// their defaults, which are real (or, in a test process, unimplemented). A host whose app uses one must pin it in
   /// `configure` — for a scheduler, with one it can advance deterministically. `configure` runs last, so what it
   /// sets overrides everything in the table.
   ///
+  /// A TCA app builds one with `HeadlessHost(initialState:reducer:mockMethods:device:configure:)` (AgentCtlTCA), an
+  /// MVVM-C app with `HeadlessHost(mockMethods:device:configure:coordinator:)` (AgentCtlObservation).
+  ///
   /// Run it with the main serial executor enabled (`Deterministic.isEnabled = true`).
   @MainActor
-  public final class HeadlessHost<Root: Reducer & AgentContainer>
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
+  public final class HeadlessHost<Driver: AgentDriver> {
     /// 2026-01-01T09:00:00Z: `\.date` before any `advance`.
     public static var fixedDate: Date { Date(timeIntervalSince1970: 1_767_258_000) }
     /// The seed of `\.withRandomNumberGenerator`: every headless run draws the same numbers in the same order.
@@ -82,48 +82,42 @@
       return calendar
     }
 
-    /// The app's store. `device relaunch` replaces it with a fresh one over the same dependencies.
-    public private(set) var store: Store<Root.State, Root.Action>
+    /// The app, as the engine drives it.
+    public let driver: Driver
     public let clock: TestClock<Duration>
     /// The clock the app sees: `clock`, with its active sleeps counted for `pending`.
     public let countingClock: CountingClock<TestClock<Duration>>
     public let callLog: MockCallLog
     public let faults: MockFaults
-    public let tracker: EffectTracker
     /// The simulated device, `\.agentDevice`.
     public let device: AgentDevice
-    let deviceConfig: AgentDeviceConfig<Root.Action>
+    let deviceConfig: AgentDeviceConfig<Driver.Action>
     let mockMethods: [MockMethod]
-    let initialState: () -> Root.State
-    let reducer: () -> Root
-    /// The store's dependencies, as `configure` left them. The runner computes each step's screen, summary and
-    /// commands inside them, so a summary reads the same date (and anything else) as the reducer.
-    public private(set) var dependencies = DependencyValues()
+    /// The app's dependencies, as `configure` left them. The runner computes each step's screen, summary and
+    /// commands inside them, so a summary reads the same date (and anything else) as the app.
+    public let dependencies: DependencyValues
 
-    /// - Parameter device: what of the device scripts can drive, and the actions its events become (`device`).
+    /// - Parameters:
+    ///   - device: what of the device scripts can drive, and the actions its events become (`device`).
+    ///   - makeDriver: builds the app inside `dependencies`, the values above as `configure` left them.
     public init(
-      initialState: @escaping () -> Root.State,
-      reducer: @escaping () -> Root,
       mockMethods: [MockMethod],
-      device deviceConfig: AgentDeviceConfig<Root.Action> = .none,
-      configure: @escaping (inout DependencyValues, HeadlessEnvironment) -> Void
+      device deviceConfig: AgentDeviceConfig<Driver.Action> = .none,
+      configure: @escaping (inout DependencyValues, HeadlessEnvironment) -> Void,
+      makeDriver: @MainActor (DependencyValues) -> Driver
     ) {
       let clock = TestClock()
       let countingClock = CountingClock(clock)
       let callLog = MockCallLog()
       let faults = MockFaults()
-      let tracker = EffectTracker()
+      let device = AgentDevice(driven: true, offlineErrorCode: deviceConfig.offlineErrorCode)
       self.clock = clock
       self.countingClock = countingClock
       self.callLog = callLog
       self.faults = faults
-      self.tracker = tracker
-      self.mockMethods = mockMethods
-      self.initialState = initialState
-      self.reducer = reducer
-      self.deviceConfig = deviceConfig
-      let device = AgentDevice(driven: true, offlineErrorCode: deviceConfig.offlineErrorCode)
       self.device = device
+      self.deviceConfig = deviceConfig
+      self.mockMethods = mockMethods
       let fixedDate = Self.fixedDate
       let origin = clock.now
       let now: @Sendable () -> Date = { [clock] in
@@ -132,16 +126,9 @@
         return fixedDate.addingTimeInterval(seconds)
       }
       let environment = HeadlessEnvironment(
-        clock: clock, countingClock: countingClock, callLog: callLog, faults: faults, tracker: tracker, now: now,
-        device: device
+        clock: clock, countingClock: countingClock, callLog: callLog, faults: faults, now: now, device: device
       )
-      var captured = DependencyValues()
-      // `initialState()` must be called here, inside `Store.init`'s `@autoclosure` argument, not before: that
-      // autoclosure is what `Store.init` evaluates inside `withDependencies`, so root state built from a
-      // `@Dependency` or declaring `@Shared` sees the deterministic overrides below instead of live defaults.
-      self.store = Store(initialState: initialState()) {
-        TrackingReducer(tracker: tracker, base: reducer())
-      } withDependencies: {
+      let dependencies = withDependencies {
         $0.continuousClock = countingClock
         $0.uuid = .incrementing
         $0.date = DateGenerator(now)
@@ -153,23 +140,26 @@
         $0.mockCallLog = callLog
         $0.mockFaults = faults
         $0.agentDevice = device
+        $0.agentTasks = AgentTasks()
         // Last, so the host can override any of the above, and pin what the list leaves out.
         configure(&$0, environment)
-        captured = $0
+      } operation: {
+        DependencyValues._current
       }
-      dependencies = captured
+      self.dependencies = dependencies
+      self.driver = makeDriver(dependencies)
     }
 
     public func settle() async -> SettleResult {
       await settleHeadless(
-        state: { store.state }, callLog: callLog, tracker: tracker,
+        fingerprint: { [driver] in driver.fingerprint() }, callLog: callLog,
         pending: { [countingClock] in countingClock.activeSleeps }
       )
     }
 
-    public func makeRunner() -> ScriptRunner<Root> {
+    public func makeRunner() -> ScriptRunner<Driver> {
       ScriptRunner(
-        store: store, callLog: callLog, faults: faults, tracker: tracker,
+        driver: driver, callLog: callLog, faults: faults,
         pending: { [countingClock] in countingClock.activeSleeps },
         environment: RunnerEnvironment(
           settle: { [self] in await settle() },
@@ -179,19 +169,8 @@
         ),
         mockMethods: mockMethods,
         device: device,
-        deviceConfig: deviceConfig,
-        relaunch: { [self] in relaunch() }
+        deviceConfig: deviceConfig
       )
-    }
-
-    /// A fresh store from the initial state, over the same dependencies: `device relaunch`.
-    func relaunch() -> Store<Root.State, Root.Action> {
-      store = Store(initialState: initialState()) {
-        TrackingReducer(tracker: tracker, base: reducer())
-      } withDependencies: { [dependencies] in
-        $0 = dependencies
-      }
-      return store
     }
   }
 
@@ -219,7 +198,6 @@
     public let clock: CountingClock<AdvanceableClock>
     public let callLog: MockCallLog
     public let faults: MockFaults
-    public let tracker: EffectTracker
     public let latency: MockLatency
     /// The simulated device (`\.agentDevice`), which `device` changes.
     public let device: AgentDevice
@@ -230,71 +208,53 @@
     public var now: @Sendable () -> Date { clock.base.date }
   }
 
-  /// The app's store as AgentCtlBridge runs it in DEBUG builds: real time and real mock latency, plus the hooks the
-  /// agent runtime needs (call log, faults, effect tracking and a clock that counts pending sleeps).
+  /// The app as AgentCtlBridge runs it in DEBUG builds: real time and real mock latency, plus the hooks the agent
+  /// runtime needs (call log, faults, a clock that counts pending sleeps, the device), driven through its
+  /// ``AgentDriver``.
   ///
   /// Time is real, but `advance` can move it forward: the app's `\.continuousClock` is an ``AdvanceableClock``, and
   /// its `\.date` follows that clock.
   @MainActor
-  public final class LiveHost<Root: Reducer & AgentContainer>
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
-    /// The app's store. `device relaunch` replaces it; ``onRelaunch`` hears of it, so the app shows the new one.
-    public private(set) var store: Store<Root.State, Root.Action>
+  public final class LiveHost<Driver: AgentDriver> {
+    /// The app, as the engine drives it. `device relaunch` has it replace its app; the bridge shows the new one.
+    public let driver: Driver
     public let callLog: MockCallLog
     public let faults: MockFaults
-    public let tracker: EffectTracker
     public let clock: CountingClock<AdvanceableClock>
     /// The simulated device, `\.agentDevice`.
     public let device: AgentDevice
-    let deviceConfig: AgentDeviceConfig<Root.Action>
+    let deviceConfig: AgentDeviceConfig<Driver.Action>
     let mockMethods: [MockMethod]
-    let initialState: () -> Root.State
-    let reducer: () -> Root
-    /// Called with the new store after `device relaunch`: AgentLaunch shows it.
-    public var onRelaunch: (@MainActor (Store<Root.State, Root.Action>) -> Void)?
     /// Whether the app's UI is at rest: no navigation transition or animation in flight. A step settles only once it
     /// is (CONTRACT.md §8.5), so the next command never lands mid-transition. `nil` counts as idle; AgentCtlBridge
     /// fills in UIKit's view-controller transitions when the host leaves it `nil`.
     public var isUIIdle: (@MainActor () -> Bool)?
-    /// The store's dependencies, as `configure` left them: the runner computes each step's screen and summary inside
+    /// The app's dependencies, as `configure` left them: the runner computes each step's screen and summary inside
     /// them, so a summary reads the app's `\.date` (which `advance` moves), not the real one.
-    public private(set) var dependencies = DependencyValues()
+    public let dependencies: DependencyValues
 
     public init(
-      initialState: @escaping () -> Root.State,
-      reducer: @escaping () -> Root,
       latency: MockLatency,
       mockMethods: [MockMethod],
-      device deviceConfig: AgentDeviceConfig<Root.Action> = .none,
-      configure: @escaping (inout DependencyValues, LiveEnvironment) -> Void
+      device deviceConfig: AgentDeviceConfig<Driver.Action> = .none,
+      configure: @escaping (inout DependencyValues, LiveEnvironment) -> Void,
+      makeDriver: @MainActor (DependencyValues) -> Driver
     ) {
       let callLog = MockCallLog()
       let faults = MockFaults()
-      let tracker = EffectTracker()
       let clock = CountingClock(AdvanceableClock())
+      let device = AgentDevice(driven: true, offlineErrorCode: deviceConfig.offlineErrorCode)
       self.callLog = callLog
       self.faults = faults
-      self.tracker = tracker
       self.clock = clock
-      self.mockMethods = mockMethods
-      self.initialState = initialState
-      self.reducer = reducer
-      self.deviceConfig = deviceConfig
-      let device = AgentDevice(driven: true, offlineErrorCode: deviceConfig.offlineErrorCode)
       self.device = device
+      self.deviceConfig = deviceConfig
+      self.mockMethods = mockMethods
       let environment = LiveEnvironment(
-        clock: clock, callLog: callLog, faults: faults, tracker: tracker, latency: latency, device: device
+        clock: clock, callLog: callLog, faults: faults, latency: latency, device: device
       )
-      var captured = DependencyValues()
-      // See the note in `HeadlessHost.init`: `initialState()` runs inside `Store.init`'s autoclosure, so it
-      // sees these overrides too.
-      self.store = Store(initialState: initialState()) {
-        TrackingReducer(tracker: tracker, base: reducer())
-      } withDependencies: {
-        // Explicit, so the store behaves the same in a test process (where defaults are unimplemented).
+      let dependencies = withDependencies {
+        // Explicit, so the app behaves the same in a test process (where defaults are unimplemented).
         $0.continuousClock = clock
         $0.uuid = UUIDGenerator { UUID() }
         $0.date = DateGenerator { clock.base.date() }
@@ -303,13 +263,16 @@
         $0.mockCallLog = callLog
         $0.mockFaults = faults
         $0.agentDevice = device
+        $0.agentTasks = AgentTasks()
         configure(&$0, environment)
-        captured = $0
+      } operation: {
+        DependencyValues._current
       }
-      dependencies = captured
+      self.dependencies = dependencies
+      self.driver = makeDriver(dependencies)
     }
 
-    /// Settles on real time — no mock call in flight, the UI at rest, and the state quiet for a moment — because a
+    /// Settles on real time — no mock call in flight, the UI at rest, and the app quiet for a moment — because a
     /// running app's latency, timers and animations are real, unlike the headless host's.
     public func settle() async -> SettleResult {
       await settle(waitingForUI: true)
@@ -318,7 +281,7 @@
     /// - Parameter waitingForUI: `false` for a launch seed, which runs before the app's screens are shown.
     func settle(waitingForUI: Bool) async -> SettleResult {
       await settleLive(
-        state: { store.state },
+        state: { [driver] in driver.fingerprint() },
         callLog: callLog,
         pending: { [clock] in clock.activeSleeps },
         isUIIdle: { [isUIIdle] in waitingForUI ? isUIIdle?() ?? true : true },
@@ -333,7 +296,7 @@
 
     func settleBetweenDeadlines() async {
       _ = await settleLive(
-        state: { store.state },
+        state: { [driver] in driver.fingerprint() },
         callLog: callLog,
         pending: { [clock] in clock.activeSleeps },
         quietWindow: .milliseconds(30),
@@ -344,19 +307,18 @@
 
     /// - Parameter synthesizesAppearance: `true` for launch seeding (before any view exists), `false` once the
     ///   views are on screen and send their own `onAppear`.
-    public func makeRunner(synthesizesAppearance: Bool) -> ScriptRunner<Root> {
+    public func makeRunner(synthesizesAppearance: Bool) -> ScriptRunner<Driver> {
       ScriptRunner(
-        store: store,
+        driver: driver,
         callLog: callLog,
         faults: faults,
-        tracker: tracker,
         pending: { [clock] in clock.activeSleeps },
         environment: RunnerEnvironment(
           // A seed runs before any screen is shown (it synthesizes appearance), so it does not wait for the UI.
           settle: { [self] in await settle(waitingForUI: !synthesizesAppearance) },
           advance: { [self] duration in
-            // Between deadlines, a short settle: long enough for what a timer fires to reach the store and start
-            // its next sleep, short enough that `advance 1m` over a one-second countdown stays quick.
+            // Between deadlines, a short settle: long enough for what a timer fires to reach the app and start its
+            // next sleep, short enough that `advance 1m` over a one-second countdown stays quick.
             await clock.base.advance(by: duration, between: { @MainActor [self] in await settleBetweenDeadlines() })
           },
           synthesizesAppearance: synthesizesAppearance,
@@ -364,21 +326,8 @@
         ),
         mockMethods: mockMethods,
         device: device,
-        deviceConfig: deviceConfig,
-        relaunch: { [self] in relaunch() }
+        deviceConfig: deviceConfig
       )
-    }
-
-    /// A fresh store from the initial state, over the same dependencies: `device relaunch`. The app's root view
-    /// shows it once ``onRelaunch`` has passed it on, and its views send their own appearance.
-    func relaunch() -> Store<Root.State, Root.Action> {
-      store = Store(initialState: initialState()) {
-        TrackingReducer(tracker: tracker, base: reducer())
-      } withDependencies: { [dependencies] in
-        $0 = dependencies
-      }
-      onRelaunch?(store)
-      return store
     }
   }
 #endif

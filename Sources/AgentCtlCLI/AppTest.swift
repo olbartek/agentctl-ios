@@ -1,6 +1,6 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import Foundation
 
   /// `app test`: the scenario files, run in the real app on a simulator through its agent bridge, one fresh launch

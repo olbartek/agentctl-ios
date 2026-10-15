@@ -498,7 +498,11 @@
     static let configuration = CommandConfiguration(
       commandName: "openurl",
       abstract: "Open a URL on the simulator, as the system would (simctl openurl).",
-      discussion: "Example: \(help.invocation) app openurl \"myapp://item/2\""
+      discussion: """
+        The app must register the URL's scheme. For a custom scheme iOS first asks "Open in <app>?", a system alert
+        the bridge cannot answer: tap Open. A script opens links with `device open-url` instead, with no alert.
+        Example: \(help.invocation) app openurl "myapp://item/2"
+        """
     )
 
     @Argument(help: "The URL.")

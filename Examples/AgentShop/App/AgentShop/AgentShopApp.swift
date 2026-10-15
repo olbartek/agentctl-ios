@@ -30,8 +30,15 @@ struct AgentShopApp: App {
           }
         }
         .task { await launch.start() }
+        // A link the system opens (`app openurl agentshop://order/1003`): the same action `device open-url` sends.
+        .onOpenURL { url in
+          if let action = AppFeature.action(opening: url) { launch.store.send(action) }
+        }
       #else
         RootView(store: store)
+          .onOpenURL { url in
+            if let action = AppFeature.action(opening: url) { store.send(action) }
+          }
       #endif
     }
   }

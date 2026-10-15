@@ -6,3 +6,6 @@
 
 // No additional debug-specific overrides needed
 // All debug settings use Xcode project defaults
+
+// The agentshop:// URL scheme, merged into the generated Info.plist.
+INFOPLIST_FILE = Config/AgentShop-Info.plist

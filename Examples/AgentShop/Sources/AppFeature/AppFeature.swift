@@ -2,6 +2,7 @@ import AccountClient
 import AgentCtlCore
 import AuthFeature
 import ComposableArchitecture
+import Foundation
 import DeviceClients
 import HomeFeature
 import Models
@@ -136,6 +137,14 @@ public struct AppFeature {
       let profile = try? await accountClient.fetchProfile()
       await send(.signedIn(session, needsOnboarding: profile?.needsOnboarding ?? false))
     }
+  }
+}
+
+extension AppFeature {
+  /// What opening `url` does: one of AgentShop's links (``DeepLink``), or `nil` for any other URL. The app shell's
+  /// `onOpenURL` and the agent's `device open-url` both go through it.
+  public static func action(opening url: URL) -> Action? {
+    DeepLink(url: url).map { .deepLinkOpened($0) }
   }
 }
 

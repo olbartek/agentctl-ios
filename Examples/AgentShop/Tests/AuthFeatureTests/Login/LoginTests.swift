@@ -129,11 +129,13 @@ struct LoginTests {
     #expect(screen.path == "auth/login")
     #expect(
       screen.commands.map(\.name) == [
-        "email", "password", "show-password", "keep-signed-in", "submit", "google", "use-otp", "register", "forgot",
+        "email", "password", "show-password", "keep-signed-in", "submit", "google", "face-id", "use-otp", "register",
+        "forgot",
       ]
     )
     #expect(screen.command(named: "submit")?.disabledReason == "canSubmit=false")
     #expect(screen.command(named: "google")?.disabledReason == nil)
+    #expect(screen.command(named: "face-id")?.disabledReason == "no account has turned Face ID on")
     #expect(screen.summary.map(\.key) == Login.summaryKeys)
     #expect(screen.summary.contains(SummaryItem("keepSignedIn", true)))
     #expect(screen.summary.contains(SummaryItem("revealed", "none")))

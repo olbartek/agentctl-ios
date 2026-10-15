@@ -19,6 +19,14 @@ public struct LoginView: View {
       }
       .padding(.top, 72)
 
+      if let account = store.faceIDAccount {
+        LinkButton("Sign in with Face ID as \(account.user.email)", identifier: "Login.face-id") {
+          store.send(.faceIDTapped)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 16)
+      }
+
       DividerLabel("or sign in with")
         .padding(.top, 24)
 

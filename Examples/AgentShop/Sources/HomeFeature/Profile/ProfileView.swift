@@ -19,6 +19,18 @@ public struct ProfileView: View {
           .summaryValue("Profile.email", store.user.email)
       }
       Section {
+        Toggle("Order updates", isOn: Binding(get: { store.orderUpdates }, set: { store.send(.orderUpdatesToggled($0)) }))
+          .accessibilityIdentifier("Profile.order-updates")
+        Toggle("Sign in with Face ID", isOn: Binding(get: { store.faceID }, set: { store.send(.faceIDToggled($0)) }))
+          .accessibilityIdentifier("Profile.face-id")
+      } footer: {
+        if let error = store.error {
+          Text(Self.message(for: error))
+            .foregroundStyle(.red)
+            .accessibilityIdentifier("error:\(error.rawValue)")
+        }
+      }
+      Section {
         Button("Log out", role: .destructive) {
           store.send(.logoutTapped)
         }
@@ -26,8 +38,19 @@ public struct ProfileView: View {
       }
     }
     .navigationTitle("Profile")
+    .onAppear { store.send(.onAppear) }
     .screenIdentifier(Profile.screenPath(store.state))
     .alert($store.scope(state: \.alert, action: \.alert))
+  }
+}
+
+extension ProfileView {
+  static func message(for error: Profile.Error) -> String {
+    switch error {
+    case .notificationsDenied: "Notifications are off for AgentShop. Turn them on in Settings."
+    case .biometryFailed: "Face ID didn't recognize you."
+    case .biometryUnavailable: "Face ID isn't set up on this device."
+    }
   }
 }
 

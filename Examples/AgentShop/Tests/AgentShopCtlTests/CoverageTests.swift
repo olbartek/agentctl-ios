@@ -21,6 +21,11 @@ extension AppCtlSuite {
       #expect(missing.isEmpty, "commands not used by any scenario: \(missing.joined(separator: ", "))")
     }
 
+    @Test func everyDeviceCommandAndPushIsUsedByAScenario() throws {
+      let missing = try Self.coverage().unusedDeviceCommands()
+      #expect(missing.isEmpty, "device commands not used by any scenario: \(missing.joined(separator: ", "))")
+    }
+
     @Test func everyEmittedSummaryKeyIsDocumented() async throws {
       let coverage = try Self.coverage()
       let undocumented = await serially { await coverage.undocumentedSummaryKeys() }

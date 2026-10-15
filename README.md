@@ -435,7 +435,8 @@ items/<id>  [ItemDetail]
   summary: title saved cooldown
 ```
 
-(The real listing ends with a third block, `every screen [runtime]`, holding the three runtime commands below.)
+(The real listing ends with a third block, `every screen [runtime]`, holding the runtime commands below, and the
+`device` subcommands TinyApp enables: `device open-url <url>` and `device push <name> [tap]`.)
 
 Force a client failure, watch the screen report it, then recover — the fault is one-shot:
 
@@ -473,7 +474,7 @@ $ swift run tinyctl run "frobnicate"; echo "exit=$?"
   screen=items items=3 loading=false calls=items.fetch
 > frobnicate
   screen=items items=3 loading=false
-  FAIL unknown command 'frobnicate' on items. Valid here: open <id>, refresh, retry, expect, advance, mock
+  FAIL unknown command 'frobnicate' on items. Valid here: open <id>, refresh, retry, expect, advance, mock, device
 exit=1
 ```
 
@@ -502,6 +503,7 @@ exit=1
 | `check` | The verification ladder below; `--ui` adds its last two rungs. |
 | `app launch` / `app run` / `app state` / `app screens` | The same commands, against the real app on a simulator, through the in-app bridge. `app launch` takes port 8765, or the next free one if something else holds it, and records it in `<outputPath>/bridge.json`; the other `app` commands read it from there. `--port` or `APPCTL_PORT` names one instead. |
 | `app screenshot <png>` / `app record start <mp4>` / `app record stop` / `app statusbar clean\|reset` / `app info` | The simulator itself, for demos: a screenshot; a recording that runs across other commands until `stop` (only the recorder `start` began is stopped); a 9:41 status bar with full signal and battery, or the simulator's own; the installed app's ID, version and build as one JSON line. Each acts on `--sim`, else the last launch's simulator (`bridge.json`), else the config's. |
+| `app permission grant\|revoke\|reset <service>` / `app openurl <url>` / `app push <payload.json>` / `app location <lat>,<lon>\|clear` / `app appearance light\|dark` | The real OS on the simulator (`simctl privacy`, `openurl`, `push`, `location`, `ui appearance`), for demos and real-OS checks; a script simulates the device with `device` instead. Each acts on `--sim`, else the last launch's simulator, else the config's. |
 | `app test [files…]` | The scenario files, in the real app on a simulator: one fresh launch each, one PASS/FAIL/SKIP line each. `--record <mp4>` records the run, `--step-delay <s>` sends a line at a time so the recording can be followed. |
 
 Exit codes are part of the contract: `0` everything ran and every `expect` passed; `1` a command or an `expect`
@@ -511,7 +513,8 @@ no repo root, a build that failed.
 
 Three runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (the virtual clock
 headlessly; in the running app, the app's real-time clock jumped forward, see [the bridge](#the-in-app-bridge)),
-and `mock <client.method> <error>`.
+and `mock <client.method> <error>`. An app that simulates its device has a fourth, `device …`
+([the device environment](#the-device-environment)).
 
 Headless runs are deterministic by construction, so the same script always prints the same bytes — which is what
 makes step output usable as a committed fixture. `HeadlessHost` runs everything on one serial executor and pins
@@ -531,6 +534,77 @@ exactly these dependencies of your store:
 it yourself in the closure you pass `HeadlessHost` — it runs after the table above, so it can override any of
 it too — and give your mock backends fresh state there. Anything read around the dependency system (a formatter
 built on `Locale.current`, say) is not pinned at all.
+
+## The device environment
+
+Mobile apps react to the device as much as to taps: a permission the user denied, a system prompt waiting for an
+answer, a deep link, a push, the app going to the background, the network dropping, a location fix, Face ID. A
+script drives all of these with one runtime command, `device`, the same headlessly and in the running app. The
+device is **simulated in the app's process**: your permission, connectivity, location and biometry clients read
+AgentCtl's `AgentDevice` (`\.agentDevice`) in their mock implementations, as your backends route through
+`mockCall`. So no line touches the real OS: no real dialog, and nothing that kills the app or its bridge. (Driving
+the real OS cannot do this: `simctl privacy` has no notifications, camera or Face ID, revoking a permission kills
+the app, and the bridge cannot answer a system alert. The `app` wrappers in the last column do drive the real
+simulator, for demos and real-OS checks.)
+
+| Capability | Script command | What your app wires | What a step shows | Real OS (live only) |
+|---|---|---|---|---|
+| Permissions | `device permission <service> <not-determined\|granted\|denied\|limited>` | `permissions: ["notifications", …]`; fakes call `device.permission(_:)` / `await device.requestPermission(_:)` | what your screen's summary shows | `app permission grant\|revoke\|reset <service>` |
+| System prompts | `device prompt <allow\|deny\|limited>` | nothing more: a request while `not-determined` shows the prompt | `prompt=<service>` until answered; `expect prompt=…` | — |
+| Deep and universal links | `device open-url <url>` | `openURL: { url in … }` returns the root action, or `nil` for a link you don't handle | the screen the link opens | `app openurl <url>` |
+| Push notifications | `device push <name> [tap]` | `pushes: [AgentPush(name, help:, received:, opened:)]` | what receiving or tapping it does | `app push <payload.json>` |
+| Background / foreground | `device background`, `device foreground` | `scenePhase: { phase in … }` returns the root action | screen commands fail while in the background | — |
+| Relaunch | `device relaunch` | `relaunch: true` | the fresh launch; what your clients stored, the device and the clock survive | `app launch --no-build` (the real process) |
+| Network | `device network <online\|offline>` | `offlineErrorCode: "network"`; observers use `device.onlineUpdates()` | offline, every `mockCall` fails with that code | — |
+| Location | `device location <lat>,<lon>\|none` | `location: true`; fakes read `device.location` / `device.locationUpdates()` | what your screen does with it | `app location <lat>,<lon>\|clear` |
+| Biometry | `device biometry <enrolled\|unenrolled\|match\|fail>` | `biometry: true`; fakes call `await device.authenticateBiometry()` | `prompt=biometry` until `match` or `fail` | — |
+| Appearance | — | — | — | `app appearance light\|dark` |
+
+Every capability is opt-in: an app's `AgentDeviceConfig` (in `AppCtlConfig(device:)` and both hosts) enables the
+subcommands it lists, and an app that enables none has no `device` command and prints exactly what it did before.
+From AgentShop's [`Config.swift`](Examples/AgentShop/Sources/AgentShopCtl/Config.swift) and
+[`DeviceClients.swift`](Examples/AgentShop/Sources/DeviceClients/DeviceClients.swift):
+
+```swift
+AgentDeviceConfig(
+  permissions: ["notifications", "location"],
+  openURL: { url in DeepLink(url: url).map { .deepLinkOpened($0) } },
+  pushes: [
+    AgentPush("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
+    AgentPush("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
+  ],
+  scenePhase: { .scenePhaseChanged($0) },
+  relaunch: true,
+  offlineErrorCode: "network",
+  location: true,
+  biometry: true
+)
+
+// The notifications client's mock: the request waits for `device prompt allow|deny` while not-determined.
+extension NotificationsClient: DependencyKey {
+  public static let liveValue = NotificationsClient(
+    requestAuthorization: {
+      @Dependency(\.agentDevice) var device
+      return await device.requestPermission("notifications")
+    }
+  )
+}
+```
+
+A refused permission, from AgentShop:
+
+```
+$ ./appctl run "login-as alice; tab profile; order-updates on; device prompt deny"
+…
+> order-updates on
+  screen=home/profile name=Alice email=alice@example.com orderUpdates=off faceID=off alert=none prompt=notifications
+> device prompt deny
+  screen=home/profile name=Alice email=alice@example.com orderUpdates=off faceID=off alert=none error=notificationsDenied
+```
+
+Outside a host (a preview, a Release build) the device is *undriven*: online, every request granted at once, so
+nothing waits for a prompt no one can answer. The exact grammar, messages and exit codes are
+[CONTRACT.md §2.4](CONTRACT.md#24-device-subcommand-arguments).
 
 ## The verification ladder
 

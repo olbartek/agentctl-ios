@@ -31,6 +31,11 @@ extension AddressForm: AgentScreen {
       gate: CommandGate(hint: "canContinue=false") { $0.canContinue },
       .continueTapped
     ),
+    .action(
+      "use-location",
+      help: "Fill the street, city and zip from the device's location (asks for the location permission).",
+      .useLocationTapped
+    ),
     .action("skip", help: "Go on without an address.", .skipTapped),
   ]
 }

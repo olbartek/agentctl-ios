@@ -22,7 +22,9 @@ struct AgentShopApp: App {
       #if DEBUG
         Group {
           if launch.isReady {
+            // Keyed by the store, so `device relaunch` (a new store) shows a fresh view tree, as a relaunch would.
             RootView(store: launch.store)
+              .id(ObjectIdentifier(launch.store))
           } else {
             ProgressView()
           }

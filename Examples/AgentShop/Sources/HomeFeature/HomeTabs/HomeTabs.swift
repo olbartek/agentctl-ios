@@ -68,7 +68,7 @@ public struct HomeTabs {
       self.cartPath = cartPath
       self.ordersList = ordersList
       self.ordersPath = ordersPath
-      self.profile = Profile.State(user: session.user)
+      self.profile = Profile.State(user: session.user, session: session)
     }
   }
 
@@ -81,6 +81,8 @@ public struct HomeTabs {
     case ordersList(OrdersList.Action)
     case ordersPath(StackActionOf<OrdersPath>)
     case profile(Profile.Action)
+    /// A link opened while signed in: the tab it belongs to, with the product or order on top.
+    case deepLink(DeepLink)
     case delegate(Delegate)
 
     @CasePathable
@@ -154,6 +156,22 @@ public struct HomeTabs {
 
       case .profile(.delegate(.loggedOut)):
         return .send(.delegate(.loggedOut))
+
+      case let .deepLink(link):
+        switch link {
+        case .shop:
+          state.selectedTab = .shop
+          return .none
+        case let .product(id):
+          state.selectedTab = .shop
+          state.shopPath.removeAll()
+          return .send(.shop(.productTapped(id)))
+        case let .order(id):
+          state.selectedTab = .orders
+          state.ordersPath.removeAll()
+          state.ordersPath.append(.detail(OrderDetail.State(orderID: id)))
+          return .none
+        }
 
       case .shop, .shopPath, .cart, .cartPath, .ordersList, .ordersPath, .profile, .delegate:
         return .none

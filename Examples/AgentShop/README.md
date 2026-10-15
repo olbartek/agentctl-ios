@@ -1,7 +1,7 @@
 # AgentShop
 
-The showcase app for [AgentCtl](../../README.md): a small but complete shop, built with TCA, whose 105 scenario files
-run **unchanged** in three modes. It exists to show, and to measure, what driving an app through its agent layer
+The showcase app for [AgentCtl](../../README.md): a small but complete shop, built with TCA, whose 123 scenario files
+run **unchanged** headlessly and in the real app, and 99 of them as UI tests too. It exists to show, and to measure, what driving an app through its agent layer
 buys you over UI tests.
 
 What the app does, with screenshots: [`docs/APP.md`](docs/APP.md).
@@ -11,6 +11,7 @@ What the app does, with screenshots: [`docs/APP.md`](docs/APP.md).
 | **Authentication** | login, one-time code, sign-up, email verification, password reset, profile and log-out | 35 |
 | **Onboarding** | welcome carousel, interests (2–4), shipping address, notifications — once per new account | 26 |
 | **Shop** | feed (filter, search, sort), product (sizes, quantity, favorite), cart (promo codes), checkout (saved address, express shipping, card or Apple Pay), confirmation, orders | 44 |
+| **Device** | the simulated device (`device …`): the notifications permission (profile's order updates), the location permission and location (onboarding's "use my location"), links `agentshop://product/<id>`, `agentshop://order/<id>` and `agentshop://shop`, the `order-shipped` and `promo` pushes, background, foreground and relaunch, the network going offline, Face ID (turned on in the profile, then offered at login) | 18 |
 
 Everything behind the screens is mocked in memory (`Sources/*Client`), and every mocked call can be made to fail
 from a script (`mock orders.placeOrder network`). The accounts:
@@ -61,8 +62,10 @@ Hand-writing a hundred UI tests that do exactly what the scenarios do would be s
 3. `expect` becomes waits for what the screen shows. `mock` becomes a launch argument that fails the same call:
    `-mock-fault orders.placeOrder#1=network`.
 
-99 of the 105 scenarios become UI tests. The other six move a virtual clock (`advance 30s`) or relaunch (`reset`),
-which a UI test can only do by really waiting. They stay headless.
+99 of the 123 scenarios become UI tests. Six others move a virtual clock (`advance 30s`) or relaunch (`reset`), which
+a UI test can only do by really waiting, and the 18 device scenarios drive the device AgentCtl simulates inside the
+app (`device prompt allow`, `device network offline`), which a UI test cannot reach. They run headlessly and through
+the bridge (`app test`). The benchmark below measures the 105 scenarios of the first three groups.
 
 ```bash
 python3 bench/gen_uitests.py          # after changing a scenario or a screen's commands
@@ -97,7 +100,7 @@ python3 bench/video.py            # three scenarios recorded side by side, with 
 | `Sources/<Feature>/<Screen>+Agent.swift` | Each screen's agent surface: path, summary, commands. |
 | `Sources/AgentShopCtl/Config.swift` | The whole AgentCtl integration: one `AppCtlConfig`, and the headless and live hosts. |
 | `App/` | The app shell (`AgentShopApp.swift`), its Xcode project and the UI tests. |
-| `scenarios/` | `<group>-<name>.appctl`, 105 of them. |
+| `scenarios/` | `<group>-<name>.appctl`, 123 of them. |
 | `bench/` | The UI test generator, the benchmark, the video recorder and composer, the screenshot script. |
 | `docs/` | [`APP.md`](docs/APP.md), the app with screenshots. |
 | `appctl` | The wrapper: rebuilds `shopctl`, then runs it. |

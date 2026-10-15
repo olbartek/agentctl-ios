@@ -32,6 +32,31 @@ public struct DeviceLocation: Equatable, Hashable, Sendable {
     self.latitude = latitude
     self.longitude = longitude
   }
+
+  /// `<lat>,<lon>`: each an optional `-`, digits, and an optional `.` and digits; latitude within [-90, 90],
+  /// longitude within [-180, 180]; no spaces (CONTRACT.md §2.4). `nil` for anything else.
+  public static func parse(_ text: String) -> DeviceLocation? {
+    let parts = text.split(separator: ",", omittingEmptySubsequences: false)
+    guard parts.count == 2, let latitude = decimal(parts[0]), let longitude = decimal(parts[1]),
+      (-90...90).contains(latitude), (-180...180).contains(longitude)
+    else { return nil }
+    return DeviceLocation(latitude: latitude, longitude: longitude)
+  }
+
+  /// `device location`'s argument: a location, or `none` (`.some(nil)`); `nil` when it is neither.
+  public static func parseArgument(_ text: String) -> DeviceLocation?? {
+    text == "none" ? .some(nil) : parse(text).map { .some($0) }
+  }
+
+  private static func decimal(_ text: Substring) -> Double? {
+    var rest = text
+    if rest.first == "-" { rest = rest.dropFirst() }
+    let parts = rest.split(separator: ".", omittingEmptySubsequences: false)
+    guard (1...2).contains(parts.count),
+      parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } })
+    else { return nil }
+    return Double(text)
+  }
 }
 
 /// The simulated device an app's environment fakes read: permissions and their system prompts, connectivity,

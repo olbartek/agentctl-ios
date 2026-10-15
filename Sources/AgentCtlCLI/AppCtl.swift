@@ -179,7 +179,8 @@
       abstract: "Launch the app on a simulator and drive it through its agent bridge.",
       subcommands: [
         AppLaunch.self, AppRun.self, AppTestCommand.self, AppState.self, AppScreens.self, AppScreenshot.self,
-        AppRecord.self, AppStatusbar.self, AppInfoCommand.self,
+        AppRecord.self, AppStatusbar.self, AppInfoCommand.self, AppPermission.self, AppOpenURL.self, AppPush.self,
+        AppLocation.self, AppAppearance.self,
       ]
     )
   }
@@ -458,6 +459,117 @@
 
     func run() async throws {
       let code = DeviceCommands.info(simulator: device.sim)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  // MARK: - The real OS: live only, beside the script's simulated `device` (CONTRACT.md §2.4)
+
+  extension DeviceCommands.PermissionAction: ExpressibleByArgument {}
+
+  struct AppPermission: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "permission",
+      abstract: "Grant, revoke or reset a real permission of the app on the simulator (simctl privacy).",
+      discussion: """
+        <service> is one of simctl privacy's services: all, calendar, contacts-limited, contacts, location,
+        location-always, photos-add, photos, media-library, microphone, motion, reminders, siri. iOS terminates the
+        app when a permission is revoked. A script simulates permissions with `device permission` instead, in the
+        app's own process, which works for every service and never terminates it.
+        Example: \(help.invocation) app permission grant photos
+        """
+    )
+
+    @Argument(help: "grant, revoke or reset.")
+    var action: DeviceCommands.PermissionAction
+
+    @Argument(help: "The service, as simctl privacy names it.")
+    var service: String
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.permission(action, service: service, simulator: device.sim)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  struct AppOpenURL: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "openurl",
+      abstract: "Open a URL on the simulator, as the system would (simctl openurl).",
+      discussion: "Example: \(help.invocation) app openurl \"myapp://item/2\""
+    )
+
+    @Argument(help: "The URL.")
+    var url: String
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.openURL(url, simulator: device.sim)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  struct AppPush: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "push",
+      abstract: "Send the app a push notification on the simulator (simctl push).",
+      discussion: """
+        The file is an APNs payload: a JSON object with "aps", at most 4096 bytes. The app shows it only if it was
+        allowed to. A script delivers a push with `device push` instead.
+        Example: \(help.invocation) app push payload.json
+        """
+    )
+
+    @Argument(help: "The payload's .json file.")
+    var file: String
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.push(file, simulator: device.sim)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  struct AppLocation: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+      commandName: "location",
+      abstract: "Set or clear the simulator's location (simctl location).",
+      discussion: "Example: \(help.invocation) app location 52.2297,21.0122"
+    )
+
+    @Argument(help: "<lat>,<lon>, or clear.")
+    var location: String
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.location(location, simulator: device.sim)
+      if code != 0 { throw ExitCode(code) }
+    }
+  }
+
+  struct AppAppearance: AsyncParsableCommand {
+    enum Mode: String, CaseIterable, ExpressibleByArgument {
+      case light, dark
+    }
+
+    static let configuration = CommandConfiguration(
+      commandName: "appearance",
+      abstract: "Switch the simulator to light or dark mode (simctl ui appearance).",
+      discussion: "Example: \(help.invocation) app appearance dark"
+    )
+
+    @Argument(help: "light or dark.")
+    var mode: Mode
+
+    @OptionGroup var device: DeviceOptions
+
+    func run() async throws {
+      let code = DeviceCommands.appearance(dark: mode == .dark, simulator: device.sim)
       if code != 0 { throw ExitCode(code) }
     }
   }

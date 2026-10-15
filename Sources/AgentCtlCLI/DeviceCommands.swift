@@ -1,5 +1,6 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AVFoundation
+  import AgentCtlCore
   import AgentCtlTCA
   import Foundation
 
@@ -75,6 +76,78 @@
       run(simulator) { root, sim, device in
         try sim.statusBar(clean: clean, on: device, log: Layout(root: root).logs.appending(path: "app-statusbar.log"))
         print("status bar \(clean ? "clean" : "reset") on \(device.label) [\(device.udid)]")
+      }
+    }
+
+    // MARK: - The real OS (live only; scripts simulate the device with `device`)
+
+    enum PermissionAction: String, CaseIterable {
+      case grant, revoke, reset
+
+      var done: String {
+        switch self {
+        case .grant: "granted"
+        case .revoke: "revoked"
+        case .reset: "reset"
+        }
+      }
+    }
+
+    /// `simctl privacy <udid> grant|revoke|reset <service> <bundle>`. Revoking terminates the app, as iOS does.
+    static func permission(_ action: PermissionAction, service: String, simulator: String?) -> Int32 {
+      run(simulator) { root, sim, device in
+        try sim.simctl(
+          ["privacy", action.rawValue, service, Simulator.bundleID], on: device,
+          log: Layout(root: root).logs.appending(path: "app-permission.log")
+        )
+        print("permission \(service): \(action.done) for \(Simulator.bundleID) on \(device.label) [\(device.udid)]")
+      }
+    }
+
+    static func openURL(_ url: String, simulator: String?) -> Int32 {
+      run(simulator) { root, sim, device in
+        try sim.simctl(["openurl", url], on: device, log: Layout(root: root).logs.appending(path: "app-openurl.log"))
+        print("opened \(url) on \(device.label) [\(device.udid)]")
+      }
+    }
+
+    /// `simctl push <udid> <bundle> <payload.json>`: an APNs payload, an object with `aps`.
+    static func push(_ path: String, simulator: String?) -> Int32 {
+      run(simulator) { root, sim, device in
+        let file = URL(fileURLWithPath: path).standardizedFileURL
+        guard FileManager.default.isReadableFile(atPath: file.path) else {
+          throw AppCtlError("cannot read \(path)")
+        }
+        try sim.simctl(
+          ["push", Simulator.bundleID, file.path(percentEncoded: false)], on: device,
+          log: Layout(root: root).logs.appending(path: "app-push.log")
+        )
+        print("pushed \(path) to \(Simulator.bundleID) on \(device.label) [\(device.udid)]")
+      }
+    }
+
+    /// `<lat>,<lon>` (as `device location` takes it) or `clear`.
+    static func location(_ value: String, simulator: String?) -> Int32 {
+      if value != "clear", DeviceLocation.parse(value) == nil {
+        return AppCommands.fail(UsageError("app location needs <lat>,<lon> or clear, e.g. 52.2297,21.0122"))
+      }
+      return run(simulator) { root, sim, device in
+        let log = Layout(root: root).logs.appending(path: "app-location.log")
+        if value == "clear" {
+          try sim.simctl(["location", "clear"], on: device, log: log)
+          print("location cleared on \(device.label) [\(device.udid)]")
+        } else {
+          try sim.simctl(["location", "set", value], on: device, log: log)
+          print("location set to \(value) on \(device.label) [\(device.udid)]")
+        }
+      }
+    }
+
+    static func appearance(dark: Bool, simulator: String?) -> Int32 {
+      run(simulator) { root, sim, device in
+        let mode = dark ? "dark" : "light"
+        try sim.simctl(["ui", "appearance", mode], on: device, log: Layout(root: root).logs.appending(path: "app-appearance.log"))
+        print("appearance \(mode) on \(device.label) [\(device.udid)]")
       }
     }
 

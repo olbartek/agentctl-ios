@@ -364,7 +364,7 @@
         return await settling(line) { device.setOnline(arguments[0] == "online") }
 
       case .location:
-        guard arguments.count == 1, let location = Self.parseLocation(arguments[0]) else {
+        guard arguments.count == 1, let location = DeviceLocation.parseArgument(arguments[0]) else {
           return usage("device location <lat>,<lon> or none, e.g. 52.2297,21.0122")
         }
         return await settling(line) { device.setLocation(location) }
@@ -405,26 +405,6 @@
         scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+.-".contains($0)) })
       else { return nil }
       return URL(string: text, encodingInvalidCharacters: false)
-    }
-
-    /// `<lat>,<lon>` or `none`: `.some(nil)` for `none`, `nil` when the text is neither.
-    static func parseLocation(_ text: String) -> DeviceLocation?? {
-      if text == "none" { return .some(nil) }
-      let parts = text.split(separator: ",", omittingEmptySubsequences: false)
-      guard parts.count == 2, let latitude = decimal(parts[0]), let longitude = decimal(parts[1]),
-        (-90...90).contains(latitude), (-180...180).contains(longitude)
-      else { return nil }
-      return .some(DeviceLocation(latitude: latitude, longitude: longitude))
-    }
-
-    /// An optional `-`, digits, and an optional `.` with digits.
-    private static func decimal(_ text: Substring) -> Double? {
-      var rest = text
-      if rest.first == "-" { rest = rest.dropFirst() }
-      let parts = rest.split(separator: ".", omittingEmptySubsequences: false)
-      guard (1...2).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) })
-      else { return nil }
-      return Double(text)
     }
 
     // MARK: - Helpers

@@ -39,7 +39,7 @@ public struct AppFeature {
     /// A push saying an order changed arrived while the app is in front: the orders are loaded again.
     case orderPushReceived
     /// The app came to the foreground or went to the background.
-    case scenePhaseChanged(DevicePhase)
+    case scenePhaseChanged(AgentDevice.Phase)
   }
 
   @Dependency(\.sessionClient) var sessionClient

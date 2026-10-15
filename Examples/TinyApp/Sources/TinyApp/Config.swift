@@ -30,7 +30,7 @@
           return .items(.openTapped(id))
         },
         pushes: [
-          AgentPush("item-updated", help: "Item 2 was updated.", received: .items(.refresh), opened: .items(.openTapped(2)))
+          AgentDevice.Push("item-updated", help: "Item 2 was updated.", received: .items(.refresh), opened: .items(.openTapped(2)))
         ]
       )
     }

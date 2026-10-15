@@ -1,61 +1,63 @@
 import Dependencies
 import Synchronization
 
-/// A permission's status, as the app's permission fakes report it (CONTRACT.md §2.4).
-public enum PermissionStatus: String, CaseIterable, Equatable, Sendable {
-  case notDetermined = "not-determined"
-  case granted
-  case denied
-  case limited
-}
-
-/// What a biometric authentication (Face ID, Touch ID, a fingerprint) came to.
-public enum BiometryResult: Equatable, Sendable {
-  case success
-  case failure
-  /// No biometry is enrolled, so no prompt was shown.
-  case unavailable
-}
-
-/// Whether the app is in front.
-public enum DevicePhase: String, Equatable, Sendable {
-  case foreground
-  case background
-}
-
-/// A position on Earth, in degrees.
-public struct DeviceLocation: Equatable, Hashable, Sendable {
-  public var latitude: Double
-  public var longitude: Double
-
-  public init(latitude: Double, longitude: Double) {
-    self.latitude = latitude
-    self.longitude = longitude
+extension AgentDevice {
+  /// A permission's status, as the app's permission fakes report it (CONTRACT.md §2.4).
+  public enum PermissionStatus: String, CaseIterable, Equatable, Sendable {
+    case notDetermined = "not-determined"
+    case granted
+    case denied
+    case limited
   }
 
-  /// `<lat>,<lon>`: each an optional `-`, digits, and an optional `.` and digits; latitude within [-90, 90],
-  /// longitude within [-180, 180]; no spaces (CONTRACT.md §2.4). `nil` for anything else.
-  public static func parse(_ text: String) -> DeviceLocation? {
-    let parts = text.split(separator: ",", omittingEmptySubsequences: false)
-    guard parts.count == 2, let latitude = decimal(parts[0]), let longitude = decimal(parts[1]),
-      (-90...90).contains(latitude), (-180...180).contains(longitude)
-    else { return nil }
-    return DeviceLocation(latitude: latitude, longitude: longitude)
+  /// What a biometric authentication (Face ID, Touch ID, a fingerprint) came to.
+  public enum BiometryResult: Equatable, Sendable {
+    case success
+    case failure
+    /// No biometry is enrolled, so no prompt was shown.
+    case unavailable
   }
 
-  /// `device location`'s argument: a location, or `none` (`.some(nil)`); `nil` when it is neither.
-  public static func parseArgument(_ text: String) -> DeviceLocation?? {
-    text == "none" ? .some(nil) : parse(text).map { .some($0) }
+  /// Whether the app is in front.
+  public enum Phase: String, Equatable, Sendable {
+    case foreground
+    case background
   }
 
-  private static func decimal(_ text: Substring) -> Double? {
-    var rest = text
-    if rest.first == "-" { rest = rest.dropFirst() }
-    let parts = rest.split(separator: ".", omittingEmptySubsequences: false)
-    guard (1...2).contains(parts.count),
-      parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } })
-    else { return nil }
-    return Double(text)
+  /// A position on Earth, in degrees.
+  public struct Location: Equatable, Hashable, Sendable {
+    public var latitude: Double
+    public var longitude: Double
+
+    public init(latitude: Double, longitude: Double) {
+      self.latitude = latitude
+      self.longitude = longitude
+    }
+
+    /// `<lat>,<lon>`: each an optional `-`, digits, and an optional `.` and digits; latitude within [-90, 90],
+    /// longitude within [-180, 180]; no spaces (CONTRACT.md §2.4). `nil` for anything else.
+    public static func parse(_ text: String) -> AgentDevice.Location? {
+      let parts = text.split(separator: ",", omittingEmptySubsequences: false)
+      guard parts.count == 2, let latitude = decimal(parts[0]), let longitude = decimal(parts[1]),
+        (-90...90).contains(latitude), (-180...180).contains(longitude)
+      else { return nil }
+      return AgentDevice.Location(latitude: latitude, longitude: longitude)
+    }
+
+    /// `device location`'s argument: a location, or `none` (`.some(nil)`); `nil` when it is neither.
+    public static func parseArgument(_ text: String) -> AgentDevice.Location?? {
+      text == "none" ? .some(nil) : parse(text).map { .some($0) }
+    }
+
+    private static func decimal(_ text: Substring) -> Double? {
+      var rest = text
+      if rest.first == "-" { rest = rest.dropFirst() }
+      let parts = rest.split(separator: ".", omittingEmptySubsequences: false)
+      guard (1...2).contains(parts.count),
+        parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } })
+      else { return nil }
+      return Double(text)
+    }
   }
 }
 
@@ -93,8 +95,8 @@ public final class AgentDevice: Sendable {
   }
 
   enum Answer: Sendable {
-    case permission(PermissionStatus)
-    case biometry(BiometryResult)
+    case permission(AgentDevice.PermissionStatus)
+    case biometry(AgentDevice.BiometryResult)
   }
 
   private struct Waiting {
@@ -104,17 +106,17 @@ public final class AgentDevice: Sendable {
   }
 
   private struct State {
-    var statuses: [String: PermissionStatus] = [:]
+    var statuses: [String: AgentDevice.PermissionStatus] = [:]
     var waiting: [Waiting] = []
     /// Requests cancelled before their prompt was queued.
     var withdrawn: Set<UInt64> = []
     var nextID: UInt64 = 0
     var isOnline = true
-    var location: DeviceLocation?
+    var location: AgentDevice.Location?
     var isBiometryEnrolled = true
-    var phase = DevicePhase.foreground
+    var phase = AgentDevice.Phase.foreground
     var onlineObservers: [UInt64: AsyncStream<Bool>.Continuation] = [:]
-    var locationObservers: [UInt64: AsyncStream<DeviceLocation?>.Continuation] = [:]
+    var locationObservers: [UInt64: AsyncStream<AgentDevice.Location?>.Continuation] = [:]
   }
 
   /// Whether requests wait for an answer (`true` in a host) or are granted at once.
@@ -139,14 +141,14 @@ public final class AgentDevice: Sendable {
   // MARK: - What the app's fakes read
 
   /// The permission's current status. A service nothing has set is `not-determined`.
-  public func permission(_ service: String) -> PermissionStatus {
+  public func permission(_ service: String) -> AgentDevice.PermissionStatus {
     state.withLock { $0.statuses[service] ?? .notDetermined }
   }
 
   /// Requests a permission. When its status is `not-determined`, a system prompt opens and this waits for the
   /// answer (`device prompt allow|deny|limited`); otherwise it returns the current status at once. An undriven
   /// device grants it at once. Cancelling the waiting task withdraws the prompt and returns the status unchanged.
-  public func requestPermission(_ service: String) async -> PermissionStatus {
+  public func requestPermission(_ service: String) async -> AgentDevice.PermissionStatus {
     let answer = await waitForAnswer(.permission(service)) { state in
       let status = state.statuses[service] ?? .notDetermined
       guard status == .notDetermined else { return .permission(status) }
@@ -182,12 +184,12 @@ public final class AgentDevice: Sendable {
   }
 
   /// The device's location, or `nil` when it has none.
-  public var location: DeviceLocation? {
+  public var location: AgentDevice.Location? {
     state.withLock { $0.location }
   }
 
   /// The location: the current value first, then each change.
-  public func locationUpdates() -> AsyncStream<DeviceLocation?> {
+  public func locationUpdates() -> AsyncStream<AgentDevice.Location?> {
     AsyncStream { continuation in
       let id = state.withLock { state in
         let id = state.nextID
@@ -207,9 +209,9 @@ public final class AgentDevice: Sendable {
     state.withLock { $0.isBiometryEnrolled }
   }
 
-  /// Authenticates with biometry: ``BiometryResult/unavailable`` at once when none is enrolled; otherwise a
+  /// Authenticates with biometry: ``AgentDevice.BiometryResult/unavailable`` at once when none is enrolled; otherwise a
   /// biometric prompt opens and this waits for `device biometry match|fail`. An undriven device succeeds at once.
-  public func authenticateBiometry() async -> BiometryResult {
+  public func authenticateBiometry() async -> AgentDevice.BiometryResult {
     let answer = await waitForAnswer(.biometry) { state in
       guard state.isBiometryEnrolled else { return .biometry(.unavailable) }
       return isDriven ? nil : .biometry(.success)
@@ -219,7 +221,7 @@ public final class AgentDevice: Sendable {
   }
 
   /// Whether the app is in front.
-  public var phase: DevicePhase {
+  public var phase: AgentDevice.Phase {
     state.withLock { $0.phase }
   }
 
@@ -235,7 +237,7 @@ public final class AgentDevice: Sendable {
     state.withLock { $0.waiting.contains { $0.prompt == .permission(service) } }
   }
 
-  package func setPermission(_ service: String, _ status: PermissionStatus) {
+  package func setPermission(_ service: String, _ status: AgentDevice.PermissionStatus) {
     state.withLock { $0.statuses[service] = status }
   }
 
@@ -246,7 +248,7 @@ public final class AgentDevice: Sendable {
   }
 
   /// Answers the oldest prompt, which must be a permission's: its status becomes `status`.
-  package func answerPermission(_ status: PermissionStatus) throws(AnswerError) {
+  package func answerPermission(_ status: AgentDevice.PermissionStatus) throws(AnswerError) {
     let waiting: Waiting = try state.withLock { (state: inout State) throws(AnswerError) -> Waiting in
       guard let first = state.waiting.first else { throw .noPrompt }
       guard case let .permission(service) = first.prompt else { throw .otherPrompt(first.prompt.name) }
@@ -257,7 +259,7 @@ public final class AgentDevice: Sendable {
   }
 
   /// Answers the oldest prompt, which must be the biometric one.
-  package func answerBiometry(_ result: BiometryResult) throws(AnswerError) {
+  package func answerBiometry(_ result: AgentDevice.BiometryResult) throws(AnswerError) {
     let waiting: Waiting = try state.withLock { (state: inout State) throws(AnswerError) -> Waiting in
       guard let first = state.waiting.first else { throw .noPrompt }
       guard first.prompt == .biometry else { throw .otherPrompt(first.prompt.name) }
@@ -274,7 +276,7 @@ public final class AgentDevice: Sendable {
     for observer in observers { observer.yield(online) }
   }
 
-  package func setLocation(_ location: DeviceLocation?) {
+  package func setLocation(_ location: AgentDevice.Location?) {
     let observers = state.withLock { state in
       state.location = location
       return Array(state.locationObservers.values)
@@ -286,7 +288,7 @@ public final class AgentDevice: Sendable {
     state.withLock { $0.isBiometryEnrolled = enrolled }
   }
 
-  package func setPhase(_ phase: DevicePhase) {
+  package func setPhase(_ phase: AgentDevice.Phase) {
     state.withLock { $0.phase = phase }
   }
 

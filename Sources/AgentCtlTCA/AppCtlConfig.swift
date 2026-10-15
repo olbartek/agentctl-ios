@@ -264,7 +264,7 @@
     var help: HelpExamples { get }
     var screens: [ScreenDoc] { get }
     var mockMethods: [MockMethod] { get }
-    var deviceSurface: DeviceSurface { get }
+    var deviceSurface: AgentDevice.Surface { get }
     var docsText: DocsText { get }
     func clearSession()
     /// A fresh deterministic headless runner.
@@ -280,7 +280,7 @@
     package var docsPath: String { "docs/agent-commands.md" }
     package var outputPath: String { ".appctl" }
     /// An app with no device configuration has no `device` command.
-    package var deviceSurface: DeviceSurface { .none }
+    package var deviceSurface: AgentDevice.Surface { .none }
   }
 
   /// What the CLI does with a runner, without naming the root reducer.
@@ -323,7 +323,7 @@
     package var help: HelpExamples { config.help }
     package var screens: [ScreenDoc] { config.screens }
     package var mockMethods: [MockMethod] { config.mockMethods }
-    package var deviceSurface: DeviceSurface { config.device.surface }
+    package var deviceSurface: AgentDevice.Surface { config.device.surface }
     package var docsText: DocsText { config.docsText }
 
     package func clearSession() {

@@ -1,7 +1,7 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import ComposableArchitecture
+  import ConcurrencyExtras
   import Foundation
 
   /// The outcome of waiting for the app to settle after a command.
@@ -19,9 +19,9 @@
   }
 
   /// Headless settling, which is what lets a step be read only once the app has gone quiet (CONTRACT.md §6):
-  /// keep yielding until the state, the call log and the in-flight effect count
-  /// have not changed for `stableRounds` rounds, or until `limit` of real time has passed. `pending` reports the
-  /// sleeps waiting on the clock.
+  /// keep yielding until the app's fingerprint (its ``AgentDriver/fingerprint()``: state and work in flight) and
+  /// the call log have not changed for `stableRounds` rounds, or until `limit` of real time has passed. `pending`
+  /// reports the sleeps waiting on the clock.
   ///
   /// Must run with the main serial executor enabled, so that every task (including actor jobs) runs in order
   /// on the main thread and yielding lets them all make progress.
@@ -29,28 +29,27 @@
   /// `package` access, like ``settleLive``: a host settles through `HeadlessHost.settle()` and
   /// `LiveHost.settle()`, which choose the thresholds.
   @MainActor
-  package func settleHeadless<State: Equatable>(
-    state: () -> State,
+  package func settleHeadless<Fingerprint: Equatable>(
+    fingerprint: () -> Fingerprint,
     callLog: MockCallLog,
-    tracker: EffectTracker,
     pending: () -> Int,
     stableRounds: Int = 3,
     limit: Duration = .seconds(2)
   ) async -> SettleResult {
-    func fingerprint() -> SettleFingerprint<State> {
-      SettleFingerprint(state: state(), calls: callLog.count, inFlight: tracker.inFlight)
+    func round() -> SettleFingerprint<Fingerprint> {
+      SettleFingerprint(app: fingerprint(), calls: callLog.count)
     }
 
     let realClock = ContinuousClock()
     let start = realClock.now
-    var last = fingerprint()
+    var last = round()
     var stable = 0
     while stable < stableRounds {
       if start.duration(to: realClock.now) > limit {
         return SettleResult(settled: false, pending: pending())
       }
       await Task.megaYield()
-      let next = fingerprint()
+      let next = round()
       if next == last {
         stable += 1
       } else {
@@ -61,10 +60,9 @@
     return SettleResult(settled: true, pending: pending())
   }
 
-  private struct SettleFingerprint<State: Equatable>: Equatable {
-    var state: State
+  private struct SettleFingerprint<App: Equatable>: Equatable {
+    var app: App
     var calls: Int
-    var inFlight: Int
   }
 
   /// How long a live step may take to settle (CONTRACT.md §8.5). Mock latency is real in the running app, and a step

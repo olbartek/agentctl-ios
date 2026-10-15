@@ -46,6 +46,12 @@ jobs:
       - name: Generated command reference is current
         run: swift run tinyctl docs --check
 
+      - name: TinyApp's scenarios on TinyMVVM (MVVM-C, no TCA)
+        run: swift run tinymvvmctl test
+
+      - name: TinyMVVM's command reference is current
+        run: swift run tinymvvmctl docs --check
+
   # The package's two advertised properties that the host-side steps above never exercise, each in its own job so
   # they run alongside the tests.
 

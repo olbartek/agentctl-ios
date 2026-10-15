@@ -1,5 +1,5 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import Foundation
 
   /// `appctl app …` implementations.

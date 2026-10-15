@@ -1,7 +1,7 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AVFoundation
   import AgentCtlCore
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import Foundation
 
   /// `app screenshot`, `app record start|stop`, `app statusbar clean|reset` and `app info`: the simulator itself, for

@@ -6,7 +6,9 @@ let package = Package(
   platforms: [.iOS(.v18), .macOS(.v15)],
   products: [
     .library(name: "AgentCtlCore", targets: ["AgentCtlCore"]),
+    .library(name: "AgentCtlRuntime", targets: ["AgentCtlRuntime"]),
     .library(name: "AgentCtlTCA", targets: ["AgentCtlTCA"]),
+    .library(name: "AgentCtlObservation", targets: ["AgentCtlObservation"]),
     .library(name: "AgentCtlBridge", targets: ["AgentCtlBridge"]),
     .library(name: "AgentCtlCLI", targets: ["AgentCtlCLI"]),
     .library(name: "AgentCtlTestSupport", targets: ["AgentCtlTestSupport"]),
@@ -15,6 +17,9 @@ let package = Package(
     .package(url: "https://github.com/pointfreeco/swift-dependencies", from: "1.9.2"),
     .package(url: "https://github.com/pointfreeco/swift-composable-architecture", from: "1.26.2"),
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.2"),
+    .package(url: "https://github.com/pointfreeco/swift-clocks", from: "1.1.1"),
+    .package(url: "https://github.com/pointfreeco/swift-concurrency-extras", from: "1.4.1"),
+    .package(url: "https://github.com/pointfreeco/swift-custom-dump", from: "1.7.3"),
   ],
   targets: [
     .target(
@@ -23,16 +28,40 @@ let package = Package(
         .product(name: "Dependencies", package: "swift-dependencies"),
       ]
     ),
-    // AgentCtlTCA, AgentCtlCLI and AgentCtlTestSupport compile to nothing in a release build: every file is
-    // `#if DEBUG || AGENTCTL_RELEASE`. A host's app links a config module that depends on AgentCtlTCA, and SwiftPM
-    // cannot drop a dependency per build configuration, so without this the runtime would ship, unreachable, in
-    // the app. A CLI that is itself built in release passes `-Xswiftc -DAGENTCTL_RELEASE` (Templates/appctl
+    // AgentCtlRuntime, the two adapters, AgentCtlCLI and AgentCtlTestSupport compile to nothing in a release build:
+    // every file is `#if DEBUG || AGENTCTL_RELEASE`. A host's app links a config module that depends on them, and
+    // SwiftPM cannot drop a dependency per build configuration, so without this the runtime would ship, unreachable,
+    // in the app. A CLI that is itself built in release passes `-Xswiftc -DAGENTCTL_RELEASE` (Templates/appctl
     // does), which reaches every target. AgentCtlCore stays: features' `+Agent.swift` files use it and ship.
+    //
+    // The engine, whatever the app's architecture: the runner, the hosts, settling, the config. It drives an app
+    // through an `AgentDriver`; the two adapters below are the drivers.
+    .target(
+      name: "AgentCtlRuntime",
+      dependencies: [
+        "AgentCtlCore",
+        .product(name: "Dependencies", package: "swift-dependencies"),
+        .product(name: "Clocks", package: "swift-clocks"),
+        .product(name: "ConcurrencyExtras", package: "swift-concurrency-extras"),
+      ]
+    ),
+    // The Composable Architecture's driver: a `Store` and its root reducer.
     .target(
       name: "AgentCtlTCA",
       dependencies: [
         "AgentCtlCore",
+        "AgentCtlRuntime",
         .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+      ]
+    ),
+    // MVVM-C's driver: `@Observable` view models and a coordinator that owns navigation. No TCA.
+    .target(
+      name: "AgentCtlObservation",
+      dependencies: [
+        "AgentCtlCore",
+        "AgentCtlRuntime",
+        .product(name: "Dependencies", package: "swift-dependencies"),
+        .product(name: "CustomDump", package: "swift-custom-dump"),
       ]
     ),
     // The in-app HTTP bridge: `#if DEBUG` from end to end, so a Release build of a host app compiles it away.
@@ -40,8 +69,7 @@ let package = Package(
       name: "AgentCtlBridge",
       dependencies: [
         "AgentCtlCore",
-        "AgentCtlTCA",
-        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+        "AgentCtlRuntime",
       ]
     ),
     // The CLI as a library: a host's own executable is 4 lines that hand it an `AppCtlConfig`. It drives
@@ -53,10 +81,7 @@ let package = Package(
       name: "AgentCtlCLI",
       dependencies: [
         "AgentCtlCore",
-        "AgentCtlTCA",
-        // `AgentCtl.run(config:)` is generic over the host's root reducer, and its constraints name TCA's
-        // `Reducer` and `ObservableState`.
-        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+        "AgentCtlRuntime",
         .product(name: "ArgumentParser", package: "swift-argument-parser"),
       ]
     ),
@@ -67,9 +92,8 @@ let package = Package(
       name: "AgentCtlTestSupport",
       dependencies: [
         "AgentCtlCore",
-        "AgentCtlTCA",
-        // `AgentCoverage` is generic over the host's root reducer, like the runner it drives.
-        .product(name: "ComposableArchitecture", package: "swift-composable-architecture"),
+        // `AgentCoverage` is generic over the app's driver, like the runner it drives.
+        "AgentCtlRuntime",
       ]
     ),
     // The example app, and its CLI. Targets of this package rather than a nested package: the tests below use
@@ -91,12 +115,32 @@ let package = Package(
       dependencies: ["TinyApp", "AgentCtlCLI"],
       path: "Examples/TinyApp/Sources/tinyctl"
     ),
+    // TinyApp as MVVM-C: `@Observable` view models under a coordinator, driven through AgentCtlObservation. No TCA.
+    // It runs TinyApp's scenario files, and the tests compare its output with TinyApp's byte for byte.
+    .target(
+      name: "TinyMVVM",
+      dependencies: [
+        "AgentCtlCore",
+        "AgentCtlObservation",
+        .product(name: "Dependencies", package: "swift-dependencies"),
+        .product(name: "DependenciesMacros", package: "swift-dependencies"),
+      ],
+      path: "Examples/TinyMVVM/Sources/TinyMVVM"
+    ),
+    .executableTarget(
+      name: "tinymvvmctl",
+      dependencies: ["TinyMVVM", "AgentCtlCLI"],
+      path: "Examples/TinyMVVM/Sources/tinymvvmctl"
+    ),
     .testTarget(
       name: "AgentCtlTests",
       // AgentCtlCLI so the help pages and the messages that name the CLI can be rendered and asserted on;
       // its files are `#if os(macOS)`, and so is the test that reads them. TinyApp is the fixture for every
       // test that needs a real app to drive. AgentCtlTestSupport is proved against that same fixture below.
-      dependencies: ["AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport", "TinyApp"],
+      dependencies: [
+        "AgentCtlCore", "AgentCtlTCA", "AgentCtlObservation", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport",
+        "TinyApp", "TinyMVVM",
+      ],
       // Read by path (`PackageRoot`), not bundled.
       exclude: ["Fixtures"]
     ),

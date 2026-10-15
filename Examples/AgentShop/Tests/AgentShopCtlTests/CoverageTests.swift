@@ -1,3 +1,4 @@
+import AgentCtlTCA
 import AgentCtlTestSupport
 import AgentShopCtl
 import AppFeature
@@ -10,7 +11,7 @@ extension AppCtlSuite {
   @Suite struct CoverageTests {
     /// Throwing, because `AgentCoverage.init` refuses to build a guard that would find no scenarios to check —
     /// a wrong `scenarios` path would otherwise make all three guards below pass having examined nothing.
-    static func coverage() throws -> AgentCoverage<AppFeature> {
+    static func coverage() throws -> AgentCoverage<StoreDriver<AppFeature>> {
       try AgentCoverage(screens: AppFeature.registry, scenarios: Repo.scenarios) {
         AgentShopConfig.headless().makeRunner()
       }

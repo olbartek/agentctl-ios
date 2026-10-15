@@ -1,7 +1,6 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import ComposableArchitecture
   import Foundation
 
   public struct ScenarioResult: Sendable {
@@ -31,15 +30,11 @@
   /// Runs `scenarios/*.appctl` files, each against a fresh ``ScriptRunner`` from `make`.
   @MainActor
   public enum ScenarioRunner {
-    public static func run<Root: Reducer & AgentContainer>(
+    public static func run<Driver: AgentDriver>(
       name: String,
       source: String,
-      make: @MainActor () -> ScriptRunner<Root>
-    ) async -> ScenarioResult
-    where
-      Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-      Root.AgentState == Root.State, Root.AgentAction == Root.Action
-    {
+      make: @MainActor () -> ScriptRunner<Driver>
+    ) async -> ScenarioResult {
       let clock = ContinuousClock()
       let start = clock.now
       let runner = make()
@@ -66,14 +61,10 @@
       )
     }
 
-    public static func run<Root: Reducer & AgentContainer>(
+    public static func run<Driver: AgentDriver>(
       file: URL,
-      make: @MainActor () -> ScriptRunner<Root>
-    ) async -> ScenarioResult
-    where
-      Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-      Root.AgentState == Root.State, Root.AgentAction == Root.Action
-    {
+      make: @MainActor () -> ScriptRunner<Driver>
+    ) async -> ScenarioResult {
       let name = file.deletingPathExtension().lastPathComponent
       // A missing or unreadable file is an environment problem, not a script's: exit code 3 (CONTRACT.md §5).
       guard let source = try? String(contentsOf: file, encoding: .utf8) else {

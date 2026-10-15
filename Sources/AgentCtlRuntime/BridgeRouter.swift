@@ -1,7 +1,6 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import ComposableArchitecture
   import Foundation
 
   /// An HTTP request as the agent bridge sees it.
@@ -39,19 +38,15 @@
   /// - `POST /run` (body: a script; `?format=json` for JSON): the same output as the CLI's `run`, with what `run`
   ///   prints to stderr — a script's parse error — in the body too: after the steps as `error: …` in the text
   ///   form, and as `{"error": …, "steps": […]}` in place of the steps array in the JSON form.
-  /// - `GET /state`: `customDump` of the root state.
+  /// - `GET /state`: the app's whole state (``AgentDriver/stateDump``).
   /// - `GET /screens`: every screen and its commands.
   /// - `GET /snapshot`: the current screen's summary line.
   @MainActor
-  public final class BridgeRouter<Root: Reducer & AgentContainer>
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
-    let runner: ScriptRunner<Root>
+  public final class BridgeRouter<Driver: AgentDriver> {
+    let runner: ScriptRunner<Driver>
     let screensText: @MainActor () -> String
 
-    public init(runner: ScriptRunner<Root>, screensText: @escaping @MainActor () -> String) {
+    public init(runner: ScriptRunner<Driver>, screensText: @escaping @MainActor () -> String) {
       self.runner = runner
       self.screensText = screensText
     }

@@ -195,7 +195,7 @@
       /// app's log says so, rather than printing the steps as if the seed had been applied.
       @Test func aSeedStopsWhenTheLaunchDoesNotSettle() async {
         let seed = await serially {
-          await AgentLaunch<Restless>.applySeed("expect screen=restless", with: Restless.makeRunner())
+          await AgentLaunch<StoreDriver<Restless>>.applySeed("expect screen=restless", with: Restless.makeRunner())
         }
         #expect(seed.status == .failed)
         #expect(seed.log.hasPrefix("AgentCtlBridge: seed FAILED (exit 1)\n> (launch)"), "\(seed.log)")
@@ -204,14 +204,14 @@
       }
 
       @Test func aSeedRunsAfterASettledLaunch() async {
-        let applied = await AgentLaunch<TinyRoot>.applySeed(
+        let applied = await AgentLaunch<StoreDriver<TinyRoot>>.applySeed(
           "open 2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
         )
         #expect(applied.status == .ok)
         #expect(applied.log.hasPrefix("AgentCtlBridge: seed applied\n> (launch)"), "\(applied.log)")
         #expect(applied.log.contains("> open 2\n  screen=items/2"))
         // A seed that does not parse fails with its reason, as `run` does.
-        let unparsed = await AgentLaunch<TinyRoot>.applySeed(
+        let unparsed = await AgentLaunch<StoreDriver<TinyRoot>>.applySeed(
           "open \"2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
         )
         #expect(unparsed.status == .usage)
@@ -219,7 +219,7 @@
       }
 
       @Test func launchArguments() {
-        let options = AgentLaunch<TinyRoot>.Options(arguments: [
+        let options = AgentLaunch<StoreDriver<TinyRoot>>.Options(arguments: [
           "TinyApp", "-agent-port", "9000", "-appctl-seed", "open 2; save", "-mock-latency", "0",
           "-clear-session",
         ])
@@ -227,9 +227,9 @@
         #expect(options.seed == "open 2; save")
         #expect(options.latency == .zero)
         #expect(options.clearSession)
-        #expect(AgentLaunch<TinyRoot>.Options(arguments: ["TinyApp"]) == AgentLaunch<TinyRoot>.Options(arguments: []))
+        #expect(AgentLaunch<StoreDriver<TinyRoot>>.Options(arguments: ["TinyApp"]) == AgentLaunch<StoreDriver<TinyRoot>>.Options(arguments: []))
         // With no `-agent-port`, the app listens where the CLI connects by default.
-        #expect(AgentLaunch<TinyRoot>.Options(arguments: []).port == BridgeDefaults.port)
+        #expect(AgentLaunch<StoreDriver<TinyRoot>>.Options(arguments: []).port == BridgeDefaults.port)
       }
     }
   }

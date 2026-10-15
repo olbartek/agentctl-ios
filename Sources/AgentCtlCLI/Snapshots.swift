@@ -1,5 +1,5 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import Foundation
 
   /// L3: the view snapshot tests (swift-snapshot-testing) in the feature packages, run on the iOS Simulator.

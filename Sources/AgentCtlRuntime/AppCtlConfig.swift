@@ -1,7 +1,6 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import ComposableArchitecture
   import Foundation
 
   /// How `xcodebuild` is invoked for this app.
@@ -115,11 +114,7 @@
 
   /// Everything AgentCtl needs to know about a host app: the facts the CLI would otherwise hard-code, the data
   /// the docs are rendered from, and the closures that build the app's stores.
-  public struct AppCtlConfig<Root: Reducer & AgentContainer>: Sendable
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
+  public struct AppCtlConfig<Driver: AgentDriver>: Sendable {
     /// The app's name, as it appears in the CLI's help.
     public var name: String
     public var target: BuildTarget
@@ -163,12 +158,12 @@
     public var mockMethods: [MockMethod]
     /// What of the device scripts can drive (`device`), for `screens`, the docs and the coverage guards. Hand the
     /// same value to the hosts `makeHeadless` and `makeLive` build, as with ``mockMethods``.
-    public var device: AgentDeviceConfig<Root.Action>
+    public var device: AgentDeviceConfig<Driver.Action>
     public var docsText: DocsText
     public var screens: [ScreenDoc]
-    public var makeHeadless: @MainActor @Sendable () -> HeadlessHost<Root>
+    public var makeHeadless: @MainActor @Sendable () -> HeadlessHost<Driver>
     /// The app's store behind its agent bridge, AgentCtlBridge (real clock, real mock latency).
-    public var makeLive: @MainActor @Sendable (MockLatency) -> LiveHost<Root>
+    public var makeLive: @MainActor @Sendable (MockLatency) -> LiveHost<Driver>
     /// Called for `-clear-session` before the app launches.
     public var clearSession: @Sendable () -> Void
 
@@ -193,11 +188,11 @@
       appCheck: AppCheck = AppCheck(),
       help: HelpExamples = HelpExamples(),
       mockMethods: [MockMethod],
-      device: AgentDeviceConfig<Root.Action> = .none,
+      device: AgentDeviceConfig<Driver.Action> = .none,
       docsText: DocsText,
       screens: [ScreenDoc],
-      makeHeadless: @escaping @MainActor @Sendable () -> HeadlessHost<Root>,
-      makeLive: @escaping @MainActor @Sendable (MockLatency) -> LiveHost<Root>,
+      makeHeadless: @escaping @MainActor @Sendable () -> HeadlessHost<Driver>,
+      makeLive: @escaping @MainActor @Sendable (MockLatency) -> LiveHost<Driver>,
       clearSession: @escaping @Sendable () -> Void
     ) {
       self.name = name
@@ -236,7 +231,7 @@
   }
 
   /// The non-generic face of an ``AppCtlConfig``, for a CLI whose command types are static and cannot name the
-  /// root reducer.
+  /// app's driver.
   ///
   /// The facts are `nonisolated` on purpose: ArgumentParser builds `CommandConfiguration`s and option defaults
   /// outside any actor, and the simulator helpers are plain structs. Everything that touches a store is
@@ -295,15 +290,11 @@
 
   extension ScriptRunner: ScriptRunning {}
 
-  /// Holds a typed ``AppCtlConfig`` behind ``AppCtlRuntime``: the one place the root reducer's type is erased.
-  package final class ErasedConfig<Root: Reducer & AgentContainer>: AppCtlRuntime
-  where
-    Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
-    let config: AppCtlConfig<Root>
+  /// Holds a typed ``AppCtlConfig`` behind ``AppCtlRuntime``: the one place the app's driver type is erased.
+  package final class ErasedConfig<Driver: AgentDriver>: AppCtlRuntime {
+    let config: AppCtlConfig<Driver>
 
-    package init(config: AppCtlConfig<Root>) {
+    package init(config: AppCtlConfig<Driver>) {
       self.config = config
     }
 

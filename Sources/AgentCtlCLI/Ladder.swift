@@ -1,6 +1,6 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import Foundation
 
   /// The CLI's `check`: the verification ladder — build, tests, scenarios and the generated docs, then the two

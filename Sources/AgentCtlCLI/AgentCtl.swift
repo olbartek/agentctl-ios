@@ -1,8 +1,7 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import ArgumentParser
-  import ComposableArchitecture
   import Foundation
   import Synchronization
 
@@ -35,11 +34,7 @@
 
     /// Runs the CLI against `config`. Called from the host executable's `main.swift`. It returns when the command
     /// succeeded, and otherwise exits the process with the command's exit code (CONTRACT.md §5).
-    public static func run<Root>(config: AppCtlConfig<Root>) async
-    where
-      Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-      Root.AgentState == Root.State, Root.AgentAction == Root.Action
-    {
+    public static func run<Driver>(config: AppCtlConfig<Driver>) async {
       install(ErasedConfig(config: config))
       // What `AsyncParsableCommand.main()` does, except for the exit code of a usage error: see ``exitStatus(for:)``.
       do {

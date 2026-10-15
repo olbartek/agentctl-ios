@@ -118,7 +118,7 @@ extension Gadget: AgentScreen, AgentContainer {
   )
 
   @MainActor
-  static func host(device: AgentDeviceConfig<Action> = Gadget.device) -> HeadlessHost<Gadget> {
+  static func host(device: AgentDeviceConfig<Action> = Gadget.device) -> HeadlessHost<StoreDriver<Gadget>> {
     HeadlessHost(
       initialState: { State() }, reducer: { Gadget() },
       mockMethods: [MockMethod("gadget.fetch", errorCodes: ["offline", "boom"])], device: device
@@ -132,7 +132,7 @@ extension AgentCtlSuite {
   @MainActor
   struct DeviceTests {
     /// The steps of `script` after `(launch)`, as text.
-    func run(_ script: String, host: HeadlessHost<Gadget> = Gadget.host()) async -> (text: String, status: RunStatus) {
+    func run(_ script: String, host: HeadlessHost<StoreDriver<Gadget>> = Gadget.host()) async -> (text: String, status: RunStatus) {
       await serially {
         let runner = host.makeRunner()
         _ = await runner.launch()

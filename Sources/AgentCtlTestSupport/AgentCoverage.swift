@@ -1,8 +1,7 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
   import AgentCtlCore
-  import AgentCtlTCA
-  import ComposableArchitecture
+  import AgentCtlRuntime
   import Foundation
 
   /// Thrown by `AgentCoverage.init` and `AgentScenarioChecks.init` when `scenarios` has no `*.appctl` files to
@@ -57,13 +56,10 @@
   /// empty, or simply the wrong path. There is no way to construct an `AgentCoverage` whose guards silently
   /// check nothing.
   @MainActor
-  public struct AgentCoverage<Root: Reducer & AgentContainer>
-  where Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
-    Root.AgentState == Root.State, Root.AgentAction == Root.Action
-  {
+  public struct AgentCoverage<Driver: AgentDriver> {
     let screens: [ScreenDoc]
     let files: [URL]
-    let make: @MainActor () -> ScriptRunner<Root>
+    let make: @MainActor () -> ScriptRunner<Driver>
 
     /// The number of `*.appctl` files this instance found at `scenarios`. `init` already guarantees this is
     /// greater than zero; exposed so a host can log it, or assert a lower bound of its own (e.g. that a
@@ -71,7 +67,7 @@
     public var scenarioCount: Int { files.count }
 
     /// - Throws: ``NoScenariosFound`` if `scenarios` contains no `*.appctl` files.
-    public init(screens: [ScreenDoc], scenarios: URL, make: @escaping @MainActor () -> ScriptRunner<Root>) throws {
+    public init(screens: [ScreenDoc], scenarios: URL, make: @escaping @MainActor () -> ScriptRunner<Driver>) throws {
       let files = ScenarioRunner.files(in: scenarios)
       guard !files.isEmpty else { throw NoScenariosFound(scenarios: scenarios) }
       self.screens = screens

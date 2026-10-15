@@ -11,7 +11,7 @@ extension AgentCtlSuite {
   /// scenarios rather than a fixture built just for this test.
   @MainActor
   @Suite struct CoverageTests {
-    static func coverage() throws -> AgentCoverage<TinyRoot> {
+    static func coverage() throws -> AgentCoverage<StoreDriver<TinyRoot>> {
       try AgentCoverage(screens: TinyRoot.registry, scenarios: PackageRoot.scenarios) {
         TinyAppConfig.headless().makeRunner()
       }

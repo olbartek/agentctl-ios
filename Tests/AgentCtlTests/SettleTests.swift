@@ -106,14 +106,18 @@ struct ToyHarness {
 
   func settle() async -> SettleResult {
     await settleHeadless(
-      state: { store.state },
+      fingerprint: { [store, tracker] in Fingerprint(state: store.state, effects: tracker.inFlight) },
       callLog: callLog,
-      tracker: tracker,
       pending: { [countingClock] in countingClock.activeSleeps }
     )
   }
 
   var state: Toy.State { store.state }
+
+  struct Fingerprint: Equatable {
+    var state: Toy.State
+    var effects: Int
+  }
 }
 
 extension AgentCtlSuite {

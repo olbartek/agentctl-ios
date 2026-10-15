@@ -23,8 +23,8 @@ struct AgentShopApp: App {
         Group {
           if launch.isReady {
             // Keyed by the store, so `device relaunch` (a new store) shows a fresh view tree, as a relaunch would.
-            RootView(store: launch.store)
-              .id(ObjectIdentifier(launch.store))
+            RootView(store: launch.app)
+              .id(ObjectIdentifier(launch.app))
           } else {
             ProgressView()
           }
@@ -32,7 +32,7 @@ struct AgentShopApp: App {
         .task { await launch.start() }
         // A link the system opens (`app openurl agentshop://order/1003`): the same action `device open-url` sends.
         .onOpenURL { url in
-          if let action = AppFeature.action(opening: url) { launch.store.send(action) }
+          if let action = AppFeature.action(opening: url) { launch.app.send(action) }
         }
       #else
         RootView(store: store)

@@ -1,6 +1,6 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
   import AgentCtlCore
-  import AgentCtlTCA
+  import AgentCtlRuntime
   import ArgumentParser
   import Foundation
 

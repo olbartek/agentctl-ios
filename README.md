@@ -64,10 +64,11 @@ place where the headless run disagreed with iOS. It is a case for which one an a
 
 - **macOS 15+ and a Swift 6.1+ toolchain** (`swift-tools-version: 6.1`; developed and verified on Swift 6.3,
   Xcode 26.6). The library targets support iOS 18+ as well; the CLI is macOS-only, see below.
-- **The app must be built with [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture)**
-  (1.26+) today. `AgentCtlCore` — the vocabulary, the script parser, `expect`, the step format, the mock call
-  log — deliberately has no TCA dependency, so supporting another architecture means writing a second runner
-  against the same vocabulary rather than rewriting it. That runner does not exist yet.
+- **The app is built with [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture)**
+  (1.26+), **or as MVVM-C**: `@Observable` view models under a coordinator, with their dependencies from
+  [swift-dependencies](https://github.com/pointfreeco/swift-dependencies). The engine talks to an `AgentDriver`, never
+  to your app's types; `AgentCtlTCA` drives a store, `AgentCtlObservation` drives a coordinator, and both run the same
+  scripts with the same output (see [MVVM-C](docs/guides/integration.md#mvvm-c-apps-without-tca)).
 - **Screens are driven through state, not through the UI.** Nothing taps and nothing reads pixels; a headless
   run has no views at all. Rendering is verified separately, by snapshot tests (see
   [the ladder](docs/guides/verification-ladder.md)).
@@ -84,9 +85,9 @@ The whole integration, in five steps — each is a few lines of real code in
 [the integration guide](docs/guides/integration.md):
 
 1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.6.0")`, and take only
-   the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` for the config, `AgentCtlCLI` for your
-   CLI, `AgentCtlBridge` for the app shell, `AgentCtlTestSupport` for tests).
-2. **Conform your screens** — beside each reducer, an `AgentScreen` extension: its path, a `key=value` summary, an
+   the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` or `AgentCtlObservation` for the
+   config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, `AgentCtlTestSupport` for tests).
+2. **Conform your screens** — beside each reducer (or view model), an `AgentScreen` extension: its path, a `key=value` summary, an
    error code and its commands; a container (`AgentContainer`) resolves which screen is active.
 3. **Write your CLI** — one `AppCtlConfig` describing your app, and a four-line executable that runs it.
 4. **Copy the wrapper** — [`Templates/appctl`](Templates/appctl) rebuilds the CLI quietly before every call.
@@ -96,7 +97,7 @@ The whole integration, in five steps — each is a few lines of real code in
 
 | Guide | What it covers |
 |---|---|
-| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper. |
+| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7. |
 | [Commands](docs/guides/commands.md) | Every command your CLI gets (`run`, `test`, `docs`, `check`, `app …`), the exit codes, the runtime commands, and what a headless run pins to stay deterministic. |
 | [The device environment](docs/guides/device-environment.md) | `device …`: permissions and system prompts, links, pushes, background, foreground and relaunch, the network, location and biometry — one row per capability, with what your app wires and the real-OS `app` wrapper. |
 | [The verification ladder](docs/guides/verification-ladder.md) | `check`, from `swift build` to the real app on a simulator, and verifying at the cheapest rung that proves a change. |
@@ -124,6 +125,9 @@ swift run tinyctl run "open 2; save; advance 3s"
 swift run tinyctl test
 swift test          # this package's own suite, driven against TinyApp
 ```
+
+[`Examples/TinyMVVM`](Examples/TinyMVVM) is TinyApp rebuilt as MVVM-C, with no TCA. It runs TinyApp's scenario files
+unchanged and prints the same output byte for byte (`swift run tinymvvmctl test`). See [its README](Examples/TinyMVVM/README.md).
 
 [`Examples/AgentShop`](Examples/AgentShop) is the showcase: a real iOS app (sign-in, onboarding, a shop with a
 cart and checkout) with an Xcode project, 105 scenarios, UI tests generated from them, and the benchmark behind

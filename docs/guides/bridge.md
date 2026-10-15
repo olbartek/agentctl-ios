@@ -3,7 +3,7 @@
 `AgentCtlBridge` is `#if DEBUG` from end to end, so a Release build compiles it away, and its server listens on
 `127.0.0.1` only. Your app shell therefore uses it inside `#if DEBUG` too — importing it or naming `AgentLaunch`
 outside one breaks your Release build. Everything below is the shell's whole integration: in DEBUG it builds the
-root view from `launch.store`, calls `await launch.start()` once from that view's `.task`, and shows a
+root view from `launch.app` (the store of a TCA app, the coordinator of an MVVM-C app), calls `await launch.start()` once from that view's `.task`, and shows a
 placeholder while `launch.isReady` is false, which is how a launch seed is applied before the first real frame.
 
 ```swift
@@ -28,7 +28,7 @@ struct MyApp: App {
       #if DEBUG
         Group {
           if launch.isReady {
-            RootView(store: launch.store)
+            RootView(store: launch.app)
           } else {
             ProgressView()
           }
@@ -43,7 +43,7 @@ struct MyApp: App {
 ```
 
 To run the plain app over its live dependencies unless an agent launched it, check
-`AgentLaunch<MyRoot>.isRequested()` before creating the `AgentLaunch`: it is true when the launch arguments hold
+`AgentLaunchArguments.isRequested()` before creating the `AgentLaunch`: it is true when the launch arguments hold
 `-agent-port`, which the CLI's `app` subcommands always pass and ⌘R from Xcode does not.
 
 A Release build never names `AgentCtlBridge` or the config's target. `AgentLaunch` reads the launch arguments the

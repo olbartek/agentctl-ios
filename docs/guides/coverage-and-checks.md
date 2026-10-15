@@ -6,7 +6,7 @@ into your own test target — this is the package's own suite, run against the e
 repository's tests compute, and yours would too):
 
 ```swift
-static func coverage() throws -> AgentCoverage<TinyRoot> {
+static func coverage() throws -> AgentCoverage<StoreDriver<TinyRoot>> {
   try AgentCoverage(screens: TinyRoot.registry, scenarios: PackageRoot.scenarios) {
     TinyAppConfig.headless().makeRunner()
   }

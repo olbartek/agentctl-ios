@@ -32,7 +32,7 @@ The two repositories share MAJOR.MINOR; PATCH is each repository's own.
 - **A change to step output, the CLI's surface, CONTRACT.md or a scenario is never a patch.** It is a minor release
   of both repositories.
 
-Tags are bare `X.Y.Z` on `main`. To release here: bump the README's version pins and Status, merge, then tag and push the
+Tags are bare `X.Y.Z` on `main`. To release here: bump the version pins (README.md and docs/guides/integration.md) and the README's Status, merge, then tag and push the
 tag. For a minor or major release, release agentctl-android with the same number.
 
 ## After a merge

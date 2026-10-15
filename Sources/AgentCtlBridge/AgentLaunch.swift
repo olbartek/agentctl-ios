@@ -56,6 +56,9 @@
     /// What the root view shows — the store of a TCA app, the coordinator of an MVVM-C app. `device relaunch`
     /// replaces it, and the root view rebuilds on the new one.
     public private(set) var app: Driver.App
+    /// The name ``app`` had before 0.7, when every app was a TCA store.
+    @available(*, deprecated, renamed: "app")
+    public var store: Driver.App { app }
     /// `false` while a launch seed is being applied.
     public private(set) var isReady: Bool
     @ObservationIgnored private let host: LiveHost<Driver>

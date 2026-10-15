@@ -161,6 +161,9 @@
     /// The example commands in the CLI's help pages.
     public var help: HelpExamples
     public var mockMethods: [MockMethod]
+    /// What of the device scripts can drive (`device`), for `screens`, the docs and the coverage guards. Hand the
+    /// same value to the hosts `makeHeadless` and `makeLive` build, as with ``mockMethods``.
+    public var device: AgentDeviceConfig<Root.Action>
     public var docsText: DocsText
     public var screens: [ScreenDoc]
     public var makeHeadless: @MainActor @Sendable () -> HeadlessHost<Root>
@@ -190,6 +193,7 @@
       appCheck: AppCheck = AppCheck(),
       help: HelpExamples = HelpExamples(),
       mockMethods: [MockMethod],
+      device: AgentDeviceConfig<Root.Action> = .none,
       docsText: DocsText,
       screens: [ScreenDoc],
       makeHeadless: @escaping @MainActor @Sendable () -> HeadlessHost<Root>,
@@ -211,6 +215,7 @@
       self.appCheck = appCheck
       self.help = help
       self.mockMethods = mockMethods
+      self.device = device
       self.docsText = docsText
       self.screens = screens
       self.makeHeadless = makeHeadless
@@ -226,7 +231,7 @@
 
     /// The generated command reference, exactly as the CLI's `docs` writes it to ``docsPath``.
     public var docsMarkdown: String {
-      DocsRenderer.render(screens: screens, mockMethods: mockMethods, text: docsText)
+      DocsRenderer.render(screens: screens, mockMethods: mockMethods, text: docsText, device: device.surface)
     }
   }
 
@@ -259,6 +264,7 @@
     var help: HelpExamples { get }
     var screens: [ScreenDoc] { get }
     var mockMethods: [MockMethod] { get }
+    var deviceSurface: DeviceSurface { get }
     var docsText: DocsText { get }
     func clearSession()
     /// A fresh deterministic headless runner.
@@ -273,6 +279,8 @@
     /// Where an app at the root of its own repository keeps its generated command reference.
     package var docsPath: String { "docs/agent-commands.md" }
     package var outputPath: String { ".appctl" }
+    /// An app with no device configuration has no `device` command.
+    package var deviceSurface: DeviceSurface { .none }
   }
 
   /// What the CLI does with a runner, without naming the root reducer.
@@ -315,6 +323,7 @@
     package var help: HelpExamples { config.help }
     package var screens: [ScreenDoc] { config.screens }
     package var mockMethods: [MockMethod] { config.mockMethods }
+    package var deviceSurface: DeviceSurface { config.device.surface }
     package var docsText: DocsText { config.docsText }
 
     package func clearSession() {

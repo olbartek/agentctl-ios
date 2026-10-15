@@ -58,7 +58,8 @@
     }
 
     public let options: Options
-    public let store: Store<Root.State, Root.Action>
+    /// The store the root view shows. `device relaunch` replaces it, and the root view rebuilds on the new one.
+    public private(set) var store: Store<Root.State, Root.Action>
     /// `false` while a launch seed is being applied.
     public private(set) var isReady: Bool
     @ObservationIgnored private let app: LiveHost<Root>
@@ -66,6 +67,7 @@
     @ObservationIgnored private let screens: [ScreenDoc]
     /// The host's `mock` example, so the bridge's `/screens` lists the runtime commands exactly as the CLI does.
     @ObservationIgnored private let mockExample: String
+    @ObservationIgnored private let deviceSurface: DeviceSurface
     @ObservationIgnored private var server: BridgeServer?
     @ObservationIgnored private var router: BridgeRouter<Root>?
 
@@ -77,12 +79,14 @@
       self.options = options
       self.screens = config.screens
       self.mockExample = config.docsText.mockExample
+      self.deviceSurface = config.device.surface
       self.app = config.makeLive(options.latency ?? .liveValue)
       #if canImport(UIKit)
         if app.isUIIdle == nil { app.isUIIdle = UIActivity.isIdle }
       #endif
       self.store = app.store
       self.isReady = options.seed == nil
+      app.onRelaunch = { [weak self] in self?.store = $0 }
     }
 
     /// Applies the seed (if any), then starts the bridge, so the bridge's first answer means the app is ready.
@@ -91,7 +95,9 @@
       guard server == nil else { return }
       let router = BridgeRouter(
         runner: app.makeRunner(synthesizesAppearance: false),
-        screensText: { [screens, mockExample] in ScreensRenderer.render(screens, mockExample: mockExample) }
+        screensText: { [screens, mockExample, deviceSurface] in
+          ScreensRenderer.render(screens, mockExample: mockExample, device: deviceSurface)
+        }
       )
       let server = BridgeServer(handler: { await router.handle($0) })
       self.router = router

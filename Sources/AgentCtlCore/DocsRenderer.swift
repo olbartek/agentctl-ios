@@ -54,10 +54,15 @@ public enum DocsRenderer {
   /// The whole command reference as `docs` writes it and `docs --check` compares it: the app's screens and mock
   /// methods plus the runtime commands (`expect`, `advance`, `mock`) every app has. The CLI and
   /// `AgentScenarioChecks.docsCurrent` both call this, so a host's test and its `docs --check` cannot disagree.
-  public static func render(screens: [ScreenDoc], mockMethods: [MockMethod], text: DocsText) -> String {
+  public static func render(
+    screens: [ScreenDoc],
+    mockMethods: [MockMethod],
+    text: DocsText,
+    device: DeviceSurface = .none
+  ) -> String {
     render(
       screens: screens,
-      runtimeCommands: AgentRegistry.runtimeCommands(mockExample: text.mockExample),
+      runtimeCommands: AgentRegistry.runtimeCommands(mockExample: text.mockExample, device: device),
       mockMethods: mockMethods,
       text: text
     )
@@ -94,6 +99,13 @@ public enum DocsRenderer {
     out.append("  The line holds `screen`, the screen's summary keys, `calls=` (mock calls made during the step),")
     out.append("  `error=` (if set) and `pending=` (effects waiting on the clock, e.g. a countdown; headlessly")
     out.append("  `advance <duration>` releases them).")
+    let prompting = runtimeCommands.contains {
+      $0.name == "device" && ($0.argument?.hasPrefix("prompt ") == true || $0.argument?.hasPrefix("biometry ") == true)
+    }
+    if prompting {
+      out.append("  `prompt=` names the system prompt the app is waiting on, if any (`device prompt` or `device biometry`")
+      out.append("  answers it).")
+    }
     out.append("- Exit codes: `0` all steps passed, `1` a command or `expect` failed, `2` usage or parse error, `3` internal error.")
     out.append("")
     out.append("## Examples")

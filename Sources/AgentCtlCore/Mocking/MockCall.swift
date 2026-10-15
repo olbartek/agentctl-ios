@@ -3,7 +3,8 @@ import Dependencies
 /// The single shim every mock backend method goes through.
 ///
 /// It records the call in ``MockCallLog``, waits the ``MockLatency`` (never touching the clock when it is zero),
-/// throws a fault registered in ``MockFaults`` if there is one, and otherwise runs `body`.
+/// fails with the device's offline error code while ``AgentDevice/isOnline`` is false (leaving any armed fault for
+/// the next call), throws a fault registered in ``MockFaults`` if there is one, and otherwise runs `body`.
 ///
 /// - Parameters:
 ///   - name: `"<client>.<method>"`, e.g. `items.fetch`.
@@ -18,12 +19,16 @@ public func mockCall<T: Sendable>(
   @Dependency(\.mockLatency) var latency
   @Dependency(\.continuousClock) var clock
   @Dependency(\.withRandomNumberGenerator) var randomNumberGenerator
+  @Dependency(\.agentDevice) var device
 
   log.begin(name)
   defer { log.end(name) }
   let delay = latency.sample(using: randomNumberGenerator)
   if delay > .zero {
     try await clock.sleep(for: delay)
+  }
+  if !device.isOnline, let code = device.offlineErrorCode {
+    throw makeError(code)
   }
   if let code = faults.take(name) {
     throw makeError(code)

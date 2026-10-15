@@ -6,21 +6,26 @@ public struct StepSnapshot: Equatable, Sendable {
   public var calls: [String]
   public var error: String?
   public var pending: Int
+  /// The system prompt the app is waiting on, if any.
+  public var prompt: String?
 
-  public init(screen: String, summary: [SummaryItem], calls: [String], error: String?, pending: Int) {
+  public init(
+    screen: String, summary: [SummaryItem], calls: [String], error: String?, pending: Int, prompt: String? = nil
+  ) {
     self.screen = screen
     self.summary = summary
     self.calls = calls
     self.error = error
     self.pending = pending
+    self.prompt = prompt
   }
 }
 
 /// `expect k=v [k=v …]`.
 ///
 /// Keys: `screen`, any summary key, `call` (repeatable; the method was called during the previous step),
-/// `error` (`none` = no error) and `pending` (sleeps waiting on the clock, such as a countdown — see
-/// ``CountingClock/activeSleeps``).
+/// `error` (`none` = no error), `pending` (sleeps waiting on the clock, such as a countdown — see
+/// ``CountingClock/activeSleeps``) and `prompt` (the system prompt the app is waiting on; `none` = no prompt).
 public struct Expectation: Equatable, Sendable {
   public struct Pair: Equatable, Sendable {
     public var key: String
@@ -38,7 +43,7 @@ public struct Expectation: Equatable, Sendable {
     self.pairs = pairs
   }
 
-  public static let reservedKeys = ["screen", "call", "error", "pending"]
+  public static let reservedKeys = ["screen", "call", "error", "pending", "prompt"]
 
   /// Parses the argument of `expect`. Values containing spaces must be quoted: `name="Alice Smith"`.
   public static func parse(_ argument: String?) throws(ExpectationSyntaxError) -> Self {
@@ -68,6 +73,9 @@ public struct Expectation: Equatable, Sendable {
         return actual == pair.value ? nil : mismatch(pair, actual: actual)
       case "pending":
         return String(snapshot.pending) == pair.value ? nil : mismatch(pair, actual: String(snapshot.pending))
+      case "prompt":
+        let actual = snapshot.prompt ?? "none"
+        return actual == pair.value ? nil : mismatch(pair, actual: actual)
       default:
         guard let item = snapshot.summary.first(where: { $0.key == pair.key }) else {
           let available = (Self.reservedKeys + snapshot.summary.map(\.key)).joined(separator: ", ")

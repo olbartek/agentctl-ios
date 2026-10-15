@@ -67,7 +67,7 @@ extension AgentCtlSuite {
       let checks = try AgentScenarioChecks(config: TinyAppConfig.appCtl)
       #expect(checks.root.standardizedFileURL == PackageRoot.url.standardizedFileURL)
       let names = checks.files.map(\.lastPathComponent)
-      #expect(names == ["browse.appctl", "refresh-error.appctl", "save-cooldown.appctl"])
+      #expect(names == ["browse.appctl", "deep-link.appctl", "push.appctl", "refresh-error.appctl", "save-cooldown.appctl"])
     }
 
     @Test func repoRootWalksUpToTheMarker() throws {

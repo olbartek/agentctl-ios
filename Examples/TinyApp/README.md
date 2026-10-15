@@ -59,6 +59,8 @@ Executable specifications, run by `swift run tinyctl test` and again by the pack
 |---|---|
 | [`scenarios/browse.appctl`](scenarios/browse.appctl) | The happy path: the list loads on appearance, an item opens, a save starts the cooldown, `advance` runs it out, `back` returns. |
 | [`scenarios/refresh-error.appctl`](scenarios/refresh-error.appctl) | A forced failure: `mock` makes the next fetch throw, the rows already loaded stay, and the one-shot fault lets the gated `retry` succeed. |
+| [`scenarios/deep-link.appctl`](scenarios/deep-link.appctl) | Links: `device open-url tinyapp://items/<id>` opens that item, and a link to an item the list does not have reports `error=notFound`. |
+| [`scenarios/push.appctl`](scenarios/push.appctl) | A push notification: received in front, `item-updated` reloads the list; tapped (`device push item-updated tap`), it opens item 2. |
 | [`scenarios/save-cooldown.appctl`](scenarios/save-cooldown.appctl) | The cooldown in detail: a second save is refused with `error=cooldown`, the countdown keeps running, and `advance` releases it a second at a time. |
 
 ## The generated command reference

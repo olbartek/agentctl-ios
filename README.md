@@ -84,7 +84,7 @@ place where the headless run disagreed with iOS. It is a case for which one an a
 The whole integration, in five steps — each is a few lines of real code in
 [the integration guide](docs/guides/integration.md):
 
-1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.9.0")`, and take only
+1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.9.1")`, and take only
    the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` or `AgentCtlObservation` for the
    config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, gated behind `AgentLaunchArguments.isRequested()`,
    and for UI tests that launch the app, `AgentCtlTestSupport` for tests).
@@ -137,14 +137,14 @@ cart and checkout) with an Xcode project, 123 scenarios, UI tests generated from
 
 ## Status
 
-Version 0.9.0: the debug bridge answers only requests that carry the token its launch was given (a fresh one per
+Version 0.9.1: the debug bridge answers only requests that carry the token its launch was given (a fresh one per
 `app launch`, kept in `.appctl/bridge.json`), from a loopback `Host` with no `Origin`, with a body of at most 1 MiB
-(CONTRACT.md version 4) — on top of 0.8's stricter scripts and exit codes, 0.7's engine that drives any architecture
-(a TCA store through `AgentStoreDriver`, or `@Observable` view models under a coordinator through
-`AgentObservationDriver`), 0.6's [device environment](docs/guides/device-environment.md) and 0.5, which was extracted
-from the app it was built for. The three example apps in this repository are the integrations CI exercises, and the
-API may still change between minor versions before 1.0; see
-[moving a host to 0.9](docs/guides/integration.md#moving-a-host-to-09). MIT licensed.
+(CONTRACT.md version 4), and since 0.9.1 neither the token nor its helpers ship in a Release build — on top of 0.8's
+stricter scripts and exit codes, 0.7's engine that drives any architecture (a TCA store through `AgentStoreDriver`,
+or `@Observable` view models under a coordinator through `AgentObservationDriver`), 0.6's
+[device environment](docs/guides/device-environment.md) and 0.5, which was extracted from the app it was built for.
+The three example apps in this repository are the integrations CI exercises, and the API may still change between
+minor versions before 1.0; see [moving a host to 0.9](docs/guides/integration.md#moving-a-host-to-09). MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
 lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,

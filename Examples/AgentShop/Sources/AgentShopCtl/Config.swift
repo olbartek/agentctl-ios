@@ -41,8 +41,8 @@
         permissions: ["notifications", "location"],
         openURL: { AppFeature.action(opening: $0) },
         pushes: [
-          AgentPush("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
-          AgentPush("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
+          AgentDevice.Push("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
+          AgentDevice.Push("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
         ],
         scenePhase: { .scenePhaseChanged($0) },
         relaunch: true,
@@ -99,7 +99,7 @@
 
     /// Everything the CLI needs: `appctl` is `AgentCtl.run(config: AgentShopConfig.appCtl)`.
     @MainActor
-    public static var appCtl: AppCtlConfig<StoreDriver<AppFeature>> {
+    public static var appCtl: AppCtlConfig<AgentStoreDriver<AppFeature>> {
       AppCtlConfig(
         name: "AgentShop",
         // The root is `Examples/AgentShop`: the CLI walks up to the directory that holds this project.
@@ -125,7 +125,7 @@
     }
 
     @MainActor
-    public static func headless() -> HeadlessHost<StoreDriver<AppFeature>> {
+    public static func headless() -> HeadlessHost<AgentStoreDriver<AppFeature>> {
       HeadlessHost(
         initialState: { AppFeature.State() }, reducer: { AppFeature() }, mockMethods: mockMethods, device: device
       ) { deps, env in
@@ -149,7 +149,7 @@
     }
 
     @MainActor
-    public static func live(latency: MockLatency, sessionStorage: SessionStorage = .liveValue) -> LiveHost<StoreDriver<AppFeature>> {
+    public static func live(latency: MockLatency, sessionStorage: SessionStorage = .liveValue) -> LiveHost<AgentStoreDriver<AppFeature>> {
       LiveHost(
         initialState: { AppFeature.State() }, reducer: { AppFeature() }, latency: latency, mockMethods: mockMethods,
         device: device

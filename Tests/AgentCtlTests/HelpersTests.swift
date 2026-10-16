@@ -72,9 +72,9 @@ extension Desk: AgentContainer {
   }
 
   @MainActor
-  static func makeRunner(mockMethods: [MockMethod] = []) -> ScriptRunner<StoreDriver<Desk>> {
+  static func makeRunner(mockMethods: [MockMethod] = []) -> ScriptRunner<AgentStoreDriver<Desk>> {
     let callLog = MockCallLog()
-    let driver = StoreDriver(dependencies: DependencyValues._current, initialState: { State() }, reducer: { Desk() })
+    let driver = AgentStoreDriver(dependencies: DependencyValues._current, initialState: { State() }, reducer: { Desk() })
     return ScriptRunner(
       driver: driver,
       callLog: callLog,
@@ -185,12 +185,12 @@ struct HelpersTests {
 
   #if DEBUG
     @Test func theBridgeIsRequestedByAnAgentPort() {
-      #expect(AgentLaunch<StoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port", "8799"]))
-      #expect(AgentLaunch<StoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port"]))
-      #expect(!AgentLaunch<StoreDriver<TinyRoot>>.isRequested(["/path/App"]))
+      #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port", "8799"]))
+      #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port"]))
+      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App"]))
       // Seeding or latency alone is not an opt-in: only `app launch` passes `-agent-port`, and it always does.
-      #expect(!AgentLaunch<StoreDriver<TinyRoot>>.isRequested(["/path/App", "-appctl-seed", "open 1", "-mock-latency", "0"]))
-      #expect(!AgentLaunch<StoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port=8799"]))
+      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-appctl-seed", "open 1", "-mock-latency", "0"]))
+      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port=8799"]))
     }
   #endif
 }

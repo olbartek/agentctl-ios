@@ -70,7 +70,7 @@
     public let device: AgentDevice
     let deviceConfig: AgentDeviceConfig<Driver.Action>
     /// The `device` subcommands this app has.
-    public let deviceSurface: DeviceSurface
+    public let deviceSurface: AgentDevice.Surface
     /// Adds a diff of the app's state to each step (`--diff`).
     public var recordsDiff = false
     private var lastIdentity: String?
@@ -259,7 +259,7 @@
       guard let first = tokens.first else {
         return fail(line, status: .usage, "usage: device <subcommand>; available: \(available)")
       }
-      guard let sub = DeviceSurface.Subcommand(rawValue: first) else {
+      guard let sub = AgentDevice.Surface.Subcommand(rawValue: first) else {
         return fail(line, status: .usage, "unknown device command '\(first)'; available: \(available)")
       }
       guard surface.subcommands.contains(sub) else {
@@ -276,7 +276,7 @@
 
       switch sub {
       case .permission:
-        guard arguments.count == 2, let status = PermissionStatus(rawValue: arguments[1]) else {
+        guard arguments.count == 2, let status = AgentDevice.PermissionStatus(rawValue: arguments[1]) else {
           return usage("device permission <service> <not-determined|granted|denied|limited>; services: \(services)")
         }
         let service = arguments[0]
@@ -291,7 +291,7 @@
         return await settling(line) { device.setPermission(service, status) }
 
       case .prompt:
-        let answers: [String: PermissionStatus] = ["allow": .granted, "deny": .denied, "limited": .limited]
+        let answers: [String: AgentDevice.PermissionStatus] = ["allow": .granted, "deny": .denied, "limited": .limited]
         guard arguments.count == 1, let status = answers[arguments[0]] else {
           return usage("device prompt <allow|deny|limited>")
         }
@@ -329,7 +329,7 @@
 
       case .background, .foreground:
         guard arguments.isEmpty else { return usage("device \(sub.rawValue)") }
-        let phase: DevicePhase = sub == .background ? .background : .foreground
+        let phase: AgentDevice.Phase = sub == .background ? .background : .foreground
         let action = inAppContext { deviceConfig.scenePhase?(phase) }
         return await settling(line) {
           device.setPhase(phase)
@@ -354,7 +354,7 @@
         return await settling(line) { device.setOnline(arguments[0] == "online") }
 
       case .location:
-        guard arguments.count == 1, let location = DeviceLocation.parseArgument(arguments[0]) else {
+        guard arguments.count == 1, let location = AgentDevice.Location.parseArgument(arguments[0]) else {
           return usage("device location <lat>,<lon> or none, e.g. 52.2297,21.0122")
         }
         return await settling(line) { device.setLocation(location) }

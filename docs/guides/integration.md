@@ -19,8 +19,8 @@ The package identity is `agentctl-ios`. Take only the products each target needs
 | Product | Who depends on it | What for |
 |---|---|---|
 | `AgentCtlCore` | the targets holding your screens | `AgentScreen`, `AgentCommand`, `SummaryItem`, `mockCall`, `AgentViewModel` — no TCA |
-| `AgentCtlTCA` | the target holding your config, in a TCA app | `StoreDriver`, and the TCA hosts: `HeadlessHost(initialState:reducer:…)` |
-| `AgentCtlObservation` | the target holding your config, in an MVVM-C app | `ObservationDriver`, and its hosts (see [MVVM-C](#mvvm-c-apps-without-tca)) — no TCA |
+| `AgentCtlTCA` | the target holding your config, in a TCA app | `AgentStoreDriver`, and the TCA hosts: `HeadlessHost(initialState:reducer:…)` |
+| `AgentCtlObservation` | the target holding your config, in an MVVM-C app | `AgentObservationDriver`, and its hosts (see [MVVM-C](#mvvm-c-apps-without-tca)) — no TCA |
 | `AgentCtlRuntime` | rarely directly: both adapters re-export it | `AgentDriver`, `AppCtlConfig`, `ScriptRunner`, the deterministic headless host |
 | `AgentCtlCLI` | your CLI's executable target | `AgentCtl.run(config:)` (macOS-only) |
 | `AgentCtlBridge` | your app shell | `AgentLaunch`, the DEBUG-only in-app server |
@@ -206,12 +206,12 @@ already lists it, so `mock`'s `valid:` list and the docs read as if every client
 
 One type describes your app to AgentCtl: the facts the CLI would otherwise have to hard-code, the prose the
 generated command reference is rendered from, and the closures that build your store. Its type names the
-*driver* — how the engine reaches your app: `StoreDriver<Root>` for a TCA root reducer. Abridged from
+*driver* — how the engine reaches your app: `AgentStoreDriver<Root>` for a TCA root reducer. Abridged from
 [`Config.swift`](../../Examples/TinyApp/Sources/TinyApp/Config.swift):
 
 ```swift
 @MainActor
-public static var appCtl: AppCtlConfig<StoreDriver<TinyRoot>> {
+public static var appCtl: AppCtlConfig<AgentStoreDriver<TinyRoot>> {
   AppCtlConfig(
     name: "TinyApp",
     // A real host writes `.workspace("MyApp.xcworkspace", scheme: "MyApp")`, or `.project` for a project.
@@ -238,7 +238,7 @@ public static var appCtl: AppCtlConfig<StoreDriver<TinyRoot>> {
 
 /// A deterministic store on the Mac: a `TestClock`, a fixed date, and everything else `HeadlessHost` pins.
 @MainActor
-public static func headless() -> HeadlessHost<StoreDriver<TinyRoot>> {
+public static func headless() -> HeadlessHost<AgentStoreDriver<TinyRoot>> {
   HeadlessHost(initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, mockMethods: mockMethods) { deps, _ in
     deps.itemsClient = .liveValue
   }
@@ -418,13 +418,13 @@ exit=1
 
 The engine never sees your app's types: it talks to an `AgentDriver`, which answers five questions — which screen is
 active, deliver this action, has anything changed (settling's fingerprint), relaunch, and dump the state. TCA apps use
-`StoreDriver`; an app of `@Observable` view models under a coordinator uses `ObservationDriver` from
+`AgentStoreDriver`; an app of `@Observable` view models under a coordinator uses `AgentObservationDriver` from
 `AgentCtlObservation`. Scripts, scenarios, the step output and the generated docs are the same either way:
 [`Examples/TinyMVVM`](../../Examples/TinyMVVM) is TinyApp rebuilt as MVVM-C, and it runs TinyApp's scenario files
 byte for byte.
 
 A screen is an `AgentViewModel`. Its agent surface is the `AgentScreen` you already know, computed from a value,
-`agentState`; its commands are `ScreenIntent`s, closures over the view model on screen:
+`agentState`; its commands are `AgentScreenIntent`s, closures over the view model on screen:
 
 ```swift
 extension ItemsViewModel: AgentViewModel {
@@ -439,20 +439,20 @@ extension ItemsViewModel: AgentViewModel {
   nonisolated public static let screenPaths = ["items"]
   nonisolated public static func screenPath(_ state: AgentState) -> String { "items" }
   // summaryKeys, summary(_:), errorCode(_:) exactly as for a TCA screen
-  nonisolated public static var onAppear: ScreenIntent<ItemsViewModel>? { ScreenIntent { $0.onAppear() } }
+  nonisolated public static var onAppear: AgentScreenIntent<ItemsViewModel>? { AgentScreenIntent { $0.onAppear() } }
 
-  nonisolated public static var commands: [AgentCommand<AgentState, ScreenIntent<ItemsViewModel>>] {
-    [.action("refresh", help: "Load the list again.", ScreenIntent { $0.refresh() })]
+  nonisolated public static var commands: [AgentCommand<AgentState, AgentScreenIntent<ItemsViewModel>>] {
+    [.action("refresh", help: "Load the list again.", AgentScreenIntent { $0.refresh() })]
   }
 }
 ```
 
 The coordinator is an `AgentCoordinator`: it returns the screen on top (`items.activeScreen()`, or a pushed view
-model's, with its own `back` appended as an `AppIntent`), its `registry`, and `cancelAllWork()`. The config names
-`ObservationDriver<AppCoordinator>`, and its hosts take the coordinator to build:
+model's, with its own `back` appended as an `AgentIntent`), its `registry`, and `cancelAllWork()`. The config names
+`AgentObservationDriver<AppCoordinator>`, and its hosts take the coordinator to build:
 
 ```swift
-public static func headless() -> HeadlessHost<ObservationDriver<AppCoordinator>> {
+public static func headless() -> HeadlessHost<AgentObservationDriver<AppCoordinator>> {
   HeadlessHost(mockMethods: mockMethods, device: device) { deps, _ in
     deps.itemsClient = .liveValue
   } coordinator: {
@@ -484,8 +484,8 @@ In the app shell, `AgentLaunch(config:)` works as it does for TCA; `launch.app` 
 0.7 put the engine behind `AgentDriver`. A TCA host changes a few type names and nothing else:
 
 - `AppCtlConfig<Root>`, `HeadlessHost<Root>`, `LiveHost<Root>` and `ScriptRunner<Root>` become
-  `…<StoreDriver<Root>>`. The `HeadlessHost(initialState:reducer:…)` and `LiveHost(…)` initializers are unchanged.
-- The same for the test helpers that name the root: `AgentCoverage<StoreDriver<Root>>` and
-  `AgentScenarioChecks<StoreDriver<Root>>`. Test files that build a host import `AgentCtlTCA`.
+  `…<AgentStoreDriver<Root>>`. The `HeadlessHost(initialState:reducer:…)` and `LiveHost(…)` initializers are unchanged.
+- The same for the test helpers that name the root: `AgentCoverage<AgentStoreDriver<Root>>` and
+  `AgentScenarioChecks<AgentStoreDriver<Root>>`. Test files that build a host import `AgentCtlTCA`.
 - `AgentLaunch.store` is now `launch.app` (`store` still compiles, with a deprecation warning), and
   `AgentLaunch<Root>.isRequested()` is `AgentLaunchArguments.isRequested()`.

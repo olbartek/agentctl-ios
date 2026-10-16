@@ -15,8 +15,8 @@
   ///   summary, error) plus the tasks in flight: a change no summary shows cannot be what a later round waits on,
   ///   since any waiting is a task, and tasks are counted.
   @MainActor
-  public final class ObservationDriver<Coordinator: AgentCoordinator>: AgentDriver {
-    public typealias Action = AppIntent<Coordinator>
+  public final class AgentObservationDriver<Coordinator: AgentCoordinator>: AgentDriver {
+    public typealias Action = AgentIntent<Coordinator>
 
     public struct Fingerprint: Equatable {
       var identity: String
@@ -39,11 +39,11 @@
       self.app = withDependencies { $0 = dependencies } operation: { make() }
     }
 
-    public func activeScreen() -> ActiveScreen<AppIntent<Coordinator>> {
+    public func activeScreen() -> ActiveScreen<AgentIntent<Coordinator>> {
       app.activeScreen()
     }
 
-    public func send(_ action: AppIntent<Coordinator>) {
+    public func send(_ action: AgentIntent<Coordinator>) {
       action.run(app)
     }
 
@@ -78,12 +78,12 @@
     /// An MVVM-C app, headlessly: `coordinator` builds the app's coordinator inside the host's dependencies.
     public convenience init<Coordinator: AgentCoordinator>(
       mockMethods: [MockMethod],
-      device deviceConfig: AgentDeviceConfig<AppIntent<Coordinator>> = .none,
+      device deviceConfig: AgentDeviceConfig<AgentIntent<Coordinator>> = .none,
       configure: @escaping (inout DependencyValues, HeadlessEnvironment) -> Void,
       coordinator: @escaping @MainActor () -> Coordinator
-    ) where Driver == ObservationDriver<Coordinator> {
+    ) where Driver == AgentObservationDriver<Coordinator> {
       self.init(mockMethods: mockMethods, device: deviceConfig, configure: configure) { dependencies in
-        ObservationDriver(dependencies: dependencies, coordinator: coordinator)
+        AgentObservationDriver(dependencies: dependencies, coordinator: coordinator)
       }
     }
   }
@@ -93,12 +93,12 @@
     public convenience init<Coordinator: AgentCoordinator>(
       latency: MockLatency,
       mockMethods: [MockMethod],
-      device deviceConfig: AgentDeviceConfig<AppIntent<Coordinator>> = .none,
+      device deviceConfig: AgentDeviceConfig<AgentIntent<Coordinator>> = .none,
       configure: @escaping (inout DependencyValues, LiveEnvironment) -> Void,
       coordinator: @escaping @MainActor () -> Coordinator
-    ) where Driver == ObservationDriver<Coordinator> {
+    ) where Driver == AgentObservationDriver<Coordinator> {
       self.init(latency: latency, mockMethods: mockMethods, device: deviceConfig, configure: configure) { dependencies in
-        ObservationDriver(dependencies: dependencies, coordinator: coordinator)
+        AgentObservationDriver(dependencies: dependencies, coordinator: coordinator)
       }
     }
   }

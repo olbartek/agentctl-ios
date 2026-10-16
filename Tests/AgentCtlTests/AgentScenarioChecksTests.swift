@@ -26,7 +26,7 @@ extension AgentCtlSuite {
 
     /// TinyApp's config, pointed at a fixture repo's layout. `drifting` swaps in an app whose list grows by one item
     /// per fetch across the whole process: every fresh run, and every part of a split run, sees a different list.
-    static func config(drifting: Bool = false) -> AppCtlConfig<StoreDriver<TinyRoot>> {
+    static func config(drifting: Bool = false) -> AppCtlConfig<AgentStoreDriver<TinyRoot>> {
       var config = TinyAppConfig.appCtl
       config.scenariosPath = "scenarios"
       config.docsPath = "agent-commands.md"
@@ -48,7 +48,7 @@ extension AgentCtlSuite {
 
     nonisolated static let fetches = LockIsolated(0)
 
-    static func checks(_ scenarios: [String: String], drifting: Bool = false) throws -> AgentScenarioChecks<StoreDriver<TinyRoot>> {
+    static func checks(_ scenarios: [String: String], drifting: Bool = false) throws -> AgentScenarioChecks<AgentStoreDriver<TinyRoot>> {
       try AgentScenarioChecks(config: config(drifting: drifting), root: repo(scenarios))
     }
 

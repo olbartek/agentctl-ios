@@ -15,7 +15,7 @@ simulator, for demos and real-OS checks.)
 | Permissions | `device permission <service> <not-determined\|granted\|denied\|limited>` | `permissions: ["notifications", …]`; fakes call `device.permission(_:)` / `await device.requestPermission(_:)` | what your screen's summary shows | `app permission grant\|revoke\|reset <service>` |
 | System prompts | `device prompt <allow\|deny\|limited>` | nothing more: a request while `not-determined` shows the prompt | `prompt=<service>` until answered; `expect prompt=…` | — |
 | Deep and universal links | `device open-url <url>` | `openURL: { url in … }` returns the root action, or `nil` for a link you don't handle | the screen the link opens | `app openurl <url>` (the app registers the scheme; iOS asks "Open in …?" first) |
-| Push notifications | `device push <name> [tap]` | `pushes: [AgentPush(name, help:, received:, opened:)]` | what receiving or tapping it does | `app push <payload.json>` |
+| Push notifications | `device push <name> [tap]` | `pushes: [AgentDevice.Push(name, help:, received:, opened:)]` | what receiving or tapping it does | `app push <payload.json>` |
 | Background / foreground | `device background`, `device foreground` | `scenePhase: { phase in … }` returns the root action | screen commands fail while in the background | — |
 | Relaunch | `device relaunch` | `relaunch: true` | the fresh launch; what your clients stored, the device and the clock survive | `app launch --no-build` (the real process) |
 | Network | `device network <online\|offline>` | `offlineErrorCode: "network"`; observers use `device.onlineUpdates()` | offline, every `mockCall` fails with that code | — |
@@ -33,8 +33,8 @@ AgentDeviceConfig(
   permissions: ["notifications", "location"],
   openURL: { AppFeature.action(opening: $0) },
   pushes: [
-    AgentPush("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
-    AgentPush("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
+    AgentDevice.Push("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
+    AgentDevice.Push("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
   ],
   scenePhase: { .scenePhaseChanged($0) },
   relaunch: true,

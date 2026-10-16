@@ -77,9 +77,9 @@ extension ItemsViewModel: AgentViewModel {
 
   nonisolated public static func errorCode(_ state: AgentState) -> String? { state.error?.rawValue }
 
-  nonisolated public static var onAppear: ScreenIntent<ItemsViewModel>? { ScreenIntent { $0.onAppear() } }
+  nonisolated public static var onAppear: AgentScreenIntent<ItemsViewModel>? { AgentScreenIntent { $0.onAppear() } }
 
-  nonisolated public static var commands: [AgentCommand<AgentState, ScreenIntent<ItemsViewModel>>] {
+  nonisolated public static var commands: [AgentCommand<AgentState, AgentScreenIntent<ItemsViewModel>>] {
     [
       .parsing(
         "open",
@@ -88,14 +88,14 @@ extension ItemsViewModel: AgentViewModel {
         gate: CommandGate(hint: "items=0") { $0.items > 0 }
       ) { text throws(AgentCommandError) in
         guard let id = Int(text) else { throw .invalidArgument("expected an item id such as 2") }
-        return ScreenIntent { $0.openTapped(id) }
+        return AgentScreenIntent { $0.openTapped(id) }
       },
-      .action("refresh", help: "Load the list again.", ScreenIntent { $0.refresh() }),
+      .action("refresh", help: "Load the list again.", AgentScreenIntent { $0.refresh() }),
       .action(
         "retry",
         help: "Load the list again after a failure.",
         gate: CommandGate(hint: "error=none") { $0.error != nil },
-        ScreenIntent { $0.retry() }
+        AgentScreenIntent { $0.retry() }
       ),
     ]
   }

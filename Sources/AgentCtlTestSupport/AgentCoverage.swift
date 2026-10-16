@@ -96,7 +96,7 @@
           let tokens = ArgumentText.tokens(line.argument ?? "")
           guard let sub = tokens.first else { continue }
           used.insert("device \(sub)")
-          if sub == DeviceSurface.Subcommand.push.rawValue, tokens.count > 1 {
+          if sub == AgentDevice.Surface.Subcommand.push.rawValue, tokens.count > 1 {
             used.insert("device push \(tokens[1])")
           }
         }

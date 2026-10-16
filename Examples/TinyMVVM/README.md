@@ -15,10 +15,10 @@ swift run tinymvvmctl docs --check         # agent-commands.md is current
 
 | File | What it shows |
 |---|---|
-| [`ItemsViewModel.swift`](Sources/TinyMVVM/ItemsViewModel.swift) | A screen as an `AgentViewModel`: `agentState`, summary, error, gated commands as `ScreenIntent`s, `onAppear` |
+| [`ItemsViewModel.swift`](Sources/TinyMVVM/ItemsViewModel.swift) | A screen as an `AgentViewModel`: `agentState`, summary, error, gated commands as `AgentScreenIntent`s, `onAppear` |
 | [`ItemDetailViewModel.swift`](Sources/TinyMVVM/ItemDetailViewModel.swift) | A cooldown on the injected clock, and work cancelled on pop |
 | [`AppCoordinator.swift`](Sources/TinyMVVM/AppCoordinator.swift) | The `AgentCoordinator`: navigation, the active screen, `back`, the registry, `cancelAllWork` |
-| [`Config.swift`](Sources/TinyMVVM/Config.swift) | `AppCtlConfig<ObservationDriver<AppCoordinator>>`, its headless and live hosts, device links and pushes |
+| [`Config.swift`](Sources/TinyMVVM/Config.swift) | `AppCtlConfig<AgentObservationDriver<AppCoordinator>>`, its headless and live hosts, device links and pushes |
 
 The rules a view model follows to stay deterministic are in
 [the integration guide](../../docs/guides/integration.md#mvvm-c-apps-without-tca).

@@ -11,7 +11,7 @@
   /// and `--diff` are `customDump`s of the root state; a relaunch builds a fresh store from the initial state over the
   /// same dependencies, and the old store's effects are cancelled as it is released.
   @MainActor
-  public final class StoreDriver<Root: Reducer & AgentContainer>: AgentDriver
+  public final class AgentStoreDriver<Root: Reducer & AgentContainer>: AgentDriver
   where
     Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
     Root.AgentState == Root.State, Root.AgentAction == Root.Action
@@ -99,12 +99,12 @@
       configure: @escaping (inout DependencyValues, HeadlessEnvironment) -> Void
     )
     where
-      Driver == StoreDriver<Root>,
+      Driver == AgentStoreDriver<Root>,
       Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
       Root.AgentState == Root.State, Root.AgentAction == Root.Action
     {
       self.init(mockMethods: mockMethods, device: deviceConfig, configure: configure) { dependencies in
-        StoreDriver(dependencies: dependencies, initialState: initialState, reducer: reducer)
+        AgentStoreDriver(dependencies: dependencies, initialState: initialState, reducer: reducer)
       }
     }
   }
@@ -120,39 +120,39 @@
       configure: @escaping (inout DependencyValues, LiveEnvironment) -> Void
     )
     where
-      Driver == StoreDriver<Root>,
+      Driver == AgentStoreDriver<Root>,
       Root.State: Equatable, Root.State: ObservableState, Root.Action: Sendable,
       Root.AgentState == Root.State, Root.AgentAction == Root.Action
     {
       self.init(latency: latency, mockMethods: mockMethods, device: deviceConfig, configure: configure) { dependencies in
-        StoreDriver(dependencies: dependencies, initialState: initialState, reducer: reducer)
+        AgentStoreDriver(dependencies: dependencies, initialState: initialState, reducer: reducer)
       }
     }
   }
 
-  extension HeadlessHost where Driver: StoreDriving {
+  extension HeadlessHost where Driver: AgentStoreDriving {
     /// The app's store.
     public var store: Driver.App { driver.app }
   }
 
-  extension LiveHost where Driver: StoreDriving {
+  extension LiveHost where Driver: AgentStoreDriving {
     /// The app's store.
     public var store: Driver.App { driver.app }
   }
 
-  extension ScriptRunner where Driver: StoreDriving {
+  extension ScriptRunner where Driver: AgentStoreDriving {
     /// The store the script drives.
     public var store: Driver.App { driver.app }
     /// The root state.
     public var state: Driver.RootState { driver.state }
   }
 
-  /// ``StoreDriver``, for extensions that need to know an app is a TCA store without naming its root.
+  /// ``AgentStoreDriver``, for extensions that need to know an app is a TCA store without naming its root.
   @MainActor
-  public protocol StoreDriving: AgentDriver {
+  public protocol AgentStoreDriving: AgentDriver {
     associatedtype RootState
     var state: RootState { get }
   }
 
-  extension StoreDriver: StoreDriving {}
+  extension AgentStoreDriver: AgentStoreDriving {}
 #endif

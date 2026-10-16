@@ -38,6 +38,36 @@ struct ScriptParserTests {
     }
   }
 
+  /// `\r\n` is one `Character` in Swift, so a check for `"\n"` never saw it: a CRLF script parsed as one command, and
+  /// a CRLF file starting with a comment was all comment, passing having run nothing (CONTRACT.md §1.1).
+  @Test func crlfEndsALineLikeLF() throws {
+    #expect(
+      try ScriptParser.parse("open 2\r\nsave\r\nexpect saved=true\r\n") == ScriptParser.parse("open 2\nsave\nexpect saved=true\n")
+    )
+    #expect(try ScriptParser.parse("open 2\r\nsave\r\n").map(\.text) == ["open 2", "save"])
+    #expect(try ScriptParser.parse("open 2\r\nsave").map(\.line) == [1, 2])
+  }
+
+  @Test func crlfEndsAComment() throws {
+    #expect(
+      try ScriptParser.parse("# comment\r\nexpect screen=nope\r\n") == [ScriptLine(line: 2, name: "expect", argument: "screen=nope")]
+    )
+    #expect(try ScriptParser.parse("open 2 # comment\r\nsave").map(\.text) == ["open 2", "save"])
+  }
+
+  @Test func crlfEndsAQuote() {
+    #expect(throws: ScriptError(line: 1, column: 7, message: "unterminated quote")) {
+      try ScriptParser.parse("email \"alice\r\nsubmit\"")
+    }
+  }
+
+  /// A `\r` not followed by `\n` is whitespace, not a line break.
+  @Test func loneCarriageReturnIsWhitespace() throws {
+    #expect(try ScriptParser.parse("open\r2\rsave") == [ScriptLine(line: 1, name: "open", argument: "2\rsave")])
+    #expect(try ScriptParser.parse("open 2\r\r\nsave\r").map(\.text) == ["open 2", "save"])
+    #expect(try ScriptParser.parse("# comment\rsave") == [])
+  }
+
   @Test func emptyScripts() throws {
     #expect(try ScriptParser.parse("") == [])
     #expect(try ScriptParser.parse(" ; ;\n# only a comment\n") == [])
@@ -50,6 +80,20 @@ struct ScriptParserTests {
     #expect(ArgumentText.unquoted(#""say \"hi\"""#) == #"say "hi""#)
     #expect(ArgumentText.tokens(#"screen=x name="Alice Smith"  error=none"#) == ["screen=x", "name=Alice Smith", "error=none"])
     #expect(ArgumentText.tokens(#"a="""#) == ["a="])
+    #expect(ArgumentText.unquoted(#""""#) == "")
+    #expect(ArgumentText.unquoted(#"""#) == #"""#)
+  }
+
+  /// Only one quoted span from end to end is unquoted: the quote that closes the first one must be the last character
+  /// (CONTRACT.md §1.2). `"a"b"c"` used to come out as `abc`.
+  @Test func unquotesOnlyOneWholeQuotedSpan() {
+    #expect(ArgumentText.unquoted(#""a"b"c""#) == #""a"b"c""#)
+    #expect(ArgumentText.unquoted(#""a""b""#) == #""a""b""#)
+    #expect(ArgumentText.unquoted(#""a"b"#) == #""a"b"#)
+    #expect(ArgumentText.unquoted(#"a"b""#) == #"a"b""#)
+    #expect(ArgumentText.unquoted(#""a \"b\" c""#) == #"a "b" c"#)
+    #expect(ArgumentText.unquoted(#""a\\""#) == #"a\"#)
+    #expect(ArgumentText.unquoted(#""a\""#) == #""a\""#)
   }
 
   @Test func durations() {

@@ -20,6 +20,14 @@
       #expect(AppTestSkip.reason(in: "# app-test: skip") == "no reason given")
     }
 
+    /// A file with CRLF line endings: the marker line ends at `\r\n` like at `\n` (CONTRACT.md §1.1). Swift reads
+    /// `\r\n` as one `Character`, which a split on `"\n"` never matched.
+    @Test
+    func markerInACRLFFile() {
+      #expect(AppTestSkip.reason(in: "open 2\r\n# app-test: skip because\r\nsave\r\n") == "because")
+      #expect(AppTestSkip.reason(in: "# app-test: skip\r\nopen 2\r\n") == "no reason given")
+    }
+
     @Test
     func noMarkerNoSkip() {
       #expect(AppTestSkip.reason(in: "# Logging in with a code.\nopen 2") == nil)

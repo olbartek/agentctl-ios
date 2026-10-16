@@ -25,9 +25,9 @@ enum Repo {
 
 /// Runs `operation` with the main serial executor (deterministic scheduling) and returns its value.
 @MainActor
-func serially<T>(_ operation: @MainActor () async -> T) async -> T {
+func serially<T>(_ operation: @MainActor () async throws -> T) async rethrows -> T {
   let previous = Deterministic.isEnabled
   Deterministic.isEnabled = true
   defer { Deterministic.isEnabled = previous }
-  return await operation()
+  return try await operation()
 }

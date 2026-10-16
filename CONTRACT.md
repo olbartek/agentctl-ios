@@ -685,6 +685,7 @@ and documentation send exactly these.
   exactly `Content-Length` bytes (no chunked encoding); a request whose headers exceed 64 KiB is
   malformed. The bridge answers and closes the connection. Requests are handled one at a time, in
   the order they arrive.
+  A client that closes its side of the connection before the answer has gone away: its request is cancelled and gets no answer.
 
 ### 8.2 Launch arguments
 

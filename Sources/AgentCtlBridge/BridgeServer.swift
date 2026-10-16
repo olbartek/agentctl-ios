@@ -10,10 +10,14 @@
   ///
   /// Every connection is read on its own, and only a complete request joins the queue, so a client that sends slowly,
   /// or nothing at all, holds up no one else: it has ``requestDeadline`` from accept to send its whole request, and at
-  /// most ``maxReadingConnections`` connections are read at once.
+  /// most ``maxReadingConnections`` connections are read at once. A client that closes its side of the connection
+  /// before the answer has gone away: its request is cancelled, queued or running, and gets no answer (CONTRACT.md
+  /// §8.1), so the next request does not wait behind it.
   @MainActor
   public final class BridgeServer {
-    public typealias Handler = @MainActor (BridgeRequest) async -> BridgeResponse
+    /// Answers a request. A handler that throws — `CancellationError` when its client has gone away — sends no
+    /// answer: the connection is closed, and the bridge goes on serving.
+    public typealias Handler = @MainActor (BridgeRequest) async throws -> BridgeResponse
 
     private let handler: Handler
     /// Sent as `X-Appctl-App` on every response.
@@ -184,6 +188,7 @@
       var phase = Phase.reading
       var buffer = Data()
       var deadline: Task<Void, Never>?
+      var request: Task<Void, Never>?
 
       init(_ connection: NWConnection) {
         self.connection = connection
@@ -197,6 +202,15 @@
       }
       let exchange = Exchange(connection)
       reading[ObjectIdentifier(exchange)] = exchange
+      connection.stateUpdateHandler = { [weak self] state in
+        MainActor.assumeIsolated {
+          switch state {
+          // A reset, once the request is in. While it is still being read, the read sees the failure itself.
+          case .failed where exchange.phase == .handling: self?.abandon(exchange)
+          default: break
+          }
+        }
+      }
       connection.start(queue: .main)
       exchange.deadline = Task { [weak self, requestDeadline] in
         do {
@@ -219,6 +233,8 @@
           switch HTTPParser.parse(exchange.buffer) {
           case let .request(request):
             self.enqueue(request, on: exchange)
+            // Its side closed with the request's last bytes: it has gone away already.
+            if isComplete || error != nil { self.abandon(exchange) }
           case .malformed:
             self.answer(exchange, with: BridgeResponse(status: 400, body: "bad request\n", exitCode: 2))
           case .incomplete:
@@ -244,16 +260,57 @@
       exchange.phase = .handling
       let previous = lastRequest
       let handler = handler
-      lastRequest = Task { @MainActor [weak self] in
+      let task = Task { @MainActor [weak self] in
         await previous?.value
-        let response = await handler(request)
-        self?.answer(exchange, with: response)
+        do {
+          // Its client went away while it waited: nothing to run it for.
+          try Task.checkCancellation()
+          let response = try await handler(request)
+          self?.answer(exchange, with: response)
+        } catch is CancellationError {
+          Self.log.notice("cancelled: its client went away")
+          self?.close(exchange)
+        } catch {
+          let what = "\(request.method) \(request.path)"
+          Self.log.error("\(what, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+          self?.close(exchange)
+        }
+      }
+      exchange.request = task
+      lastRequest = task
+      watchForClose(exchange)
+    }
+
+    /// While a request waits or runs, the client may close its side of the connection, which ends its stream (a
+    /// half-close, a close or a reset alike): it has gone away (CONTRACT.md §8.1).
+    private func watchForClose(_ exchange: Exchange) {
+      exchange.connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) {
+        [weak self] _, _, isComplete, error in
+        MainActor.assumeIsolated {
+          guard let self, exchange.phase == .handling else { return }
+          if isComplete || error != nil {
+            self.abandon(exchange)
+          } else {
+            // Bytes after the request: one request per connection, so they are dropped.
+            self.watchForClose(exchange)
+          }
+        }
       }
     }
 
+    /// The client went away before its answer: cancel its request, so the next one does not wait behind it, and
+    /// close the connection unanswered.
+    private func abandon(_ exchange: Exchange) {
+      guard exchange.phase == .handling else { return }
+      exchange.request?.cancel()
+      close(exchange)
+    }
+
     private func close(_ exchange: Exchange) {
+      guard exchange.phase != .done else { return }
       stopReading(exchange)
       exchange.phase = .done
+      exchange.connection.stateUpdateHandler = nil
       exchange.connection.cancel()
     }
 
@@ -262,6 +319,7 @@
       stopReading(exchange)
       exchange.phase = .done
       let connection = exchange.connection
+      connection.stateUpdateHandler = nil
       connection.send(
         content: HTTPParser.serialize(response, app: app, platform: platform),
         completion: .contentProcessed { _ in connection.cancel() }

@@ -50,7 +50,8 @@
           duration: start.duration(to: clock.now)
         )
       }
-      let result = await runner.run(source)
+      // Nothing cancels a headless run; one cancelled anyway is an internal error.
+      let result = (try? await runner.run(source)) ?? .cancelled
       return ScenarioResult(
         name: name,
         steps: [launch.step] + result.steps,

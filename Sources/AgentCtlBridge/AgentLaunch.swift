@@ -99,13 +99,19 @@
           ScreensRenderer.render(screens, mockExample: mockExample, device: deviceSurface)
         }
       )
-      let server = BridgeServer(handler: { await router.handle($0) })
-      self.router = router
-      self.server = server
+      let server = BridgeServer(handler: { try await router.handle($0) })
       if let seed = options.seed {
-        print(await Self.applySeed(seed, with: host.makeRunner(synthesizesAppearance: true)).log)
+        do {
+          print(try await Self.applySeed(seed, with: host.makeRunner(synthesizesAppearance: true)).log)
+        } catch {
+          // The launch itself was cancelled (its view went away): no bridge, and a later start applies the seed anew.
+          print("AgentCtlBridge: seed cancelled; not listening")
+          return
+        }
         isReady = true
       }
+      self.router = router
+      self.server = server
       do {
         let port = try await server.start(port: options.port)
         print("AgentCtlBridge: listening on 127.0.0.1:\(port)")
@@ -116,14 +122,19 @@
 
     /// Applies a launch seed: the `(launch)` step, then the seed's commands. A seed is a script, so it fails the
     /// way a script does (CONTRACT.md §5): it stops at its first failing step, and a launch that did not settle
-    /// fails it before its first command runs (§3.4). Returns that status and the block the app logs.
-    static func applySeed(_ seed: String, with runner: ScriptRunner<Driver>) async -> (status: RunStatus, log: String) {
+    /// fails it before its first command runs (§3.4). Returns that status and the block the app logs; throws
+    /// `CancellationError` when the launch is cancelled, which aborts it.
+    static func applySeed(
+      _ seed: String, with runner: ScriptRunner<Driver>
+    ) async throws(CancellationError) -> (status: RunStatus, log: String) {
       let launch = await runner.launch()
+      // A launch cut short by cancellation did not fail: it was abandoned.
+      if Task.isCancelled { throw CancellationError() }
       var steps = [launch.step]
       var status = launch.status
       var message: String?
       if launch.status == .ok {
-        let result = await runner.run(seed)
+        let result = try await runner.run(seed)
         steps += result.steps
         status = result.status
         message = result.message

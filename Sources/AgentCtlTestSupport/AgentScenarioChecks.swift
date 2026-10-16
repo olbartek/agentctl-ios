@@ -301,7 +301,7 @@
       guard await single.launch().status == .ok else { return "\(name): the app did not settle at launch" }
       // One command cannot be split into a session; there is nothing to replay.
       guard lines.count >= 2 else { return nil }
-      let whole = await single.run(lines)
+      let whole = (try? await single.run(lines)) ?? .cancelled
       guard whole.status == .ok else { return "\(name) fails in one run, so its session replay was not compared" }
 
       var session: [ScriptLine] = []
@@ -313,13 +313,13 @@
         guard await runner.launch().status == .ok else { return "\(label): the app did not settle at launch" }
         // The session file holds each executed line's text, one per line; the CLI parses it back before replaying.
         if !session.isEmpty {
-          let replay = await runner.run(session.map(\.text).joined(separator: "\n"))
+          let replay = (try? await runner.run(session.map(\.text).joined(separator: "\n"))) ?? .cancelled
           guard replay.status == .ok else {
             return "\(label): the session replay failed at `\(replay.failedLine?.text ?? "a line")`: "
               + (replay.message ?? replay.steps.last.map(StepFormatter.text) ?? "")
           }
         }
-        let result = await runner.run(part.map(\.text).joined(separator: "\n"))
+        let result = (try? await runner.run(part.map(\.text).joined(separator: "\n"))) ?? .cancelled
         steps += result.steps
         guard result.status == .ok else {
           return "\(label) failed after the session replay, where the single run passed:\n"

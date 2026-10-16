@@ -137,19 +137,19 @@ extension AgentCtlSuite {
   @MainActor
   struct DeviceTests {
     /// The steps of `script` after `(launch)`, as text.
-    func run(_ script: String, host: HeadlessHost<AgentStoreDriver<Gadget>> = Gadget.host()) async -> (text: String, status: RunStatus) {
-      await serially {
+    func run(_ script: String, host: HeadlessHost<AgentStoreDriver<Gadget>> = Gadget.host()) async throws -> (text: String, status: RunStatus) {
+      try await serially {
         let runner = host.makeRunner()
         _ = await runner.launch()
-        let result = await runner.run(script)
+        let result = try await runner.run(script)
         return (StepFormatter.text(result.steps), result.status)
       }
     }
 
     static let start = "camera=unasked faceID=none online=yes location=none phase=none link=none pings=0 fetched=none"
 
-    @Test func aPermissionRequestShowsAPromptUntilAnswered() async {
-      let (text, status) = await run("camera; expect prompt=camera; device prompt allow; expect prompt=none camera=granted; camera")
+    @Test func aPermissionRequestShowsAPromptUntilAnswered() async throws {
+      let (text, status) = try await run("camera; expect prompt=camera; device prompt allow; expect prompt=none camera=granted; camera")
       #expect(status == .ok)
       #expect(
         text == """
@@ -167,18 +167,18 @@ extension AgentCtlSuite {
       )
     }
 
-    @Test func aSetPermissionAnswersWithoutAPrompt() async {
-      let (text, _) = await run("device permission camera denied; camera; expect camera=denied prompt=none")
+    @Test func aSetPermissionAnswersWithoutAPrompt() async throws {
+      let (text, _) = try await run("device permission camera denied; camera; expect camera=denied prompt=none")
       #expect(text.contains("> camera\n  screen=gadget camera=denied"))
       #expect(!text.contains(" prompt=camera"))
     }
 
-    @Test func promptsQueueAndLimitedIsAnAnswer() async {
-      let (text, status) = await run("camera; camera; device prompt limited; expect prompt=camera camera=limited; device prompt deny; expect prompt=none camera=denied")
+    @Test func promptsQueueAndLimitedIsAnAnswer() async throws {
+      let (text, status) = try await run("camera; camera; device prompt limited; expect prompt=camera camera=limited; device prompt deny; expect prompt=none camera=denied")
       #expect(status == .ok, "\(text)")
     }
 
-    @Test func permissionAndPromptErrors() async {
+    @Test func permissionAndPromptErrors() async throws {
       let cases: [(String, RunStatus, String)] = [
         ("device permission camera", .usage,
          "usage: device permission <service> <not-determined|granted|denied|limited>; services: camera, location"),
@@ -193,13 +193,13 @@ extension AgentCtlSuite {
          "device prompt: the pending prompt is biometry; answer it with device biometry match|fail"),
       ]
       for (script, expected, message) in cases {
-        let (text, status) = await run(script)
+        let (text, status) = try await run(script)
         #expect(status == expected, "\(script)")
         #expect(text.hasSuffix("  FAIL \(message)"), "\(script):\n\(text)")
       }
     }
 
-    @Test func commonErrors() async {
+    @Test func commonErrors() async throws {
       let available = "permission, prompt, open-url, push, background, foreground, relaunch, network, location, biometry"
       let cases: [(String, String)] = [
         ("device", "usage: device <subcommand>; available: \(available)"),
@@ -216,95 +216,95 @@ extension AgentCtlSuite {
         ("device push ping later", "usage: device push <name> [tap]; pushes: ping"),
       ]
       for (script, message) in cases {
-        let (text, status) = await run(script)
+        let (text, status) = try await run(script)
         #expect(status == .usage, "\(script)")
         #expect(text.hasSuffix("  FAIL \(message)"), "\(script):\n\(text)")
       }
     }
 
-    @Test func aSubcommandTheAppDidNotConfigure() async {
+    @Test func aSubcommandTheAppDidNotConfigure() async throws {
       let host = Gadget.host(device: AgentDeviceConfig(openURL: { _ in nil }))
-      let (text, status) = await run("device push ping", host: host)
+      let (text, status) = try await run("device push ping", host: host)
       #expect(status == .usage)
       #expect(text.hasSuffix("  FAIL device push is not configured by this app; available: open-url"))
     }
 
-    @Test func noDeviceConfigurationMeansNoDeviceCommand() async {
-      let (text, status) = await run("device network offline", host: Gadget.host(device: .none))
+    @Test func noDeviceConfigurationMeansNoDeviceCommand() async throws {
+      let (text, status) = try await run("device network offline", host: Gadget.host(device: .none))
       #expect(status == .failed)
       #expect(text.hasSuffix("  FAIL unknown command 'device' on gadget. Valid here: camera, unlock, fetch, expect, advance, mock"))
-      let (configured, _) = await run("nope")
+      let (configured, _) = try await run("nope")
       #expect(configured.hasSuffix("Valid here: camera, unlock, fetch, expect, advance, mock, device"))
     }
 
-    @Test func linksAndPushes() async {
-      let (text, status) = await run(
+    @Test func linksAndPushes() async throws {
+      let (text, status) = try await run(
         "device open-url gadget://x/1; expect link=gadget://x/1; device push ping; expect pings=1 link=gadget://x/1; "
           + "device push ping tap; expect pings=1 link=ping"
       )
       #expect(status == .ok, "\(text)")
-      let (unhandled, failed) = await run("device open-url \"https://example.com/a b\"")
+      let (unhandled, failed) = try await run("device open-url \"https://example.com/a b\"")
       #expect(failed == .usage, "a space is not a URL: \(unhandled)")
-      let (other, otherStatus) = await run("device open-url https://example.com")
+      let (other, otherStatus) = try await run("device open-url https://example.com")
       #expect(otherStatus == .failed)
       #expect(other.hasSuffix("  FAIL device open-url: the app does not handle https://example.com"))
-      let (unknown, unknownStatus) = await run("device push pong")
+      let (unknown, unknownStatus) = try await run("device push pong")
       #expect(unknownStatus == .failed)
       #expect(unknown.hasSuffix("  FAIL unknown push 'pong'; pushes: ping"))
     }
 
     /// Both ports accept and refuse the same link texts (agentctl-android's java.net.URI and Swift's strict URL).
-    @Test func linkValidityMatchesTheKotlinPort() async {
+    @Test func linkValidityMatchesTheKotlinPort() async throws {
       for url in ["gadget://[::1]:8080/a", "gadget://x/a%20b?q=1#f", "gadget:x"] {
-        let (text, status) = await run("device open-url \(url)")
+        let (text, status) = try await run("device open-url \(url)")
         #expect(status == .ok, "\(url) is a link:\n\(text)")
       }
       for url in ["gadget://x/é", "gadget://x/2?x=[1]", "gadget://x/%zz", "gadget://x/２", "gadget://[x/1", "gadget:"] {
-        let (text, status) = await run("device open-url \(url)")
+        let (text, status) = try await run("device open-url \(url)")
         #expect(status == .usage, "\(url) is not a link:\n\(text)")
       }
     }
 
-    @Test func screenCommandsFailInTheBackground() async {
-      let (text, status) = await run("device background; expect phase=background; camera")
+    @Test func screenCommandsFailInTheBackground() async throws {
+      let (text, status) = try await run("device background; expect phase=background; camera")
       #expect(status == .failed)
       #expect(text.hasSuffix("  FAIL camera is unavailable: the app is in the background (device foreground first)"))
-      let (back, ok) = await run("device background; device foreground; expect phase=foreground; camera; expect prompt=camera")
+      let (back, ok) = try await run("device background; device foreground; expect phase=foreground; camera; expect prompt=camera")
       #expect(ok == .ok, "\(back)")
     }
 
-    @Test func networkOfflineFailsEveryMockedCall() async {
-      let (text, status) = await run(
+    @Test func networkOfflineFailsEveryMockedCall() async throws {
+      let (text, status) = try await run(
         "mock gadget.fetch boom; device network offline; expect online=no; fetch; expect fetched=offline call=gadget.fetch; "
           + "device network online; expect online=yes; fetch; expect fetched=boom; fetch; expect fetched=ok"
       )
       #expect(status == .ok, "the armed fault outlives the offline call:\n\(text)")
     }
 
-    @Test func location() async {
-      let (text, status) = await run(
+    @Test func location() async throws {
+      let (text, status) = try await run(
         "device location 52.2297,21.0122; expect location=52.2297,21.0122; device location -33,-70.5; "
           + "expect location=-33.0,-70.5; device location none; expect location=none"
       )
       #expect(status == .ok, "\(text)")
     }
 
-    @Test func biometry() async {
-      let (text, status) = await run(
+    @Test func biometry() async throws {
+      let (text, status) = try await run(
         "unlock; expect prompt=biometry; device biometry match; expect faceID=success prompt=none; "
           + "unlock; device biometry fail; expect faceID=failure; "
           + "device biometry unenrolled; unlock; expect faceID=unavailable prompt=none; device biometry enrolled"
       )
       #expect(status == .ok, "\(text)")
-      let (none, failed) = await run("device biometry match")
+      let (none, failed) = try await run("device biometry match")
       #expect(failed == .failed)
       #expect(none.hasSuffix("  FAIL device biometry: no biometric prompt is pending"))
-      let (other, _) = await run("camera; device biometry fail")
+      let (other, _) = try await run("camera; device biometry fail")
       #expect(other.hasSuffix("  FAIL device biometry: no biometric prompt is pending"))
     }
 
-    @Test func relaunchStartsTheStateOverAndKeepsTheDevice() async {
-      let (text, status) = await run(
+    @Test func relaunchStartsTheStateOverAndKeepsTheDevice() async throws {
+      let (text, status) = try await run(
         "device permission camera granted; device network offline; device push ping; expect pings=1 online=no; "
           + "unlock; expect prompt=biometry; device relaunch; expect pings=0 prompt=none online=no phase=none; "
           + "camera; expect camera=granted"
@@ -312,12 +312,12 @@ extension AgentCtlSuite {
       #expect(status == .ok, "\(text)")
     }
 
-    @Test func relaunchCancelsTheOldStoresTimers() async {
-      await serially {
+    @Test func relaunchCancelsTheOldStoresTimers() async throws {
+      try await serially {
         let host = TinyAppConfig.headless(device: AgentDeviceConfig(relaunch: true))
         let runner = host.makeRunner()
         _ = await runner.launch()
-        let result = await runner.run("open 2; save; expect pending=1; device relaunch; expect screen=items pending=0")
+        let result = try await runner.run("open 2; save; expect pending=1; device relaunch; expect screen=items pending=0")
         #expect(result.status == .ok, "\(StepFormatter.text(result.steps))")
         #expect(
           StepFormatter.text(result.steps[3]) == """
@@ -328,11 +328,11 @@ extension AgentCtlSuite {
       }
     }
 
-    @Test func theJSONFormCarriesAPromptOnlyWhenOneIsPending() async {
-      let steps = await serially {
+    @Test func theJSONFormCarriesAPromptOnlyWhenOneIsPending() async throws {
+      let steps = try await serially {
         let runner = Gadget.host().makeRunner()
         _ = await runner.launch()
-        return await runner.run("camera; device prompt allow").steps
+        return try await runner.run("camera; device prompt allow").steps
       }
       let json = StepFormatter.json(steps)
       #expect(json.components(separatedBy: "\"prompt\" : \"camera\"").count == 2)

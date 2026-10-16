@@ -55,14 +55,14 @@ extension AgentCtlSuite {
   /// unimplemented one in a test).
   @MainActor
   @Suite struct HeadlessNowTests {
-    @Test func theDateMovesWithAdvanceAndSummariesReadTheStoresDate() async {
-      let output = await serially {
+    @Test func theDateMovesWithAdvanceAndSummariesReadTheStoresDate() async throws {
+      let output = try await serially {
         let host = HeadlessHost(
           initialState: { DateReader.State() }, reducer: { DateReader() }, mockMethods: [], configure: { _, _ in }
         )
         let runner = host.makeRunner()
         _ = await runner.launch()
-        return StepFormatter.text(await runner.run("read; advance 90s; read").steps)
+        return StepFormatter.text(try await runner.run("read; advance 90s; read").steps)
       }
       #expect(
         output == """

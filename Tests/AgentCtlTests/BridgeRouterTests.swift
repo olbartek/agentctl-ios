@@ -11,19 +11,19 @@ extension AgentCtlSuite {
   /// covered in `BridgeTests`.)
   @MainActor
   @Suite struct BridgeRouterTests {
-    func post(_ script: String, json: Bool) async -> BridgeResponse {
-      await serially {
+    func post(_ script: String, json: Bool) async throws -> BridgeResponse {
+      try await serially {
         let runner = TinyAppConfig.headless().makeRunner()
         _ = await runner.launch()
         let router = BridgeRouter(runner: runner, screensText: { "" })
-        return await router.handle(
+        return try await router.handle(
           BridgeRequest(method: "POST", path: "/run", query: json ? ["format": "json"] : [:], body: script)
         )
       }
     }
 
     @Test func aParseErrorKeepsItsReasonInTheJSONForm() async throws {
-      let response = await post("expect \"open", json: true)
+      let response = try await post("expect \"open", json: true)
       #expect(response.exitCode == 2)
       #expect(response.contentType == "application/json")
       let object = try #require(
@@ -34,8 +34,8 @@ extension AgentCtlSuite {
     }
 
     /// The text form is byte-for-byte what it was: the line the CLI prints to stderr, as the body.
-    @Test func aParseErrorInTheTextFormIsUnchanged() async {
-      let response = await post("expect \"open", json: false)
+    @Test func aParseErrorInTheTextFormIsUnchanged() async throws {
+      let response = try await post("expect \"open", json: false)
       #expect(response.exitCode == 2)
       #expect(response.body == "error: parse error: line 1, column 8: unterminated quote\n")
     }
@@ -43,7 +43,7 @@ extension AgentCtlSuite {
     /// A run that has steps, passing or failing, is still the plain array — the same JSON `run --json` prints.
     @Test func aRunWithStepsIsStillAnArray() async throws {
       for (script, exit) in [("expect screen=items", Int32(0)), ("expect screen=nope", 1)] {
-        let response = await post(script, json: true)
+        let response = try await post(script, json: true)
         #expect(response.exitCode == exit)
         let steps = try #require(
           try JSONSerialization.jsonObject(with: Data(response.body.utf8)) as? [[String: Any]], "\(response.body)"

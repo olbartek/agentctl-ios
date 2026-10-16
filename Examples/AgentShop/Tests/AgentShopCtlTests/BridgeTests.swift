@@ -17,12 +17,12 @@ extension AppCtlSuite {
   /// touches the real `UserDefaults`.
   @MainActor
   @Suite struct BridgeTests {
-    @Test func runReturnsTheSameStepsAsAppctl() async {
+    @Test func runReturnsTheSameStepsAsAppctl() async throws {
       let script = "login-as alice; tab orders; open 1003; cancel; back"
-      let headless = await serially {
+      let headless = try await serially {
         let runner = AgentShopConfig.headless().makeRunner()
         let launch = await runner.launch()
-        let result = await runner.run(script)
+        let result = try await runner.run(script)
         #expect(launch.status == .ok)
         #expect(result.status == .ok, "\(StepFormatter.text(result.steps))")
         return StepFormatter.text(result.steps) + "\n"
@@ -34,7 +34,7 @@ extension AppCtlSuite {
       let launch = await runner.launch()
       #expect(launch.status == .ok, "the live app did not settle at launch:\n\(StepFormatter.text(launch.step))")
       let router = BridgeRouter(runner: runner, screensText: { "" })
-      let response = await router.handle(BridgeRequest(method: "POST", path: "/run", body: script))
+      let response = try await router.handle(BridgeRequest(method: "POST", path: "/run", body: script))
 
       #expect(response.status == 200)
       #expect(response.exitCode == 0)

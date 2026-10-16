@@ -27,6 +27,14 @@
       func resolve(_ name: String, _ devices: [Fake], runtimeMajor: Int? = nil) throws -> Simulator.Device {
         let directory = try CLICommandTests.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
+        let tool = try Self.fakeSimctl(devices, in: directory)
+        return try Simulator.$simctl.withValue([tool.path]) {
+          try Simulator(root: directory).resolve(name, runtimeMajor: runtimeMajor)
+        }
+      }
+
+      /// A fake `simctl` in `directory` whose `list` prints `devices`; iOS 27.0 is a beta runtime.
+      static func fakeSimctl(_ devices: [Fake], in directory: URL) throws -> URL {
         var byRuntime: [String: [[String: String]]] = [:]
         for device in devices {
           let key = "com.apple.CoreSimulator.SimRuntime.iOS-" + device.runtime.replacingOccurrences(of: ".", with: "-")
@@ -48,9 +56,7 @@
         esac
         """.write(to: tool, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
-        return try Simulator.$simctl.withValue([tool.path]) {
-          try Simulator(root: directory).resolve(name, runtimeMajor: runtimeMajor)
-        }
+        return tool
       }
 
       /// The note `choose` would print, for the same devices.

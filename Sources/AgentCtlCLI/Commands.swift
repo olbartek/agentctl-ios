@@ -18,7 +18,8 @@
       }
       var steps: [StepRecord] = []
       if let sessionPath {
-        let replay = await runner.run(Session.load(sessionPath))
+        guard let saved = Session.read(sessionPath) else { return RunStatus.internalError.rawValue }
+        let replay = await runner.run(saved)
         guard replay.status == .ok else {
           printError("session replay of \(sessionPath) failed at \(replay.failedLine?.text ?? "a line"): \(replay.message ?? replay.steps.last?.message ?? "")")
           return RunStatus.failed.rawValue
@@ -37,8 +38,9 @@
       if let message = result.message {
         printError(message)
       }
-      if let sessionPath {
-        Session.append(result.executed, to: sessionPath)
+      // A session that cannot be saved is an environment failure (3), whatever the script's own code.
+      if let sessionPath, !Session.write(result.executed, to: sessionPath) {
+        return RunStatus.internalError.rawValue
       }
       return result.status.rawValue
     }
@@ -52,7 +54,8 @@
         return launch.status.rawValue
       }
       if let sessionPath {
-        let replay = await runner.run(Session.load(sessionPath))
+        guard let saved = Session.read(sessionPath) else { return RunStatus.internalError.rawValue }
+        let replay = await runner.run(saved)
         guard replay.status == .ok else {
           printError("session replay of \(sessionPath) failed")
           return RunStatus.failed.rawValue
@@ -135,7 +138,7 @@
       if record, result.ok {
         print("Review the changes: git status --short \(SnapshotRunner.testDirectories.joined(separator: " "))")
       }
-      return result.ok ? 0 : 1
+      return result.status.rawValue
     }
 
     static func check(ui: Bool, simulator: String) async -> Int32 {
@@ -165,26 +168,74 @@
   }
 
   /// `--session` files: one command per line, replayed before each run.
+  ///
+  /// A file that does not exist yet is an empty session, which the first run creates. One that exists but cannot be
+  /// read (a directory included), or cannot be written, is an environment failure: ``read(_:)`` and ``write(_:to:)``
+  /// print `error: cannot read <path>: <reason>` or `error: cannot write <path>: <reason>`, `<path>` as given.
   enum Session {
-    static func load(_ path: String) -> String {
-      (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+    /// The saved commands, `""` when there is no file yet, or `nil` (with the error printed) when it cannot be read.
+    static func read(_ path: String) -> String? {
+      do {
+        return try load(path)
+      } catch {
+        printError("cannot read \(path): \(reason(error))")
+        return nil
+      }
     }
 
-    static func append(_ lines: [ScriptLine], to path: String) {
-      guard !lines.isEmpty else {
-        if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: nil) }
+    static func load(_ path: String) throws -> String {
+      var isDirectory: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return "" }
+      // Foundation reports a directory without its errno; read(2) would say EISDIR.
+      if isDirectory.boolValue { throw POSIXError(.EISDIR) }
+      let data = try Data(contentsOf: URL(fileURLWithPath: path))
+      guard let text = String(data: data, encoding: .utf8) else { throw NotUTF8() }
+      return text
+    }
+
+    /// A session file whose bytes are not UTF-8: it cannot be read, as agentctl-android says it.
+    struct NotUTF8: Error, CustomStringConvertible {
+      var description: String { "not valid UTF-8" }
+    }
+
+    /// Why a read or write failed, without the path: the POSIX `strerror` text of the underlying errno
+    /// ("Permission denied", "Is a directory"), as agentctl-android prints it; Foundation's own description when
+    /// there is no errno, since that one names the file.
+    static func reason(_ error: any Error) -> String {
+      if let error = error as? NotUTF8 { return error.description }
+      var current: NSError? = error as NSError
+      while let nsError = current {
+        if nsError.domain == NSPOSIXErrorDomain { return String(cString: strerror(Int32(nsError.code))) }
+        current = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+      }
+      return error.localizedDescription
+    }
+
+    /// Appends `lines`, creating the file (and its directory) if needed. `false`, with the error printed, when it
+    /// cannot be written.
+    static func write(_ lines: [ScriptLine], to path: String) -> Bool {
+      do {
+        try append(lines, to: path)
+        return true
+      } catch {
+        printError("cannot write \(path): \(reason(error))")
+        return false
+      }
+    }
+
+    static func append(_ lines: [ScriptLine], to path: String) throws {
+      let url = URL(fileURLWithPath: path)
+      let text = lines.isEmpty ? "" : lines.map(\.text).joined(separator: "\n") + "\n"
+      guard FileManager.default.fileExists(atPath: path) else {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url)
         return
       }
-      let url = URL(fileURLWithPath: path)
-      try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-      let text = lines.map(\.text).joined(separator: "\n") + "\n"
-      if let handle = try? FileHandle(forWritingTo: url) {
-        handle.seekToEndOfFile()
-        handle.write(Data(text.utf8))
-        try? handle.close()
-      } else {
-        try? text.write(to: url, atomically: true, encoding: .utf8)
-      }
+      guard !lines.isEmpty else { return }
+      let handle = try FileHandle(forWritingTo: url)
+      defer { try? handle.close() }
+      try handle.seekToEnd()
+      try handle.write(contentsOf: Data(text.utf8))
     }
   }
 

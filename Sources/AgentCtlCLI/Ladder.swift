@@ -16,6 +16,11 @@
     var layout: Layout { Layout(root: root) }
     var logs: URL { layout.logs }
 
+    /// The ladder's exit status (CONTRACT.md §5): that of its first failing rung, else 0. A rung that ran and found
+    /// the app wrong is 1 — a build or test that failed, a failing scenario, stale docs, snapshots that differ, a
+    /// scenario that failed in the app. A rung that could not run is 3 — a tool that could not start, no scenario
+    /// files or a configured one that does not exist, no simulator, a failed install or launch, an unreachable
+    /// bridge. A usage error is 2 — a bad `APPCTL_PORT` or an ambiguous `--sim`.
     func run() async -> Int32 {
       if ui {
         // A bad APPCTL_PORT is a usage error (exit 2), found before the ladder spends minutes on L0–L3.
@@ -24,37 +29,52 @@
         } catch {
           return AppCommands.fail(error)
         }
+        // A scenario the config names that does not exist is a missing file (3, CONTRACT.md §5), found before
+        // anything is built.
+        if let missing = Self.missingScenario(AgentCtl.runtime.appCheck.scenario, in: scenariosDirectory) {
+          report("L4 app", ok: false, detail: "no scenario to run", since: .now)
+          print("  cannot read \(missing.path(percentEncoded: false))")
+          return RunStatus.internalError.rawValue
+        }
       }
       try? FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true)
-      guard build() else { return 1 }
-      guard test() else { return 1 }
-      guard await scenarios() else { return 1 }
-      guard docs() else { return 1 }
-      if ui {
-        guard snapshots() else { return 1 }
-        guard await app() else { return 1 }
+      var rungs: [@MainActor () async -> RunStatus] = [build, test, scenarios, docs]
+      if ui { rungs += [snapshots, app] }
+      for rung in rungs {
+        let status = await rung()
+        guard status == .ok else { return status.rawValue }
       }
       return 0
     }
 
+    var scenariosDirectory: URL { root.appending(path: AgentCtl.runtime.scenariosPath) }
+
+    /// The file of the scenario L4 is configured to run, when it does not exist; `nil` when it does or none is named.
+    /// Checked before L0, so a typo in the config does not cost a build.
+    static func missingScenario(_ name: String?, in directory: URL) -> URL? {
+      guard let name else { return nil }
+      let file = directory.appending(path: "\(name).appctl")
+      return FileManager.default.fileExists(atPath: file.path) ? nil : file
+    }
+
     /// L3: view snapshots on the config's snapshot simulator.
-    private func snapshots() -> Bool {
+    private func snapshots() -> RunStatus {
       let start = ContinuousClock.now
       let result = SnapshotRunner.run(root: root, simulator: AgentCtl.runtime.snapshotSimulatorName, record: false)
       report("L3 snapshots", ok: result.ok, detail: "\(result.tests) screens", since: start)
       result.details.forEach { print("  \($0)") }
-      return result.ok
+      return result.status
     }
 
     /// L4: the real app. Launch it seeded on a simulator, run a scenario through its agent bridge, check the state,
     /// save one screenshot.
-    private func app() async -> Bool {
+    private func app() async -> RunStatus {
       let start = ContinuousClock.now
       let check = AgentCtl.runtime.appCheck
-      let scenarios = root.appending(path: AgentCtl.runtime.scenariosPath)
+      let scenarios = scenariosDirectory
       guard let scenario = check.scenario ?? Self.firstScenario(in: ScenarioRunner.files(in: scenarios)) else {
         report("L4 app", ok: false, detail: "no scenario to run", since: start)
-        return false
+        return .internalError
       }
       do {
         let requested = try BridgePort.requested(flag: nil, environment: ProcessInfo.processInfo.environment)
@@ -69,24 +89,25 @@
         guard run.identity.isOurs else {
           report("L4 app", ok: false, detail: "another app answered", since: start)
           print("  \(Message.anotherAppAnswered(port: port, answeredAs: run.identity))")
-          return false
+          return .internalError
         }
         guard run.exitCode == 0 else {
           report("L4 app", ok: false, detail: "\(scenario) failed in the app", since: start)
           print(run.body.split(separator: "\n").map { "  \($0)" }.joined(separator: "\n"))
-          return false
+          // Whatever the scenario's own code, a scenario that failed fails the rung, as in `test` (CONTRACT.md §5).
+          return .failed
         }
         if let expected = check.expectScreen {
           let snapshot = try await bridge.send("GET", "/snapshot")
           guard snapshot.identity.isOurs else {
             report("L4 app", ok: false, detail: "another app answered", since: start)
             print("  \(Message.anotherAppAnswered(port: port, answeredAs: snapshot.identity))")
-            return false
+            return .internalError
           }
           guard Self.shows(expected, snapshot.body) else {
             report("L4 app", ok: false, detail: "unexpected final screen", since: start)
             print("  \(snapshot.body)")
-            return false
+            return .failed
           }
         }
         let stamp = Int(Date().timeIntervalSince1970)
@@ -94,11 +115,13 @@
         try Simulator(root: root).screenshot(on: device, to: screenshot, log: logs.appending(path: "L4-screenshot.log"))
         report("L4 app", ok: true, detail: "\(scenario) via the agent bridge", since: start)
         print("  \(device.label), screenshot: \(screenshot.path(percentEncoded: false))")
-        return true
+        return .ok
       } catch {
+        // The app could not be checked: an ambiguous --sim (2), or no simulator, a failed build, install or launch,
+        // an unreachable bridge, an unreadable scenario, a failed screenshot (3).
         report("L4 app", ok: false, detail: "error", since: start)
         print("  \(error)")
-        return false
+        return error is UsageError ? .usage : .internalError
       }
     }
 
@@ -120,7 +143,7 @@
     }
 
     /// L0: every package builds on the host.
-    private func build() -> Bool {
+    private func build() -> RunStatus {
       let start = ContinuousClock.now
       var retried: [String] = []
       for path in packages {
@@ -132,16 +155,16 @@
         guard status == 0 else {
           report("L0 build", ok: false, detail: "\(package) failed", since: start)
           printFailure(log: log)
-          return false
+          return Self.rungStatus(status)
         }
       }
       report("L0 build", ok: true, detail: Self.count(packages.count, "package"), since: start)
       printRetries(retried)
-      return true
+      return .ok
     }
 
     /// L1: `swift test` in every package that has tests.
-    private func test() -> Bool {
+    private func test() -> RunStatus {
       let start = ContinuousClock.now
       var total = 0
       var tested = 0
@@ -157,27 +180,27 @@
         guard status == 0 else {
           report("L1 test", ok: false, detail: "\(package) failed", since: start)
           printFailure(log: log)
-          return false
+          return Self.rungStatus(status)
         }
         tested += 1
         total += testCount(in: log)
       }
       report("L1 test", ok: true, detail: "\(Self.count(tested, "package")), \(Self.count(total, "test"))", since: start)
       printRetries(retried)
-      return true
+      return .ok
     }
 
     /// L2: every scenario, in-process. Internal rather than private so a test can run this rung on its own.
-    func scenarios() async -> Bool {
+    func scenarios() async -> RunStatus {
       let start = ContinuousClock.now
       Deterministic.isEnabled = true
       defer { Deterministic.isEnabled = false }
-      let directory = root.appending(path: AgentCtl.runtime.scenariosPath)
+      let directory = scenariosDirectory
       let files = ScenarioRunner.files(in: directory)
       guard !files.isEmpty else {
         report("L2 scenarios", ok: false, detail: "no scenario files", since: start)
         print("  \(Message.noScenarios(in: directory))")
-        return false
+        return .internalError
       }
       let results = await AgentCtl.runtime.runScenarios(files)
       let failures = results.filter { !$0.passed }
@@ -185,18 +208,31 @@
       for failure in failures {
         print(failure.report.split(separator: "\n").map { "  \($0)" }.joined(separator: "\n"))
       }
-      return failures.isEmpty
+      // As `test` exits (CONTRACT.md §5): 3 when a scenario could not be read, else 1 when one failed.
+      if results.contains(where: { $0.status == .internalError }) { return .internalError }
+      return failures.isEmpty ? .ok : .failed
     }
 
-    private func docs() -> Bool {
+    private func docs() -> RunStatus {
       let start = ContinuousClock.now
       let file = root.appending(path: AgentCtl.runtime.docsPath)
       let upToDate = (try? String(contentsOf: file, encoding: .utf8)) == Commands.docsMarkdown
       report("docs", ok: upToDate, detail: upToDate ? "up to date" : Message.staleDocsDetail, since: start)
-      return upToDate
+      return upToDate ? .ok : .failed
     }
 
     // MARK: - Helpers
+
+    /// The status of an L0 or L1 rung whose tool exited with `status`: a build or test that ran and failed is the
+    /// rung's verdict (1); a tool that could not start (-1) or was stopped (``Shell/timedOut``) is an environment
+    /// failure (3).
+    static func rungStatus(_ status: Int32) -> RunStatus {
+      switch status {
+      case 0: .ok
+      case -1, Shell.timedOut: .internalError
+      default: .failed
+      }
+    }
 
     /// Runs the command and, if it fails, once more. SwiftPM sometimes builds a package against a stale copy of
     /// a local dependency right after files were added to that dependency; the second build is correct. A real

@@ -2,7 +2,7 @@
 
 | Command | What it does |
 |---|---|
-| `run "<script>"` | Run a script against a fresh headless app, one step per command. `--diff` adds a state diff per step, `--json` prints a JSON array of steps instead of text, and `--session <file>` replays a saved file first and then appends the commands that succeed, so state survives across calls. |
+| `run "<script>"` | Run a script against a fresh headless app, one step per command. `--diff` adds a state diff per step, `--json` prints a JSON array of steps instead of text, and `--session <file>` replays a saved file first and then appends the commands that succeed, so state survives across calls (a file that does not exist yet is an empty session; one that cannot be read or written prints `error: cannot read <file>: <reason>` or `error: cannot write <file>: <reason>` and exits 3). |
 | `state` | The full root state, `customDump`ed, after replaying an optional session file. |
 | `screens` | Every screen path with its commands, arguments, help and summary keys — as above. |
 | `docs` | Write the generated command reference (`docsPath`) from the registry. `--check` exits 1 when it is stale, which is what keeps it honest in CI. |
@@ -16,8 +16,13 @@
 
 Exit codes are part of the contract: `0` everything ran and every `expect` passed; `1` a command or an `expect`
 failed, or a step — `(launch)` included — did not settle; `2` a usage or parse error, the CLI's own command line
-included; `3` an internal or environment error — a scenario file that does not exist, no scenario files to run,
-no repo root, a build that failed.
+included, and a command group run without a subcommand (`<cli>` or `<cli> app` alone prints its help on stderr;
+`--help` prints it on stdout and exits 0); `3` an internal or environment error — a scenario file that does not
+exist, no scenario files to run, no repo root, a build that failed, a `--session` file that cannot be read or
+written. `snapshots` and `check` exit 1 only when something ran and found the app wrong (a rung that failed,
+snapshots that differ), 2 for an ambiguous `--sim`, and 3 when they could not run (no simulator for the runtime,
+a tool that could not start, a failed launch, an unreachable bridge); see
+[the verification ladder](verification-ladder.md#exit-codes).
 
 Three runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (the virtual clock
 headlessly; in the running app, the app's real-time clock jumped forward, see [the bridge](bridge.md)),

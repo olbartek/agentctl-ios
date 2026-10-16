@@ -98,8 +98,8 @@
         }
         #expect(code == 3)
         #expect(Message.noScenarios(in: root.appending(path: "scenarios")).contains(root.path))
-        let rungPassed = await serially { await Ladder(root: root).scenarios() }
-        #expect(!rungPassed)
+        let rung = await serially { await Ladder(root: root).scenarios() }
+        #expect(rung == .internalError)
       }
 
       /// A scenario file that does not exist is a missing file (3), not a failed scenario (1).

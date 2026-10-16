@@ -24,6 +24,11 @@
 
     public init() {}
 
+    /// The furthest ``advance(by:between:)`` moves the clock: four times the `advance` limit of one run (CONTRACT.md
+    /// §2.2), far below where an instant would overflow, so ``now`` and ``date()`` never trap however many runners
+    /// advance it.
+    static var maxOffset: Duration { .seconds(Int.max) * 4 }
+
     /// How far ``advance(by:between:)`` has moved this clock ahead of real time.
     public var offset: Duration { state.withLock { $0.offset } }
 
@@ -37,7 +42,7 @@
     /// The wall-clock date in this clock's time: `Date()` moved by ``offset``. For the app's `\.date`, and for any
     /// time source of the host's own that should move with `advance`.
     public func date() -> Date {
-      Date().addingTimeInterval(Self.seconds(offset))
+      Date().addingTimeInterval(offset / .seconds(1))
     }
 
     public func sleep(until deadline: Instant, tolerance: Duration?) async throws {
@@ -64,7 +69,8 @@
     /// the sleeps that are due and awaits `between` — the app settling — so what they start is already waiting on
     /// the clock before it moves on.
     public func advance(by duration: Duration, between: @Sendable () async -> Void = {}) async {
-      let target = offset + duration
+      // Runners that share this clock each have their own `advance` limit, so the offset is capped here too.
+      let target = min(offset + duration, Self.maxOffset)
       // A bound, in case a sleep keeps its deadline in the window without ever finishing.
       for _ in 0..<10_000 {
         let wall = base.now
@@ -86,10 +92,6 @@
       }
       for sleeper in sleepers { sleeper.wake() }
       await between()
-    }
-
-    private static func seconds(_ duration: Duration) -> TimeInterval {
-      Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18
     }
 
     /// One waiting sleep. ``wake()`` ends ``wait()``, whether it comes before, during or after it, and only once.

@@ -40,6 +40,14 @@
         .appending(path: ".\(video.deletingPathExtension().lastPathComponent)-held.\(video.pathExtension)")
       try? FileManager.default.removeItem(at: held)
       let writer = try AVAssetWriter(outputURL: held, fileType: video.pathExtension.lowercased() == "mov" ? .mov : .mp4)
+      // `startWriting()` creates the file beside the user's video; a rewrite that fails leaves nothing there.
+      var replaced = false
+      defer {
+        if !replaced {
+          if writer.status == .writing { writer.cancelWriting() }
+          try? FileManager.default.removeItem(at: held)
+        }
+      }
       let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: format)
       input.transform = try await track.load(.preferredTransform)
       input.expectsMediaDataInRealTime = false
@@ -81,10 +89,10 @@
       writer.endSession(atSourceTime: max(end, start))
       await writer.finishWriting()
       guard writer.status == .completed else {
-        try? FileManager.default.removeItem(at: held)
         throw Failure(description: "cannot rewrite \(video.lastPathComponent): \(String(describing: writer.error))")
       }
       _ = try FileManager.default.replaceItemAt(video, withItemAt: held)
+      replaced = true
       return try await AVURLAsset(url: video).load(.duration).seconds
     }
   }

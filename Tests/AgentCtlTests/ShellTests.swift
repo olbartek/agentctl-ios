@@ -46,13 +46,16 @@
 
       /// A grandchild that inherits the pipe keeps it open after the child exits; the output is not waited for.
       @Test func captureReturnsWhenAGrandchildHoldsThePipe() throws {
-        let marker = "agentctl-orphan-\(UUID().uuidString)"
-        let script = try Self.tool("echo done\n(exec -a \(marker) sleep 30) &\nexit 0\n")
+        // The grandchild writes its own PID, so the test stops exactly that process: never a kill by pattern.
+        let script = try Self.tool("echo done\nsleep 30 &\necho $! > orphan.pid\nexit 0\n")
         let start = Date()
         let result = Shell.captureResult(["/bin/sh", script.path], in: script.deletingLastPathComponent(), timeout: 20)
         #expect(result.finished)
         #expect(Date().timeIntervalSince(start) < 5, "took \(Date().timeIntervalSince(start)) s")
-        _ = Shell.capture(["pkill", "-f", marker], in: URL(fileURLWithPath: "/"), timeout: 10)
+        let pidFile = script.deletingLastPathComponent().appending(path: "orphan.pid")
+        if let pid = Int32((try? String(contentsOf: pidFile, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") {
+          kill(pid, SIGTERM)
+        }
       }
 
       @Test func runStopsAToolThatNeverExitsAndSaysSoInItsLog() throws {

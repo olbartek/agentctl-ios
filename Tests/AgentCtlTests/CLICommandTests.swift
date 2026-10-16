@@ -156,6 +156,51 @@
         }
         return await body()
       }
+
+      /// `--step-delay` that `Duration.seconds(_:)` would trap on, after the build and the launch, is a usage error.
+      @Test func aStepDelayThatIsNotASpanOfSecondsIsAUsageError() {
+        AgentCtl.install(StubRuntime())
+        for value in ["nan", "inf", "-inf", "1e30", "-3", "3601"] {
+          let error = Self.parseError(["app", "test", "--step-delay", value])
+          #expect(error.map(AgentCtl.exitStatus(for:)) == 2, "\(value)")
+        }
+        for value in ["0", "0.5", "3600"] {
+          #expect(throws: Never.self, "\(value)") { try AppCtlCommand.parseAsRoot(["app", "test", "--step-delay", value]) }
+        }
+      }
+
+      /// A southern latitude starts with `-`, which ArgumentParser would read as an option.
+      @Test func aNegativeLatitudeIsTheLocation() throws {
+        AgentCtl.install(StubRuntime())
+        for arguments in [
+          ["app", "location", "-33.8688,151.2093"], ["app", "location", "-33.8688,151.2093", "--sim", "X"],
+          ["app", "location", "--sim", "X", "-33.8688,151.2093"], ["app", "location", "--", "-33.8688,151.2093"],
+        ] {
+          let command = try #require(try AppCtlCommand.parseAsRoot(AgentCtl.arguments(arguments)) as? AppLocation, "\(arguments)")
+          #expect(command.location == "-33.8688,151.2093", "\(arguments)")
+          #expect(command.device.sim == (arguments.contains("--sim") ? "X" : nil), "\(arguments)")
+        }
+        #expect(AgentCtl.arguments(["app", "location", "52.2,-21.0"]) == ["app", "location", "52.2,-21.0"])
+        #expect(AgentCtl.arguments(["run", "-1"]) == ["run", "-1"])
+      }
+
+      /// L4 of `check --ui`: the scenario it picks by itself is one `app test` would run, and the final screen is
+      /// matched as a whole path, never as a prefix or as text inside a value.
+      @Test func ladderL4SkipsSkipMarkedScenariosAndMatchesTheWholeScreen() throws {
+        let directory = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let browse = directory.appending(path: "a-browse.appctl")
+        let checkout = directory.appending(path: "b-checkout.appctl")
+        try "# app-test: skip needs real time\nopen 1\n".write(to: browse, atomically: true, encoding: .utf8)
+        try "open 2\n".write(to: checkout, atomically: true, encoding: .utf8)
+        #expect(Ladder.firstScenario(in: [browse, checkout]) == "b-checkout")
+        #expect(Ladder.firstScenario(in: [browse]) == nil)
+
+        #expect(Ladder.shows("home/orders", "> (snapshot)\n  screen=home/orders items=2\n"))
+        #expect(Ladder.shows("home/orders", "> (snapshot)\n  screen=home/orders\n"))
+        #expect(!Ladder.shows("home/orders", "> (snapshot)\n  screen=home/orders/42 items=2\n"))
+        #expect(!Ladder.shows("home/orders", "> (snapshot)\n  screen=home title=\"screen=home/orders\"\n"))
+      }
     }
   }
 #endif

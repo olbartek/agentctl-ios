@@ -236,7 +236,7 @@
     @Option(help: "Simulator name or UDID.")
     var sim: String = AgentCtl.runtime.simulatorName
 
-    @Option(help: "Fixed mock latency in ms (default: the app's 300–800 ms).")
+    @Option(help: "Fixed mock latency in ms (default: the app's own).")
     var latency: Int?
 
     @Flag(help: "Forget the saved session before launching.")
@@ -313,6 +313,13 @@
     var stepDelay: Double?
 
     @OptionGroup var bridge: LaunchPortOptions
+
+    func validate() throws {
+      // `Duration.seconds(_:)` traps on a value that is not finite or too large, after the build and the launch.
+      if let stepDelay, !(stepDelay.isFinite && (0...3600).contains(stepDelay)) {
+        throw ValidationError("--step-delay must be between 0 and 3600 seconds, not '\(stepDelay)'")
+      }
+    }
 
     func run() async throws {
       let options = AppTest.Options(

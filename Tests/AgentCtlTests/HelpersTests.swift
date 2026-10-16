@@ -199,26 +199,26 @@ extension AgentCtlSuite {
   /// The helpers' texts as a script sees them: the failed step's message, which is what an agent reads.
   @MainActor
   @Suite struct HelpersScriptTests {
-    func failure(_ script: String, mockMethods: [MockMethod] = []) async -> String? {
-      await serially {
+    func failure(_ script: String, mockMethods: [MockMethod] = []) async throws -> String? {
+      try await serially {
         let runner = Desk.makeRunner(mockMethods: mockMethods)
         _ = await runner.launch()
-        return await runner.run(script).steps.last?.message
+        return try await runner.run(script).steps.last?.message
       }
     }
 
-    @Test func aWrongChoiceNamesTheOptions() async {
-      #expect(await failure("mode frantic") == "mode <calm|busy>: invalid argument: expected calm|busy")
-      #expect(await failure("mode") == "mode <calm|busy>: missing argument: expected <calm|busy>")
+    @Test func aWrongChoiceNamesTheOptions() async throws {
+      #expect(try await failure("mode frantic") == "mode <calm|busy>: invalid argument: expected calm|busy")
+      #expect(try await failure("mode") == "mode <calm|busy>: missing argument: expected <calm|busy>")
     }
 
-    @Test func backWithNothingPushedSaysSo() async {
-      #expect(await failure("back") == "back: nothing to go back to on notes/edit")
+    @Test func backWithNothingPushedSaysSo() async throws {
+      #expect(try await failure("back") == "back: nothing to go back to on notes/edit")
     }
 
-    @Test func aCommonCodeIsAcceptedAndListedAfterTheMethodsOwn() async {
+    @Test func aCommonCodeIsAcceptedAndListedAfterTheMethodsOwn() async throws {
       let methods = [MockMethod("notes.save", errorCodes: ["full"])].accepting(["network"])
-      #expect(await failure("mock notes.save network; mock notes.save x", mockMethods: methods)
+      #expect(try await failure("mock notes.save network; mock notes.save x", mockMethods: methods)
         == "unknown error 'x' for notes.save; valid: full, network")
     }
   }

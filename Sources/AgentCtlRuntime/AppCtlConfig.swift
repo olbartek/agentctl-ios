@@ -284,7 +284,7 @@
     var recordsDiff: Bool { get set }
     var stateDump: String { get }
     func launch() async -> (step: StepRecord, status: RunStatus)
-    func run(_ source: String) async -> RunResult
+    func run(_ source: String) async throws(CancellationError) -> RunResult
     func snapshot(command: String) -> StepRecord
   }
 

@@ -34,30 +34,30 @@ extension AgentCtlSuite {
       ]
     }()
 
-    func run<Driver: AgentDriver>(_ runner: ScriptRunner<Driver>, _ script: String) async -> String {
+    func run<Driver: AgentDriver>(_ runner: ScriptRunner<Driver>, _ script: String) async throws -> String {
       let launch = await runner.launch()
-      let result = await runner.run(script)
+      let result = try await runner.run(script)
       return StepFormatter.text([launch.step] + result.steps) + "\nexit=\(result.status.rawValue)"
     }
 
-    @Test func tinyMVVMPrintsWhatTinyAppPrints() async {
+    @Test func tinyMVVMPrintsWhatTinyAppPrints() async throws {
       #expect(Self.scripts.count >= 18)
       for script in Self.scripts {
-        let tca = await serially { await run(TinyAppConfig.headless().makeRunner(), script) }
-        let mvvm = await serially { await run(TinyMVVMConfig.headless().makeRunner(), script) }
+        let tca = try await serially { try await run(TinyAppConfig.headless().makeRunner(), script) }
+        let mvvm = try await serially { try await run(TinyMVVMConfig.headless().makeRunner(), script) }
         #expect(tca == mvvm, "\(script)\n--- TCA\n\(tca)\n--- MVVM-C\n\(mvvm)")
       }
     }
 
     /// A relaunch throws the app away mid-countdown and after a failure, and both drivers start over alike.
-    @Test func aRelaunchIsTheSameOnBothDrivers() async {
+    @Test func aRelaunchIsTheSameOnBothDrivers() async throws {
       let script = "open 2; save; expect pending=1; device relaunch; expect screen=items pending=0; "
         + "mock items.fetch network; device relaunch; expect error=network; device relaunch; open 3"
-      let tca = await serially {
-        await run(TinyAppConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), script)
+      let tca = try await serially {
+        try await run(TinyAppConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), script)
       }
-      let mvvm = await serially {
-        await run(TinyMVVMConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), script)
+      let mvvm = try await serially {
+        try await run(TinyMVVMConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), script)
       }
       #expect(tca.hasSuffix("exit=0"), "\(tca)")
       #expect(tca == mvvm, "--- TCA\n\(tca)\n--- MVVM-C\n\(mvvm)")

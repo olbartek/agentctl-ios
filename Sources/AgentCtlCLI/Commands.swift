@@ -19,7 +19,7 @@
       var steps: [StepRecord] = []
       if let sessionPath {
         guard let saved = Session.read(sessionPath) else { return RunStatus.internalError.rawValue }
-        let replay = await runner.run(saved)
+        let replay = (try? await runner.run(saved)) ?? .cancelled
         guard replay.status == .ok else {
           printError("session replay of \(sessionPath) failed at \(replay.failedLine?.text ?? "a line"): \(replay.message ?? replay.steps.last?.message ?? "")")
           return RunStatus.failed.rawValue
@@ -28,7 +28,7 @@
         steps.append(launch.step)
       }
       runner.recordsDiff = diff
-      let result = await runner.run(script)
+      let result = (try? await runner.run(script)) ?? .cancelled
       steps += result.steps
       if json {
         print(StepFormatter.json(steps))
@@ -55,7 +55,7 @@
       }
       if let sessionPath {
         guard let saved = Session.read(sessionPath) else { return RunStatus.internalError.rawValue }
-        let replay = await runner.run(saved)
+        let replay = (try? await runner.run(saved)) ?? .cancelled
         guard replay.status == .ok else {
           printError("session replay of \(sessionPath) failed")
           return RunStatus.failed.rawValue

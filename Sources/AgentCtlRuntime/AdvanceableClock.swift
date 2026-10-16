@@ -72,7 +72,9 @@
       // Runners that share this clock each have their own `advance` limit, so the offset is capped here too.
       let target = min(offset + duration, Self.maxOffset)
       // A bound, in case a sleep keeps its deadline in the window without ever finishing.
-      for _ in 0..<10_000 {
+      // A cancelled advance (its bridge client went away) stops waiting for the app: it goes to the end at once, so
+      // the clock still moves as far as the runner's `advance` limit counted.
+      for _ in 0..<10_000 where !Task.isCancelled {
         let wall = base.now
         let (deadline, sleepers) = state.withLock { state -> (Instant?, [Sleeper]) in
           let limit = wall.advanced(by: target)
@@ -91,7 +93,7 @@
         return Array(state.sleepers.values)
       }
       for sleeper in sleepers { sleeper.wake() }
-      await between()
+      if !Task.isCancelled { await between() }
     }
 
     /// One waiting sleep. ``wake()`` ends ``wait()``, whether it comes before, during or after it, and only once.

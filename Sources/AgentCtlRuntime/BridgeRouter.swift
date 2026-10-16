@@ -51,10 +51,11 @@
       self.screensText = screensText
     }
 
-    public func handle(_ request: BridgeRequest) async -> BridgeResponse {
+    /// Throws `CancellationError` when a `POST /run` is cancelled, its client having gone away (CONTRACT.md §8.1).
+    public func handle(_ request: BridgeRequest) async throws(CancellationError) -> BridgeResponse {
       switch (request.method, request.path) {
       case ("POST", "/run"):
-        let result = await runner.run(request.body)
+        let result = try await runner.run(request.body)
         if request.query["format"] == "json" {
           return BridgeResponse(
             status: 200,

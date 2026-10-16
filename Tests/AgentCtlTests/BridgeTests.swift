@@ -26,7 +26,7 @@
         let runner = app.makeRunner(synthesizesAppearance: true)
         _ = await runner.launch()
         let router = BridgeRouter(runner: runner, screensText: { ScreensRenderer.render(TinyAppConfig.screens, mockExample: TinyAppConfig.docsText.mockExample) })
-        let server = BridgeServer { await router.handle($0) }
+        let server = BridgeServer { try await router.handle($0) }
         let port = try await server.start(port: 0)
         return Bridge(server: server, port: port)
       }
@@ -55,10 +55,10 @@
       /// asserts the effect rather than the bytes. Do not merge the two back together.
       @Test func runReturnsTheSameStepsAsTheHeadlessRunner() async throws {
         let script = "open 2; back"
-        let headless = await serially {
+        let headless = try await serially {
           let runner = TinyAppConfig.headless().makeRunner()
           _ = await runner.launch()
-          return StepFormatter.text(await runner.run(script).steps) + "\n"
+          return StepFormatter.text(try await runner.run(script).steps) + "\n"
         }
         let bridge = try await startBridge()
         defer { bridge.server.stop() }
@@ -193,9 +193,9 @@
 
       /// A launch seed is a script, so a launch that never settles fails it before its first command — and the
       /// app's log says so, rather than printing the steps as if the seed had been applied.
-      @Test func aSeedStopsWhenTheLaunchDoesNotSettle() async {
-        let seed = await serially {
-          await AgentLaunch<AgentStoreDriver<Restless>>.applySeed("expect screen=restless", with: Restless.makeRunner())
+      @Test func aSeedStopsWhenTheLaunchDoesNotSettle() async throws {
+        let seed = try await serially {
+          try await AgentLaunch<AgentStoreDriver<Restless>>.applySeed("expect screen=restless", with: Restless.makeRunner())
         }
         #expect(seed.status == .failed)
         #expect(seed.log.hasPrefix("AgentCtlBridge: seed FAILED (exit 1)\n> (launch)"), "\(seed.log)")
@@ -203,15 +203,15 @@
         #expect(!seed.log.contains("> expect"), "the seed ran on a launch that did not settle:\n\(seed.log)")
       }
 
-      @Test func aSeedRunsAfterASettledLaunch() async {
-        let applied = await AgentLaunch<AgentStoreDriver<TinyRoot>>.applySeed(
+      @Test func aSeedRunsAfterASettledLaunch() async throws {
+        let applied = try await AgentLaunch<AgentStoreDriver<TinyRoot>>.applySeed(
           "open 2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
         )
         #expect(applied.status == .ok)
         #expect(applied.log.hasPrefix("AgentCtlBridge: seed applied\n> (launch)"), "\(applied.log)")
         #expect(applied.log.contains("> open 2\n  screen=items/2"))
         // A seed that does not parse fails with its reason, as `run` does.
-        let unparsed = await AgentLaunch<AgentStoreDriver<TinyRoot>>.applySeed(
+        let unparsed = try await AgentLaunch<AgentStoreDriver<TinyRoot>>.applySeed(
           "open \"2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
         )
         #expect(unparsed.status == .usage)

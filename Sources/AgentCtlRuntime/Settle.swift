@@ -119,6 +119,11 @@
     var uiHeld = false
     while start.duration(to: realClock.now) < limit {
       try? await realClock.sleep(for: pollInterval)
+      // The run was cancelled (its bridge client went away): stop waiting, unsettled, rather than poll to the limit.
+      if Task.isCancelled {
+        trace?("+\(Int(start.duration(to: realClock.now) / .milliseconds(1))) ms cancelled")
+        return SettleResult(settled: false, pending: pending())
+      }
       let next = state()
       // Every poll, so a busy stretch's start and its idle gaps are seen while the state is still changing too.
       let uiBusy = uiHolds()

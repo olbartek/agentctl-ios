@@ -49,6 +49,11 @@
     public var failedLine: ScriptLine?
     /// A failure that has no step, such as a script syntax error.
     public var message: String?
+
+    /// What a headless caller makes of a run that threw `CancellationError`, which nothing headless does: exit 3.
+    package static var cancelled: RunResult {
+      RunResult(steps: [], status: .internalError, executed: [], message: "cancelled")
+    }
   }
 
   /// Runs script commands against an app through its ``AgentDriver``, headlessly (the CLI) or in the app
@@ -121,21 +126,29 @@
     }
 
     /// Parses and runs a script, stopping at the first failure.
-    public func run(_ source: String) async -> RunResult {
+    ///
+    /// Throws `CancellationError` when the task running it is cancelled — in the running app, when the bridge client
+    /// that sent it has gone away (CONTRACT.md §8.1) — and then runs no further line. Nothing cancels a headless run.
+    public func run(_ source: String) async throws(CancellationError) -> RunResult {
       let lines: [ScriptLine]
       do {
         lines = try ScriptParser.parse(source)
       } catch {
         return RunResult(steps: [], status: .usage, executed: [], message: "parse error: \(error.description)")
       }
-      return await run(lines)
+      return try await run(lines)
     }
 
-    public func run(_ lines: [ScriptLine]) async -> RunResult {
+    /// Runs parsed lines, stopping at the first failure. Throws `CancellationError` as ``run(_:)-(String)`` does.
+    public func run(_ lines: [ScriptLine]) async throws(CancellationError) -> RunResult {
       var steps: [StepRecord] = []
       var executed: [ScriptLine] = []
       for line in lines {
+        // Cancelled (the bridge client that sent it went away, CONTRACT.md §8.1): run nothing more.
+        if Task.isCancelled { throw CancellationError() }
         let (step, status) = await execute(line)
+        // Cancelled during the line, whose settling it cut short: its step is not one to report.
+        if Task.isCancelled { throw CancellationError() }
         steps.append(step)
         guard status == .ok else {
           return RunResult(steps: steps, status: status, executed: executed, failedLine: line)

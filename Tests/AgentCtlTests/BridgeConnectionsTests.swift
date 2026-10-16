@@ -13,9 +13,10 @@
   extension AgentCtlSuite {
     /// What this guards: the bridge's connections. A client that sends slowly, or nothing at all, holds up no other
     /// request, and has a deadline for its whole request; only so many connections are read at once; a header block
-    /// over the limit is malformed however it arrives; a client that half-closes after its request is still answered;
-    /// the running app's clock never traps however far it is advanced; and the listener survives a stop before it is
-    /// ready and a failure after (CONTRACT.md §8.1, §2.2).
+    /// over the limit is malformed however it arrives; a client that closes its side before the answer has gone away,
+    /// so its request is cancelled without leaving the app half-settled; the running app's clock never traps however
+    /// far it is advanced; and the listener survives a stop before it is ready and a failure after (CONTRACT.md §8.1,
+    /// §2.2).
     @MainActor
     @Suite struct BridgeConnectionsTests {
       static let get = "GET /snapshot HTTP/1.1\r\nHost: x\r\n\r\n"
@@ -70,6 +71,55 @@
 
         func close() {
           connection.cancel()
+        }
+      }
+
+      /// A plain BSD socket, for `shutdown(SHUT_WR)`: a client that ends its sending side and still reads.
+      final class SocketClient: Sendable {
+        let descriptor: Int32
+
+        init(port: UInt16) throws {
+          descriptor = socket(AF_INET, SOCK_STREAM, 0)
+          var address = sockaddr_in()
+          address.sin_family = sa_family_t(AF_INET)
+          address.sin_port = port.bigEndian
+          address.sin_addr.s_addr = inet_addr("127.0.0.1")
+          let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+              connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+          }
+          guard connected == 0 else {
+            Darwin.close(descriptor)
+            throw POSIXError(.ECONNREFUSED)
+          }
+        }
+
+        func send(_ text: String) {
+          _ = Array(text.utf8).withUnsafeBytes { write(descriptor, $0.baseAddress, $0.count) }
+        }
+
+        /// Ends the sending side; the connection stays open for reading.
+        func shutDownSending() {
+          shutdown(descriptor, SHUT_WR)
+        }
+
+        /// Everything until the bridge closes the connection, read off the main thread (reads block).
+        func readToEnd() async -> String {
+          await Task.detached { [descriptor] in
+            var received = [UInt8]()
+            var buffer = [UInt8](repeating: 0, count: 64 * 1024)
+            while true {
+              let count = buffer.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, $0.count) }
+              if count <= 0 { break }
+              received += buffer[0..<count]
+            }
+            return String(decoding: received, as: UTF8.self)
+          }.value
+        }
+
+        deinit {
+          Darwin.close(descriptor)
         }
       }
 
@@ -173,35 +223,174 @@
         }
       }
 
-      // MARK: - A client that half-closes
+      // MARK: - A client that goes away (#54, CONTRACT.md §8.1)
 
-      /// A client may close its sending side once its request is complete (`shutdown(SHUT_WR)`, `nc -N`): its request
-      /// still runs, and it still gets the answer, however long the request takes.
-      @Test func aClientThatHalfClosesAfterItsRequestIsAnswered() async throws {
-        let (server, port) = try await start { _ in
-          try? await Task.sleep(for: .milliseconds(300))
+      /// A live TinyApp whose every fetch takes `latency`, behind a bridge that records how each `/run` ended: its
+      /// body, or `cancelled` when the run threw `CancellationError`.
+      final class SlowApp {
+        var started = 0
+        var outcomes: [String] = []
+      }
+
+      func startSlowApp(latency: Duration = .seconds(3)) async throws -> (BridgeServer, UInt16, SlowApp) {
+        let host = TinyAppConfig.live(latency: .fixed(latency))
+        let runner = host.makeRunner(synthesizesAppearance: true)
+        _ = await runner.launch()
+        let router = BridgeRouter(runner: runner, screensText: { "" })
+        let app = SlowApp()
+        let (server, port) = try await start { request in
+          guard request.path == "/run" else { return try await router.handle(request) }
+          app.started += 1
+          do {
+            let response = try await router.handle(request)
+            app.outcomes.append(response.body)
+            return response
+          } catch {
+            app.outcomes.append(error is CancellationError ? "cancelled" : "\(error)")
+            throw error
+          }
+        }
+        return (server, port, app)
+      }
+
+      /// A client that half-closes once its request is complete (`shutdown(SHUT_WR)`) has gone away: its script is
+      /// cancelled and it gets no answer.
+      @Test func aClientThatHalfClosesAfterItsRequestGetsNoAnswer() async throws {
+        let (server, port, app) = try await startSlowApp()
+        defer { server.stop() }
+        let client = try SocketClient(port: port)
+        let script = "refresh; expect loading=false"
+        let request = "POST /run HTTP/1.1\r\nContent-Length: \(script.utf8.count)\r\n\r\n\(script)"
+        client.send(request)
+        try await until { app.started == 1 }
+        let started = ContinuousClock.now
+        // While the script runs, the client ends its sending side and waits for an answer.
+        client.shutDownSending()
+        #expect(await client.readToEnd() == "")
+        try await until { !app.outcomes.isEmpty }
+        #expect(started.duration(to: .now) < .seconds(2), "the script ran its course")
+        #expect(app.outcomes == ["cancelled"])
+      }
+
+      /// A client whose sending side ends right after its request's last bytes has gone away too: no answer, and
+      /// the request, if it started at all, is cancelled. The bridge goes on serving.
+      @Test func aRequestFollowedAtOnceByTheEndOfItsSideGetsNoAnswer() async throws {
+        var finished: [String] = []
+        let (server, port) = try await start { request in
+          if request.path == "/slow" {
+            try await Task.sleep(for: .seconds(1))
+          }
+          finished.append(request.path)
           return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
         }
         defer { server.stop() }
-        let client = try await Client(port: port)
-        defer { client.close() }
-        client.connection.send(content: Data(Self.get.utf8), isComplete: true, completion: .contentProcessed { _ in })
-        let answer = await client.readToEnd()
-        #expect(answer.hasPrefix("HTTP/1.1 200 OK\r\n"), "\(answer)")
-        #expect(answer.hasSuffix("\r\n\r\nok\n"))
+        let client = try SocketClient(port: port)
+        client.send("GET /slow HTTP/1.1\r\n\r\n")
+        client.shutDownSending()
+        #expect(await client.readToEnd() == "")
+        #expect(try await request(Self.get, port: port).hasPrefix("HTTP/1.1 200 OK\r\n"))
+        #expect(finished == ["/snapshot"])
+      }
+
+      /// A client that disconnects while its script runs cancels it, and the next request is answered promptly, from
+      /// a host in a state it can go on from.
+      @Test func aClientThatDisconnectsMidRunLetsTheNextRequestThrough() async throws {
+        let (server, port, app) = try await startSlowApp(latency: .milliseconds(1500))
+        defer { server.stop() }
+        let gone = try await Client(port: port)
+        let script = "refresh; refresh"
+        gone.send("POST /run HTTP/1.1\r\nContent-Length: \(script.utf8.count)\r\n\r\n\(script)")
+        try await Task.sleep(for: .milliseconds(200))
+        gone.close()
+        try await until { !app.outcomes.isEmpty }
+        #expect(app.outcomes == ["cancelled"])
+        let started = ContinuousClock.now
+        let next = try await request(
+          "POST /run HTTP/1.1\r\nContent-Length: 14\r\n\r\nexpect items=3", port: port
+        )
+        #expect(started.duration(to: .now) < .seconds(1))
+        #expect(next.hasPrefix("HTTP/1.1 200 OK\r\n"), "\(next)")
+        #expect(next.contains("\r\nX-Appctl-Exit: 0\r\n"), "\(next)")
+        // The fetch the cancelled run started finishes on its own; then the app settles as usual.
+        let after = try await request("POST /run HTTP/1.1\r\nContent-Length: 7\r\n\r\nrefresh", port: port)
+        #expect(after.contains("\r\nX-Appctl-Exit: 0\r\n"), "\(after)")
+        #expect(!after.contains("settled=false"))
+      }
+
+      /// A request queued behind one whose client went away is cancelled too when its own client goes, and never runs.
+      @Test func aQueuedRequestWhoseClientGoesAwayNeverRuns() async throws {
+        var ran: [String] = []
+        let (server, port) = try await start { request in
+          ran.append(request.path)
+          if request.path == "/slow" { try? await Task.sleep(for: .seconds(30)) }
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.stop() }
+        let slow = try await Client(port: port)
+        slow.send("GET /slow HTTP/1.1\r\n\r\n")
+        try await until { ran == ["/slow"] }
+        let queued = try await Client(port: port)
+        queued.send("GET /queued HTTP/1.1\r\n\r\n")
+        try await Task.sleep(for: .milliseconds(100))
+        queued.close()
+        slow.close()
+        let started = ContinuousClock.now
+        #expect(try await request(Self.get, port: port).hasPrefix("HTTP/1.1 200 OK\r\n"))
+        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(ran == ["/slow", "/snapshot"])
+      }
+
+      /// A cancelled run throws `CancellationError` at once, the line it was on cut short and no further line run;
+      /// the app is left as that line left it, and the next run settles as usual.
+      @Test func aCancelledRunThrowsWithoutLeavingTheAppHalfSettled() async throws {
+        let runner = TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
+        _ = await runner.launch()
+        let run = Task { try await runner.run("open 2; back; open 1") }
+        // Cancelled while `open 2` settles.
+        try await until { runner.snapshot(command: "").screen == "items/2" }
+        let started = ContinuousClock.now
+        run.cancel()
+        await #expect(throws: CancellationError.self) { _ = try await run.value }
+        #expect(started.duration(to: .now) < .seconds(1))
+        #expect(runner.snapshot(command: "").screen == "items/2", "a line after the cancelled one ran")
+        let next = try await runner.run("expect screen=items/2; back")
+        #expect(next.status == .ok, "\(StepFormatter.text(next.steps))")
+        #expect(next.steps.allSatisfy { $0.settled })
+      }
+
+      /// A cancelled launch seed aborts the launch: it throws, rather than reporting a failed seed.
+      @Test func aCancelledSeedAbortsTheLaunch() async throws {
+        let seed = Task {
+          withUnsafeCurrentTask { $0?.cancel() }
+          return try await AgentLaunch<AgentStoreDriver<TinyRoot>>.applySeed(
+            "open 2", with: TinyAppConfig.live(latency: .zero).makeRunner(synthesizesAppearance: true)
+          )
+        }
+        await #expect(throws: CancellationError.self) { _ = try await seed.value }
+      }
+
+      /// A cancelled `advance` still moves the clock all the way, without waiting for the app between deadlines.
+      @Test func aCancelledAdvanceGoesToTheEnd() async {
+        let clock = AdvanceableClock()
+        let advance = Task {
+          withUnsafeCurrentTask { $0?.cancel() }
+          await clock.advance(by: .seconds(3600), between: { Issue.record("waited for the app") })
+        }
+        await advance.value
+        #expect(clock.offset == .seconds(3600))
       }
 
       // MARK: - The clock's offset (#55)
 
       /// Each runner has its own `advance` limit, as before; two runners on one running app's clock (the launch
       /// seed's and the bridge's) can each take all of it, and the date the clock then gives the app does not trap.
-      @Test func twoRunnersOnOneClockCanEachAdvanceToTheLimit() async {
+      @Test func twoRunnersOnOneClockCanEachAdvanceToTheLimit() async throws {
         let host = TinyAppConfig.live(latency: .zero)
         let seed = host.makeRunner(synthesizesAppearance: true)
         let bridge = host.makeRunner(synthesizesAppearance: false)
-        #expect(await seed.run("advance 9223372036854775807s").status == .ok)
-        #expect(await bridge.run("advance 9223372036854775807s").status == .ok)
-        let refused = await bridge.run("advance 1s")
+        #expect(try await seed.run("advance 9223372036854775807s").status == .ok)
+        #expect(try await bridge.run("advance 9223372036854775807s").status == .ok)
+        let refused = try await bridge.run("advance 1s")
         #expect(refused.steps.first?.message == "advance would take the clock past 9223372036854775807 seconds")
         #expect(host.clock.base.date().timeIntervalSinceNow > 1.8e19)
       }

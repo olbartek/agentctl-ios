@@ -12,10 +12,15 @@
       case request(BridgeRequest)
     }
 
+    /// The most a request's header block may hold, the blank line that ends it included (CONTRACT.md §8.1).
+    static let maxHeaderBytes = 64 * 1024
+
     static func parse(_ data: Data) -> Result {
       guard let headerEnd = data.firstRange(of: Data("\r\n\r\n".utf8)) else {
-        return data.count > 64 * 1024 ? .malformed : .incomplete
+        return data.count > maxHeaderBytes ? .malformed : .incomplete
       }
+      // However it arrived, in one read or several: the header block is malformed once it is over the limit.
+      guard headerEnd.upperBound - data.startIndex <= maxHeaderBytes else { return .malformed }
       guard let head = String(data: data[..<headerEnd.lowerBound], encoding: .utf8) else { return .malformed }
       let lines = head.components(separatedBy: "\r\n")
       let requestLine = lines[0].split(separator: " ")

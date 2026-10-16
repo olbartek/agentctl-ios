@@ -221,12 +221,23 @@
 
       // MARK: - The listener (#56)
 
+      /// Whether the stop comes before the listener is ready is up to the system, so this tries a few times: every
+      /// start ends (none waits forever), with a port or with `CancellationError`, and some stops come first.
       @Test func aStopBeforeTheListenerIsReadyEndsTheStart() async throws {
-        let server = BridgeServer(app: "app") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
-        let start = Task { try await server.start(port: 0) }
-        while server.listener == nil { await Task.yield() }
-        server.stop()
-        await #expect(throws: CancellationError.self) { _ = try await start.value }
+        var cancelled = 0
+        for _ in 0..<20 {
+          let server = BridgeServer(app: "app") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+          let start = Task { try await server.start(port: 0) }
+          while server.listener == nil { await Task.yield() }
+          server.stop()
+          switch await start.result {
+          case .success: break
+          case let .failure(error):
+            #expect(error is CancellationError, "\(error)")
+            cancelled += 1
+          }
+        }
+        #expect(cancelled > 0)
       }
 
       /// A listener that fails once it is ready (the system taking the socket back) is restarted on the same port.

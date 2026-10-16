@@ -37,11 +37,14 @@ tag. For a minor or major release, release agentctl-android with the same number
 
 ## After a merge
 
-Clean up what the work used, once its PR is merged:
+After every merged branch: remove its worktree, delete the local and remote branch, and delete that worktree's build
+caches (Xcode DerivedData / Gradle build dirs). Never remove a worktree with uncommitted or unpushed changes, or one
+another session holds.
 
-- Remove its worktree (`git worktree remove <path>`), then delete its branch (`git branch -D <branch>`: a squash
-  merge leaves it unmerged in git's eyes).
+- Remove the worktree (`git worktree remove <path>`), then delete the local branch (`git branch -D <branch>`: a squash
+  merge leaves it unmerged in git's eyes) and the remote one (`git push origin --delete <branch>`) once no open PR
+  uses it.
 - Delete that worktree's Xcode DerivedData folder: the `~/Library/Developer/Xcode/DerivedData/<Scheme>-<hash>` whose
-  `info.plist` `WorkspacePath` is the worktree.
-- Never remove a worktree with uncommitted changes, or one another session is using.
+  `info.plist` `WorkspacePath` is the worktree. A DerivedData folder of this repo whose `WorkspacePath` no longer
+  exists goes too.
 - The main checkout's `.build` and DerivedData stay.

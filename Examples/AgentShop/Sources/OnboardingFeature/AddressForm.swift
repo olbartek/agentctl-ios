@@ -19,8 +19,8 @@ public struct AddressForm {
   }
 
   /// The mock geocoder: the one place it knows.
-  public static let knownPlaces: [DeviceLocation: Address] = [
-    DeviceLocation(latitude: 37.3349, longitude: -122.009): Address(
+  public static let knownPlaces: [AgentDevice.Location: Address] = [
+    AgentDevice.Location(latitude: 37.3349, longitude: -122.009): Address(
       street: "1 Apple Park Way", city: "Cupertino", zip: "95014"
     )
   ]
@@ -43,7 +43,7 @@ public struct AddressForm {
     case continueTapped
     case skipTapped
     case useLocationTapped
-    case located(Result<DeviceLocation, Error>)
+    case located(Result<AgentDevice.Location, Error>)
     case delegate(Delegate)
 
     @CasePathable

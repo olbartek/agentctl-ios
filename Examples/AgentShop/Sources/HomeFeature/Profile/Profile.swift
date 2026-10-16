@@ -46,9 +46,9 @@ public struct Profile {
   public enum Action: Sendable {
     case onAppear
     case orderUpdatesToggled(Bool)
-    case notificationsAnswered(PermissionStatus)
+    case notificationsAnswered(AgentDevice.PermissionStatus)
     case faceIDToggled(Bool)
-    case faceIDAnswered(BiometryResult)
+    case faceIDAnswered(AgentDevice.BiometryResult)
     case logoutTapped
     case alert(PresentationAction<Alert>)
     case delegate(Delegate)

@@ -100,5 +100,12 @@ let package = Package(
       // Read by path (`PackageRoot`), not bundled.
       exclude: ["Fixtures"]
     ),
+    // A host's own public types named with common words (`PermissionStatus`, `Location`, …), and a test that
+    // names each unqualified beside every AgentCtl module: a library type of the same name fails the build.
+    .target(name: "HostNames", path: "Tests/HostNames"),
+    .testTarget(
+      name: "HostNamesTests",
+      dependencies: ["HostNames", "AgentCtlCore", "AgentCtlTCA", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport"]
+    ),
   ]
 )

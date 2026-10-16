@@ -8,7 +8,7 @@ import Synchronization
 /// `UNUserNotificationCenter.requestAuthorization` in its live value instead.
 @DependencyClient
 public struct NotificationsClient: Sendable {
-  public var requestAuthorization: @Sendable () async -> PermissionStatus = { .notDetermined }
+  public var requestAuthorization: @Sendable () async -> AgentDevice.PermissionStatus = { .notDetermined }
 }
 
 extension NotificationsClient: DependencyKey {
@@ -25,8 +25,8 @@ extension NotificationsClient: DependencyKey {
 /// `device permission location …`).
 @DependencyClient
 public struct LocationClient: Sendable {
-  public var requestAuthorization: @Sendable () async -> PermissionStatus = { .notDetermined }
-  public var current: @Sendable () async -> DeviceLocation? = { nil }
+  public var requestAuthorization: @Sendable () async -> AgentDevice.PermissionStatus = { .notDetermined }
+  public var current: @Sendable () async -> AgentDevice.Location? = { nil }
 }
 
 extension LocationClient: DependencyKey {
@@ -46,7 +46,7 @@ extension LocationClient: DependencyKey {
 /// Face ID, through the simulated device (`device biometry …`).
 @DependencyClient
 public struct BiometricsClient: Sendable {
-  public var authenticate: @Sendable () async -> BiometryResult = { .unavailable }
+  public var authenticate: @Sendable () async -> AgentDevice.BiometryResult = { .unavailable }
 }
 
 extension BiometricsClient: DependencyKey {

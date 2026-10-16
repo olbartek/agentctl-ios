@@ -10,7 +10,7 @@ public enum AgentRegistry {
   ///   - device: the app's `device` subcommands, listed after `mock`; none by default.
   public static func runtimeCommands(
     mockExample: String = defaultMockExample,
-    device: DeviceSurface = .none
+    device: AgentDevice.Surface = .none
   ) -> [CommandDoc] {
     let expectKeys = device.hasPrompts ? "error=<code|none>, pending=<n> or prompt=<service|none>" : "error=<code|none> or pending=<n>"
     return [
@@ -38,7 +38,7 @@ public enum AgentRegistry {
 
   /// Every command name across `screens`, including the runtime commands (`device` when the app has it). The
   /// names do not depend on the host's `mock` example, so this needs none.
-  public static func allCommandNames(screens: [ScreenDoc], device: DeviceSurface = .none) -> Set<String> {
+  public static func allCommandNames(screens: [ScreenDoc], device: AgentDevice.Surface = .none) -> Set<String> {
     Set(screens.flatMap { $0.commands.map(\.name) } + runtimeCommands(device: device).map(\.name))
   }
 }
@@ -49,7 +49,7 @@ public enum ScreensRenderer {
   public static func render(
     _ screens: [ScreenDoc],
     mockExample: String = AgentRegistry.defaultMockExample,
-    device: DeviceSurface = .none
+    device: AgentDevice.Surface = .none
   ) -> String {
     var lines: [String] = []
     for screen in screens {

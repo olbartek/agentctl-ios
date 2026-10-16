@@ -41,8 +41,8 @@
         permissions: ["notifications", "location"],
         openURL: { AppFeature.action(opening: $0) },
         pushes: [
-          AgentPush("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
-          AgentPush("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
+          AgentDevice.Push("order-shipped", help: "Order #1002 has shipped.", received: .orderPushReceived, opened: .deepLinkOpened(.order(1002))),
+          AgentDevice.Push("promo", help: "A new promo code: SAVE10.", opened: .deepLinkOpened(.shop)),
         ],
         scenePhase: { .scenePhaseChanged($0) },
         relaunch: true,

@@ -58,7 +58,7 @@ public enum DocsRenderer {
     screens: [ScreenDoc],
     mockMethods: [MockMethod],
     text: DocsText,
-    device: DeviceSurface = .none
+    device: AgentDevice.Surface = .none
   ) -> String {
     render(
       screens: screens,

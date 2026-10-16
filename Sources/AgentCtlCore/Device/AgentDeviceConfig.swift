@@ -1,20 +1,22 @@
 import Foundation
 
-/// A push notification `device push <name> [tap]` delivers.
-public struct AgentPush<Action: Sendable>: Sendable {
-  public var name: String
-  /// One line for the docs, e.g. `Order #1002 has shipped.`
-  public var help: String
-  /// Sent when the push arrives while the app is in front; `nil` when the app does nothing then.
-  public var received: Action?
-  /// Sent when the user taps the notification (`device push <name> tap`).
-  public var opened: Action
+extension AgentDevice {
+  /// A push notification `device push <name> [tap]` delivers.
+  public struct Push<Action: Sendable>: Sendable {
+    public var name: String
+    /// One line for the docs, e.g. `Order #1002 has shipped.`
+    public var help: String
+    /// Sent when the push arrives while the app is in front; `nil` when the app does nothing then.
+    public var received: Action?
+    /// Sent when the user taps the notification (`device push <name> tap`).
+    public var opened: Action
 
-  public init(_ name: String, help: String, received: Action? = nil, opened: Action) {
-    self.name = name
-    self.help = help
-    self.received = received
-    self.opened = opened
+    public init(_ name: String, help: String, received: Action? = nil, opened: Action) {
+      self.name = name
+      self.help = help
+      self.received = received
+      self.opened = opened
+    }
   }
 }
 
@@ -27,9 +29,9 @@ public struct AgentDeviceConfig<Action: Sendable>: Sendable {
   /// The action a link opens, or `nil` for a link the app does not handle (`device open-url`).
   public var openURL: (@Sendable (URL) -> Action?)?
   /// The pushes `device push` delivers.
-  public var pushes: [AgentPush<Action>]
+  public var pushes: [AgentDevice.Push<Action>]
   /// The action for the app entering a phase (`device background|foreground`), or `nil` for none.
-  public var scenePhase: (@Sendable (DevicePhase) -> Action?)?
+  public var scenePhase: (@Sendable (AgentDevice.Phase) -> Action?)?
   /// Whether `device relaunch` exists.
   public var relaunch: Bool
   /// The error code every mocked call fails with while offline; non-`nil` enables `device network`.
@@ -42,8 +44,8 @@ public struct AgentDeviceConfig<Action: Sendable>: Sendable {
   public init(
     permissions: [String] = [],
     openURL: (@Sendable (URL) -> Action?)? = nil,
-    pushes: [AgentPush<Action>] = [],
-    scenePhase: (@Sendable (DevicePhase) -> Action?)? = nil,
+    pushes: [AgentDevice.Push<Action>] = [],
+    scenePhase: (@Sendable (AgentDevice.Phase) -> Action?)? = nil,
     relaunch: Bool = false,
     offlineErrorCode: String? = nil,
     location: Bool = false,
@@ -64,8 +66,8 @@ public struct AgentDeviceConfig<Action: Sendable>: Sendable {
   public static var none: Self { Self() }
 
   /// What scripts can address, without the actions: for the docs, `screens` and the runner's checks.
-  public var surface: DeviceSurface {
-    var subcommands: [DeviceSurface.Subcommand] = []
+  public var surface: AgentDevice.Surface {
+    var subcommands: [AgentDevice.Surface.Subcommand] = []
     if !permissions.isEmpty { subcommands += [.permission, .prompt] }
     if openURL != nil { subcommands.append(.openURL) }
     if !pushes.isEmpty { subcommands.append(.push) }
@@ -74,107 +76,109 @@ public struct AgentDeviceConfig<Action: Sendable>: Sendable {
     if offlineErrorCode != nil { subcommands.append(.network) }
     if location { subcommands.append(.location) }
     if biometry { subcommands.append(.biometry) }
-    return DeviceSurface(
+    return AgentDevice.Surface(
       subcommands: subcommands,
       services: permissions,
-      pushes: pushes.map { DeviceSurface.Push(name: $0.name, help: $0.help) },
+      pushes: pushes.map { AgentDevice.Surface.Push(name: $0.name, help: $0.help) },
       offlineErrorCode: offlineErrorCode
     )
   }
 }
 
-/// The `device` subcommands an app has, and the names they take: an ``AgentDeviceConfig`` without its actions.
-public struct DeviceSurface: Equatable, Sendable {
-  /// In the contract's fixed order (CONTRACT.md §2.4).
-  public enum Subcommand: String, CaseIterable, Equatable, Sendable {
-    case permission
-    case prompt
-    case openURL = "open-url"
-    case push
-    case background
-    case foreground
-    case relaunch
-    case network
-    case location
-    case biometry
-  }
-
-  public struct Push: Equatable, Sendable {
-    public var name: String
-    public var help: String
-
-    public init(name: String, help: String) {
-      self.name = name
-      self.help = help
+extension AgentDevice {
+  /// The `device` subcommands an app has, and the names they take: an ``AgentDeviceConfig`` without its actions.
+  public struct Surface: Equatable, Sendable {
+    /// In the contract's fixed order (CONTRACT.md §2.4).
+    public enum Subcommand: String, CaseIterable, Equatable, Sendable {
+      case permission
+      case prompt
+      case openURL = "open-url"
+      case push
+      case background
+      case foreground
+      case relaunch
+      case network
+      case location
+      case biometry
     }
-  }
 
-  /// The subcommands this app has, in the fixed order.
-  public var subcommands: [Subcommand]
-  public var services: [String]
-  public var pushes: [Push]
-  public var offlineErrorCode: String?
+    public struct Push: Equatable, Sendable {
+      public var name: String
+      public var help: String
 
-  public init(subcommands: [Subcommand], services: [String], pushes: [Push], offlineErrorCode: String?) {
-    self.subcommands = subcommands
-    self.services = services
-    self.pushes = pushes
-    self.offlineErrorCode = offlineErrorCode
-  }
+      public init(name: String, help: String) {
+        self.name = name
+        self.help = help
+      }
+    }
 
-  /// No `device` command.
-  public static let none = DeviceSurface(subcommands: [], services: [], pushes: [], offlineErrorCode: nil)
+    /// The subcommands this app has, in the fixed order.
+    public var subcommands: [Subcommand]
+    public var services: [String]
+    public var pushes: [Push]
+    public var offlineErrorCode: String?
 
-  /// Whether `device` is a runtime command here.
-  public var exists: Bool { !subcommands.isEmpty }
+    public init(subcommands: [Subcommand], services: [String], pushes: [Push], offlineErrorCode: String?) {
+      self.subcommands = subcommands
+      self.services = services
+      self.pushes = pushes
+      self.offlineErrorCode = offlineErrorCode
+    }
 
-  /// Whether the app can show a system prompt (a permission's, or the biometric one): what `prompt=` reports.
-  public var hasPrompts: Bool { subcommands.contains(.prompt) || subcommands.contains(.biometry) }
+    /// No `device` command.
+    public static let none = AgentDevice.Surface(subcommands: [], services: [], pushes: [], offlineErrorCode: nil)
 
-  /// The `CommandDoc`s of `device`, one per subcommand, as `screens` and the docs list them.
-  public var commandDocs: [CommandDoc] {
-    subcommands.map { sub in
-      let (argument, help): (String, String) =
-        switch sub {
-        case .permission:
-          (
-            "permission <service> <not-determined|granted|denied|limited>",
-            "Set a permission as if changed in Settings. Services: \(services.joined(separator: ", "))."
-          )
-        case .prompt:
-          ("prompt <allow|deny|limited>", "Answer the system permission prompt the app is showing (prompt=<service>).")
-        case .openURL:
-          ("open-url <url>", "Open a link in the app, as a tapped deep link or universal link.")
-        case .push:
-          (
-            "push <name> [tap]",
-            "Deliver a push notification while the app is in front; with tap, open the app from it. Pushes: "
-              + pushes.map { "\($0.name) (\($0.help))" }.joined(separator: ", ") + "."
-          )
-        case .background:
-          ("background", "Send the app to the background; screen commands fail until device foreground.")
-        case .foreground:
-          ("foreground", "Bring the app back to the foreground.")
-        case .relaunch:
-          (
-            "relaunch",
-            "Quit and relaunch the app: its state starts over, while what its clients stored and the device's "
-              + "settings stay."
-          )
-        case .network:
-          (
-            "network <online|offline>",
-            "Turn the network off or on. Offline, every mocked call fails with \(offlineErrorCode ?? "")."
-          )
-        case .location:
-          ("location <lat>,<lon>|none", "Set the device's location, e.g. 52.2297,21.0122, or none.")
-        case .biometry:
-          (
-            "biometry <enrolled|unenrolled|match|fail>",
-            "Enroll or remove Face ID / Touch ID, or answer the biometric prompt the app is showing (prompt=biometry)."
-          )
-        }
-      return CommandDoc(name: "device", argument: argument, help: help, source: "runtime")
+    /// Whether `device` is a runtime command here.
+    public var exists: Bool { !subcommands.isEmpty }
+
+    /// Whether the app can show a system prompt (a permission's, or the biometric one): what `prompt=` reports.
+    public var hasPrompts: Bool { subcommands.contains(.prompt) || subcommands.contains(.biometry) }
+
+    /// The `CommandDoc`s of `device`, one per subcommand, as `screens` and the docs list them.
+    public var commandDocs: [CommandDoc] {
+      subcommands.map { sub in
+        let (argument, help): (String, String) =
+          switch sub {
+          case .permission:
+            (
+              "permission <service> <not-determined|granted|denied|limited>",
+              "Set a permission as if changed in Settings. Services: \(services.joined(separator: ", "))."
+            )
+          case .prompt:
+            ("prompt <allow|deny|limited>", "Answer the system permission prompt the app is showing (prompt=<service>).")
+          case .openURL:
+            ("open-url <url>", "Open a link in the app, as a tapped deep link or universal link.")
+          case .push:
+            (
+              "push <name> [tap]",
+              "Deliver a push notification while the app is in front; with tap, open the app from it. Pushes: "
+                + pushes.map { "\($0.name) (\($0.help))" }.joined(separator: ", ") + "."
+            )
+          case .background:
+            ("background", "Send the app to the background; screen commands fail until device foreground.")
+          case .foreground:
+            ("foreground", "Bring the app back to the foreground.")
+          case .relaunch:
+            (
+              "relaunch",
+              "Quit and relaunch the app: its state starts over, while what its clients stored and the device's "
+                + "settings stay."
+            )
+          case .network:
+            (
+              "network <online|offline>",
+              "Turn the network off or on. Offline, every mocked call fails with \(offlineErrorCode ?? "")."
+            )
+          case .location:
+            ("location <lat>,<lon>|none", "Set the device's location, e.g. 52.2297,21.0122, or none.")
+          case .biometry:
+            (
+              "biometry <enrolled|unenrolled|match|fail>",
+              "Enroll or remove Face ID / Touch ID, or answer the biometric prompt the app is showing (prompt=biometry)."
+            )
+          }
+        return CommandDoc(name: "device", argument: argument, help: help, source: "runtime")
+      }
     }
   }
 }

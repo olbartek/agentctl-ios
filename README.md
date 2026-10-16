@@ -84,7 +84,7 @@ place where the headless run disagreed with iOS. It is a case for which one an a
 The whole integration, in five steps — each is a few lines of real code in
 [the integration guide](docs/guides/integration.md):
 
-1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.7.0")`, and take only
+1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.8.0")`, and take only
    the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` or `AgentCtlObservation` for the
    config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, `AgentCtlTestSupport` for tests).
 2. **Conform your screens** — beside each reducer (or view model), an `AgentScreen` extension: its path, a `key=value` summary, an
@@ -97,7 +97,7 @@ The whole integration, in five steps — each is a few lines of real code in
 
 | Guide | What it covers |
 |---|---|
-| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7. |
+| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7 and 0.8. |
 | [Commands](docs/guides/commands.md) | Every command your CLI gets (`run`, `test`, `docs`, `check`, `app …`), the exit codes, the runtime commands, and what a headless run pins to stay deterministic. |
 | [The device environment](docs/guides/device-environment.md) | `device …`: permissions and system prompts, links, pushes, background, foreground and relaunch, the network, location and biometry — one row per capability, with what your app wires and the real-OS `app` wrapper. |
 | [The verification ladder](docs/guides/verification-ladder.md) | `check`, from `swift build` to the real app on a simulator, and verifying at the cheapest rung that proves a change. |
@@ -136,14 +136,15 @@ cart and checkout) with an Xcode project, 123 scenarios, UI tests generated from
 
 ## Status
 
-Version 0.7.0: the engine drives any architecture — a TCA store through `AgentStoreDriver`, or `@Observable` view
-models under a coordinator (MVVM-C) through `AgentObservationDriver` — on top of 0.6's
+Version 0.8.0: stricter, as CONTRACT.md version 3 asks — CRLF scripts parse like LF, `expect` needs an unquoted `=`,
+`snapshots` and `check` exit 2 or 3 for usage and environment errors, and a bridge request whose client has gone away is
+cancelled — on top of 0.7's engine that drives any architecture (a TCA store through `AgentStoreDriver`, or
+`@Observable` view models under a coordinator through `AgentObservationDriver`), 0.6's
 [device environment](docs/guides/device-environment.md) and 0.5, which was extracted from the app it was built for.
 The three example apps in this repository are the integrations CI exercises, and the API may still change between
-minor versions before 1.0; [moving a host to 0.7](docs/guides/integration.md#moving-a-tca-host-to-07) is a few type
-names. MIT licensed.
+minor versions before 1.0; see [moving a host to 0.8](docs/guides/integration.md#moving-a-host-to-08). MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
 lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,
-so 0.7.x here and 0.7.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
+so 0.8.x here and 0.8.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
 own fix, so the two patch numbers can differ.

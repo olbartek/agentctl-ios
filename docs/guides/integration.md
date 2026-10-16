@@ -7,11 +7,11 @@ client that is also this package's test fixture.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.7.0"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.8.0"),
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.7.0"` admits every later
+Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.8.0"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`. Take only the products each target needs:
@@ -478,6 +478,21 @@ and settling relies on every one of them:
 
 In the app shell, `AgentLaunch(config:)` works as it does for TCA; `launch.app` is the coordinator, and a
 `device relaunch` replaces it (see [the bridge guide](bridge.md)).
+
+### Moving a host to 0.8
+
+0.8 makes the CLI follow CONTRACT.md version 3 more strictly. Scenarios that passed keep passing, with these
+exceptions to check:
+
+- A scenario file with CRLF line endings now runs every line. One that passed before may have run nothing (a CRLF
+  file starting with `#` was one long comment), so it can now fail for real.
+- `expect "key=value"` with the `=` only inside quotes is a syntax error (exit 2); write `expect key="value"`.
+- An argument is unquoted only when it is one quoted span from end to end: `"a"b"c"` stays as written.
+- `snapshots` and `check` exit 2 for a usage error and 3 for an environment failure (no simulator, a tool that could
+  not start); 1 still means the app was found wrong. A command group run without a subcommand (`appctl`, `appctl app`)
+  exits 2, and a `--session` file that cannot be read, or is not UTF-8, exits 3.
+- `ScriptRunner.run` is `async throws(CancellationError)`: a host that calls it directly adds `try`. A bridge request
+  whose client goes away is cancelled and gets no answer (CONTRACT §8.1).
 
 ### Moving a TCA host to 0.7
 

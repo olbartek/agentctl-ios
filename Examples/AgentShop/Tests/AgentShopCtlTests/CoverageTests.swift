@@ -29,13 +29,13 @@ extension AppCtlSuite {
 
     @Test func everyEmittedSummaryKeyIsDocumented() async throws {
       let coverage = try Self.coverage()
-      let undocumented = await serially { await coverage.undocumentedSummaryKeys() }
+      let undocumented = await coverage.undocumentedSummaryKeys()
       #expect(undocumented.isEmpty, "undocumented summary keys: \(undocumented.joined(separator: "; "))")
     }
 
     @Test func everyScreenIsVisited() async throws {
       let coverage = try Self.coverage()
-      let unvisited = await serially { await coverage.unvisitedScreens() }
+      let unvisited = await coverage.unvisitedScreens()
       #expect(unvisited == ["launching"] || unvisited.isEmpty, "screens no scenario visits: \(unvisited)")
     }
   }

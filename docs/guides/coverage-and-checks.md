@@ -27,6 +27,9 @@ static func coverage() throws -> AgentCoverage<AgentStoreDriver<TinyRoot>> {
 `AgentCoverage.init` throws `NoScenariosFound` when the scenarios directory holds no `*.appctl` files, because
 all three guards would otherwise pass having examined nothing.
 
+`undocumentedSummaryKeys()` and `unvisitedScreens()` run the scenarios, turning on the main serial executor for
+each run as the CLI does, so call them from a `.serialized` suite.
+
 They are deliberately shallow: they check that a command *appears* in some script, not that its result was
 asserted. A thin suite that touches everything once passes them.
 

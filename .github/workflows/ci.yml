@@ -11,22 +11,35 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
       # The package declares swift-tools-version 6.1, and its dependencies ship version-specific manifests
       # (swift-composable-architecture has a Package@swift-6.1.swift), so it needs a recent toolchain. A runner
       # image's *default* Xcode is not always the newest it has installed, and pinning one path breaks whenever
-      # the image drops that version — so pick the highest-versioned Xcode present instead.
-      - name: Select the newest Xcode
+      # the image drops that version — so pick the highest-versioned Xcode present instead,
+      # skipping betas and release candidates. The runner is a named image (macos-26, whose Xcodes are all 26.x)
+      # rather than macos-latest, so a new image cannot change the toolchain unannounced. Every job does the same.
+      - name: Select the newest released Xcode
         run: |
           set -euo pipefail
-          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          latest="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -1)"
           echo "Selected $latest"
           sudo xcode-select -s "$latest"
           xcodebuild -version
           swift --version
+          echo "XCODE_BUILD=$(xcodebuild -version | awk '/Build version/ { print $3 }')" >> "$GITHUB_ENV"
+
+      # The build directory, keyed on the toolchain and the resolved dependencies: the dependencies (TCA above all)
+      # are most of the build time, and only this package's own targets rebuild on a hit.
+      - name: Cache the build
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            .build
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-${{ env.XCODE_BUILD }}-debug-${{ hashFiles('Package.resolved') }}
 
       - name: Build
         run: swift build
@@ -36,7 +49,7 @@ jobs:
       - name: Test
         run: swift test
 
-      # The example app is also the package's end-to-end fixture: three scenario files driven through the real
+      # The example app is also the package's end-to-end fixture: five scenario files driven through the real
       # runner. `tinyctl` is TinyApp's CLI, built from the same AgentCtlCLI a host app would use.
       - name: Example scenarios
         run: swift run tinyctl test
@@ -58,18 +71,28 @@ jobs:
   # The libraries support iOS (only AgentCtlCLI is macOS-only, and compiles to nothing there). Build every target of
   # the package for the iOS Simulator, the way a host app's Xcode build does.
   ios:
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - name: Select the newest Xcode
+      - name: Select the newest released Xcode
         run: |
           set -euo pipefail
-          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          latest="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -1)"
           echo "Selected $latest"
           sudo xcode-select -s "$latest"
           xcodebuild -version
           swift --version
+          echo "XCODE_BUILD=$(xcodebuild -version | awk '/Build version/ { print $3 }')" >> "$GITHUB_ENV"
+
+      # SwiftPM's repository cache, which xcodebuild also clones the dependencies from.
+      - name: Cache the dependency clones
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.resolved') }}
 
       # `-skipMacroValidation`: TCA and swift-dependencies use Swift macros, which Xcode otherwise asks to trust.
       - name: Build for the iOS Simulator
@@ -83,39 +106,70 @@ jobs:
   # `#if DEBUG || AGENTCTL_RELEASE`, so a host's Release build compiles them all away. A Release build of the package
   # is what proves nothing that ships depends on them.
   release:
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - name: Select the newest Xcode
+      - name: Select the newest released Xcode
         run: |
           set -euo pipefail
-          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          latest="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -1)"
           echo "Selected $latest"
           sudo xcode-select -s "$latest"
           xcodebuild -version
           swift --version
+          echo "XCODE_BUILD=$(xcodebuild -version | awk '/Build version/ { print $3 }')" >> "$GITHUB_ENV"
+
+      - name: Cache the build
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            .build
+          key: ${{ runner.os }}-${{ runner.arch }}-xcode-${{ env.XCODE_BUILD }}-release-${{ hashFiles('Package.resolved') }}
 
       - name: Build in release
         run: swift build -c release
+
+      # The other release path a host relies on: Templates/appctl with CONFIGURATION="release" builds the host's CLI
+      # with -DAGENTCTL_RELEASE, which brings AgentCtl back into a release build. Build TinyApp's CLI that way and run
+      # a script with it.
+      - name: Build the CLI in release with AGENTCTL_RELEASE
+        run: swift build -c release -Xswiftc -DAGENTCTL_RELEASE --product tinyctl
+
+      - name: Run a script with the release CLI
+        run: .build/release/tinyctl run "open 2; save"
 
   # The showcase app: its own package (which depends on this one by path), its 123 scenarios, its generated command
   # reference and generated UI tests, and an iOS Simulator build of the app with its UI tests. The UI tests themselves
   # take about 25 minutes on a simulator and run locally (Examples/AgentShop/bench/bench.py), not here.
   example:
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           # The example's manifest names this package by its path identity, the directory's name.
           path: agentctl-ios
 
-      - name: Select the newest Xcode
+      - name: Select the newest released Xcode
         run: |
           set -euo pipefail
-          latest="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          latest="$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|release_candidate|_rc' | sort -V | tail -1)"
           echo "Selected $latest"
           sudo xcode-select -s "$latest"
+          xcodebuild -version
+          swift --version
+          echo "XCODE_BUILD=$(xcodebuild -version | awk '/Build version/ { print $3 }')" >> "$GITHUB_ENV"
+
+      # Only the dependency clones: AgentShop depends on this package by path, and a restored build directory of a
+      # path dependency is what trips SwiftPM's incremental build (see Templates/appctl).
+      - name: Cache the dependency clones
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-swiftpm-agentshop-${{ hashFiles('agentctl-ios/Examples/AgentShop/Package.resolved', 'agentctl-ios/Examples/AgentShop/App/AgentShop.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
 
       - name: Test
         run: swift test
@@ -136,5 +190,13 @@ jobs:
         run: |
           set -euo pipefail
           xcodebuild build-for-testing -quiet -project App/AgentShop.xcodeproj -scheme AgentShop \
+            -destination 'generic/platform=iOS Simulator' -skipMacroValidation
+        working-directory: agentctl-ios/Examples/AgentShop
+
+      # A host's Release build, which compiles AgentCtl's runtime and bridge away: the app must still build.
+      - name: Build the app in Release for the iOS Simulator
+        run: |
+          set -euo pipefail
+          xcodebuild build -quiet -configuration Release -project App/AgentShop.xcodeproj -scheme AgentShop \
             -destination 'generic/platform=iOS Simulator' -skipMacroValidation
         working-directory: agentctl-ios/Examples/AgentShop

@@ -7,8 +7,8 @@
   /// `expect`, `advance`, `mock`, `device`, the step output, sessions — is the engine's own and never sees the app's
   /// types (CONTRACT.md holds for every driver).
   ///
-  /// Two drivers ship: `StoreDriver` (AgentCtlTCA) for an app built with the Composable Architecture, and
-  /// `ObservationDriver` (AgentCtlObservation) for MVVM-C, `@Observable` view models under a coordinator.
+  /// Two drivers ship: `AgentStoreDriver` (AgentCtlTCA) for an app built with the Composable Architecture, and
+  /// `AgentObservationDriver` (AgentCtlObservation) for MVVM-C, `@Observable` view models under a coordinator.
   @MainActor
   public protocol AgentDriver: AnyObject {
     /// What a command, an appearance or a device event turns into. A value: commands produce it before it is sent,

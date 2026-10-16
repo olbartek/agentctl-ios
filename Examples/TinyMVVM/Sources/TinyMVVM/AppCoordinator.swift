@@ -56,16 +56,16 @@ extension ItemDetailViewModel: Hashable {
 extension AppCoordinator: AgentCoordinator {
   nonisolated static let backHelp = "Go back to the list."
 
-  public func activeScreen() -> ActiveScreen<AppIntent<AppCoordinator>> {
+  public func activeScreen() -> ActiveScreen<AgentIntent<AppCoordinator>> {
     guard let top = path.last else {
       return items.activeScreen()
     }
-    let child: ActiveScreen<AppIntent<AppCoordinator>> =
+    let child: ActiveScreen<AgentIntent<AppCoordinator>> =
       switch top.route {
       case let .detail(detail): detail.activeScreen()
       }
-    let back = AgentCommand<Void, AppIntent<AppCoordinator>>
-      .action("back", help: Self.backHelp, AppIntent { $0.pop() })
+    let back = AgentCommand<Void, AgentIntent<AppCoordinator>>
+      .action("back", help: Self.backHelp, AgentIntent { $0.pop() })
       .resolve((), source: "AppCoordinator")
     return child.identified(by: "#\(top.id)").appending([back])
   }

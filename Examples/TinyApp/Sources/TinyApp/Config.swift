@@ -30,7 +30,7 @@
           return .items(.openTapped(id))
         },
         pushes: [
-          AgentPush("item-updated", help: "Item 2 was updated.", received: .items(.refresh), opened: .items(.openTapped(2)))
+          AgentDevice.Push("item-updated", help: "Item 2 was updated.", received: .items(.refresh), opened: .items(.openTapped(2)))
         ]
       )
     }
@@ -70,7 +70,7 @@
     /// `tinyctl app …`, `tinyctl snapshots` and `tinyctl check --ui` cannot work. Everything else — `run`, `state`,
     /// `screens`, `docs`, `test` and a plain `check` of the package at the root — works.
     @MainActor
-    public static var appCtl: AppCtlConfig<StoreDriver<TinyRoot>> {
+    public static var appCtl: AppCtlConfig<AgentStoreDriver<TinyRoot>> {
       AppCtlConfig(
         name: "TinyApp",
         // A real host writes `.workspace("MyApp.xcworkspace", scheme: "MyApp")`, or `.project` for a project.
@@ -113,7 +113,7 @@
     /// A deterministic store on the Mac: a `TestClock`, a fixed date, and everything else `HeadlessHost` pins.
     /// `tinyctl run`, `tinyctl test` and the package's own tests all run against this.
     @MainActor
-    public static func headless(device: AgentDeviceConfig<TinyRoot.Action> = device) -> HeadlessHost<StoreDriver<TinyRoot>> {
+    public static func headless(device: AgentDeviceConfig<TinyRoot.Action> = device) -> HeadlessHost<AgentStoreDriver<TinyRoot>> {
       HeadlessHost(
         initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, mockMethods: mockMethods, device: device
       ) { deps, _ in
@@ -125,7 +125,7 @@
 
     /// The store the app would run in a DEBUG build behind AgentCtlBridge: real time and real mock latency.
     @MainActor
-    public static func live(latency: MockLatency) -> LiveHost<StoreDriver<TinyRoot>> {
+    public static func live(latency: MockLatency) -> LiveHost<AgentStoreDriver<TinyRoot>> {
       LiveHost(
         initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, latency: latency, mockMethods: mockMethods,
         device: device

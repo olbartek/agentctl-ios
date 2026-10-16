@@ -8,8 +8,8 @@ import TinyApp
 import TinyMVVM
 
 extension AgentCtlSuite {
-  /// What this guards: the engine is architecture-neutral. TinyApp (TCA, `StoreDriver`) and TinyMVVM (MVVM-C,
-  /// `ObservationDriver`) are the same app, and every script prints the same bytes and exits the same way on both:
+  /// What this guards: the engine is architecture-neutral. TinyApp (TCA, `AgentStoreDriver`) and TinyMVVM (MVVM-C,
+  /// `AgentObservationDriver`) are the same app, and every script prints the same bytes and exits the same way on both:
   /// TinyApp's scenarios, failures of every kind, `advance`, `mock`, `device` and a relaunch.
   @MainActor
   struct DriverParityTests {
@@ -69,7 +69,7 @@ extension AgentCtlSuite {
   /// The coverage guards and scenario checks are architecture-neutral too: aimed at TinyMVVM, they hold.
   @MainActor
   struct ObservationCoverageTests {
-    static func coverage() throws -> AgentCoverage<ObservationDriver<AppCoordinator>> {
+    static func coverage() throws -> AgentCoverage<AgentObservationDriver<AppCoordinator>> {
       try AgentCoverage(screens: TinyMVVMConfig.screens, scenarios: PackageRoot.scenarios) {
         TinyMVVMConfig.headless().makeRunner()
       }

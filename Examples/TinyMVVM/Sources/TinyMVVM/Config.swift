@@ -6,25 +6,25 @@
   import Foundation
 
   /// TinyMVVM's integration: TinyApp rebuilt as MVVM-C — `@Observable` view models under a coordinator, no TCA — and
-  /// driven through an `ObservationDriver`. It runs TinyApp's own scenario files and prints what TinyApp prints.
+  /// driven through an `AgentObservationDriver`. It runs TinyApp's own scenario files and prints what TinyApp prints.
   public enum TinyMVVMConfig {
     public static var screens: [ScreenDoc] { AppCoordinator.registry }
 
     public static var mockMethods: [MockMethod] { ItemsClient.mockMethods }
 
     /// The same links and push as TinyApp's, as intents on the coordinator.
-    public static var device: AgentDeviceConfig<AppIntent<AppCoordinator>> {
+    public static var device: AgentDeviceConfig<AgentIntent<AppCoordinator>> {
       AgentDeviceConfig(
         openURL: { url in
           guard url.scheme == "tinyapp", url.host == "items", url.pathComponents.count == 2,
             let id = Int(url.pathComponents[1])
           else { return nil }
-          return AppIntent { $0.openItem(id) }
+          return AgentIntent { $0.openItem(id) }
         },
         pushes: [
-          AgentPush(
+          AgentDevice.Push(
             "item-updated", help: "Item 2 was updated.",
-            received: AppIntent { $0.items.refresh() }, opened: AppIntent { $0.openItem(2) }
+            received: AgentIntent { $0.items.refresh() }, opened: AgentIntent { $0.openItem(2) }
           )
         ]
       )
@@ -47,7 +47,7 @@
     )
 
     @MainActor
-    public static var appCtl: AppCtlConfig<ObservationDriver<AppCoordinator>> {
+    public static var appCtl: AppCtlConfig<AgentObservationDriver<AppCoordinator>> {
       AppCtlConfig(
         name: "TinyMVVM",
         target: .project("<none: TinyMVVM has no Xcode project>", scheme: "TinyMVVM"),
@@ -80,8 +80,8 @@
 
     /// A deterministic app on the Mac: a `TestClock`, a fixed date, and everything else `HeadlessHost` pins.
     @MainActor
-    public static func headless(device: AgentDeviceConfig<AppIntent<AppCoordinator>> = device)
-      -> HeadlessHost<ObservationDriver<AppCoordinator>>
+    public static func headless(device: AgentDeviceConfig<AgentIntent<AppCoordinator>> = device)
+      -> HeadlessHost<AgentObservationDriver<AppCoordinator>>
     {
       HeadlessHost(mockMethods: mockMethods, device: device) { deps, _ in
         deps.itemsClient = .liveValue
@@ -92,7 +92,7 @@
 
     /// The app as it would run behind AgentCtlBridge in a DEBUG build: real time and real mock latency.
     @MainActor
-    public static func live(latency: MockLatency) -> LiveHost<ObservationDriver<AppCoordinator>> {
+    public static func live(latency: MockLatency) -> LiveHost<AgentObservationDriver<AppCoordinator>> {
       LiveHost(latency: latency, mockMethods: mockMethods, device: device) { deps, _ in
         deps.itemsClient = .liveValue
       } coordinator: {

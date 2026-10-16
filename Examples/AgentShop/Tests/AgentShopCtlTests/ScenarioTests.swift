@@ -10,7 +10,7 @@ extension AppCtlSuite {
   /// tests alone catch a failing scenario or a stale command reference, through the library's scenario checks.
   @MainActor
   @Suite struct ScenarioTests {
-    static func checks() throws -> AgentScenarioChecks<StoreDriver<AppFeature>> {
+    static func checks() throws -> AgentScenarioChecks<AgentStoreDriver<AppFeature>> {
       try AgentScenarioChecks(config: AgentShopConfig.appCtl)
     }
 

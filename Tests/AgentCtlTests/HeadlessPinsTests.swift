@@ -72,13 +72,13 @@ struct HeadlessPinsTests {
     let state = read()
     // UTC, which Foundation spells `GMT`: no offset, and no daylight saving time to change it.
     for timeZone in [state.timeZone, state.calendarTimeZone] {
-      #expect(timeZone == HeadlessHost<StoreDriver<Probe>>.fixedTimeZone)
-      #expect(timeZone.secondsFromGMT(for: HeadlessHost<StoreDriver<Probe>>.fixedDate) == 0)
-      #expect(timeZone.nextDaylightSavingTimeTransition(after: HeadlessHost<StoreDriver<Probe>>.fixedDate) == nil)
+      #expect(timeZone == HeadlessHost<AgentStoreDriver<Probe>>.fixedTimeZone)
+      #expect(timeZone.secondsFromGMT(for: HeadlessHost<AgentStoreDriver<Probe>>.fixedDate) == 0)
+      #expect(timeZone.nextDaylightSavingTimeTransition(after: HeadlessHost<AgentStoreDriver<Probe>>.fixedDate) == nil)
     }
     #expect(state.locale == "en_US_POSIX")
     #expect(state.calendar == "gregorian")
-    #expect(state.date == HeadlessHost<StoreDriver<Probe>>.fixedDate)
+    #expect(state.date == HeadlessHost<AgentStoreDriver<Probe>>.fixedDate)
     #expect(state.uuids.map(\.uuidString) == [
       "00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001",
     ])
@@ -100,6 +100,6 @@ struct HeadlessPinsTests {
     #expect(state.locale == "fr_FR")
     #expect(state.timeZone.identifier == "Europe/Warsaw")
     // What it leaves alone stays pinned.
-    #expect(state.calendarTimeZone == HeadlessHost<StoreDriver<Probe>>.fixedTimeZone)
+    #expect(state.calendarTimeZone == HeadlessHost<AgentStoreDriver<Probe>>.fixedTimeZone)
   }
 }

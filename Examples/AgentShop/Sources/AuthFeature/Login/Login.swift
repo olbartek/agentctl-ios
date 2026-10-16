@@ -58,7 +58,7 @@ public struct Login {
     case binding(BindingAction<State>)
     case submitTapped
     case faceIDTapped
-    case faceIDAnswered(BiometryResult)
+    case faceIDAnswered(AgentDevice.BiometryResult)
     case googleTapped
     case loginResponse(Result<Session, AuthError>)
     case useOTPTapped

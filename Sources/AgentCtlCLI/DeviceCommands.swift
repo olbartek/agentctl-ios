@@ -128,7 +128,7 @@
 
     /// `<lat>,<lon>` (as `device location` takes it) or `clear`.
     static func location(_ value: String, simulator: String?) -> Int32 {
-      if value != "clear", DeviceLocation.parse(value) == nil {
+      if value != "clear", AgentDevice.Location.parse(value) == nil {
         return AppCommands.fail(UsageError("app location needs <lat>,<lon> or clear, e.g. 52.2297,21.0122"))
       }
       return run(simulator) { root, sim, device in

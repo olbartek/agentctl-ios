@@ -25,12 +25,12 @@ struct Gadget {
   enum Action: Equatable, Sendable {
     case onAppear
     case cameraTapped
-    case cameraAnswered(PermissionStatus)
+    case cameraAnswered(AgentDevice.PermissionStatus)
     case unlockTapped
-    case unlocked(BiometryResult)
+    case unlocked(AgentDevice.BiometryResult)
     case onlineChanged(Bool)
-    case locationChanged(DeviceLocation?)
-    case phaseChanged(DevicePhase)
+    case locationChanged(AgentDevice.Location?)
+    case phaseChanged(AgentDevice.Phase)
     case linkOpened(String)
     case pinged
     case fetchTapped
@@ -109,7 +109,7 @@ extension Gadget: AgentScreen, AgentContainer {
   static let device = AgentDeviceConfig<Action>(
     permissions: ["camera", "location"],
     openURL: { $0.scheme == "gadget" ? .linkOpened($0.absoluteString) : nil },
-    pushes: [AgentPush("ping", help: "A ping.", received: .pinged, opened: .linkOpened("ping"))],
+    pushes: [AgentDevice.Push("ping", help: "A ping.", received: .pinged, opened: .linkOpened("ping"))],
     scenePhase: { .phaseChanged($0) },
     relaunch: true,
     offlineErrorCode: "offline",
@@ -118,7 +118,7 @@ extension Gadget: AgentScreen, AgentContainer {
   )
 
   @MainActor
-  static func host(device: AgentDeviceConfig<Action> = Gadget.device) -> HeadlessHost<StoreDriver<Gadget>> {
+  static func host(device: AgentDeviceConfig<Action> = Gadget.device) -> HeadlessHost<AgentStoreDriver<Gadget>> {
     HeadlessHost(
       initialState: { State() }, reducer: { Gadget() },
       mockMethods: [MockMethod("gadget.fetch", errorCodes: ["offline", "boom"])], device: device
@@ -132,7 +132,7 @@ extension AgentCtlSuite {
   @MainActor
   struct DeviceTests {
     /// The steps of `script` after `(launch)`, as text.
-    func run(_ script: String, host: HeadlessHost<StoreDriver<Gadget>> = Gadget.host()) async -> (text: String, status: RunStatus) {
+    func run(_ script: String, host: HeadlessHost<AgentStoreDriver<Gadget>> = Gadget.host()) async -> (text: String, status: RunStatus) {
       await serially {
         let runner = host.makeRunner()
         _ = await runner.launch()

@@ -66,7 +66,7 @@
     @ObservationIgnored private let screens: [ScreenDoc]
     /// The host's `mock` example, so the bridge's `/screens` lists the runtime commands exactly as the CLI does.
     @ObservationIgnored private let mockExample: String
-    @ObservationIgnored private let deviceSurface: DeviceSurface
+    @ObservationIgnored private let deviceSurface: AgentDevice.Surface
     @ObservationIgnored private var server: BridgeServer?
     @ObservationIgnored private var router: BridgeRouter<Driver>?
 

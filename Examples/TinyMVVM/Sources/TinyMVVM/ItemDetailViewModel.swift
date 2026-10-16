@@ -81,13 +81,13 @@ extension ItemDetailViewModel: AgentViewModel {
 
   nonisolated public static func errorCode(_ state: AgentState) -> String? { state.error?.rawValue }
 
-  nonisolated public static var commands: [AgentCommand<AgentState, ScreenIntent<ItemDetailViewModel>>] {
+  nonisolated public static var commands: [AgentCommand<AgentState, AgentScreenIntent<ItemDetailViewModel>>] {
     [
       .action(
         "save",
         help: "Save this item. A save starts a \(cooldownSeconds)-second cooldown; saving again "
           + "before it runs out reports error=cooldown.",
-        ScreenIntent { $0.saveTapped() }
+        AgentScreenIntent { $0.saveTapped() }
       )
     ]
   }

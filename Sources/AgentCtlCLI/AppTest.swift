@@ -100,15 +100,17 @@
         return (Result(name: name, outcome: .failed(line: error.line, text: "parse error: \(error.description)")), false)
       }
       let port: Int
+      let token: String
       do {
-        port = try await AppCommands.launchApp(
+        (_, port, token, _) = try await AppCommands.launchApp(
           root: root, seed: nil, simulator: device.udid, latency: options.latency, clearSession: true, build: build,
           port: options.port
-        ).port
+        )
       } catch {
         return (Result(name: name, outcome: .broken("launch failed: \(error)")), false)
       }
-      let client = BridgeClient(port: port)
+      // The launch's own token, kept in memory: never the file's or APPCTL_TOKEN.
+      let client = BridgeClient(port: port, token: token)
       // One request for the script, or one per line: the app keeps one runner across requests, so `expect` still
       // sees the calls of the step before it.
       let requests = options.stepDelay == nil ? [source] : lines.map(\.text)
@@ -132,9 +134,13 @@
     }
 
     /// Every response is checked, not only the launch's: a response from another app on the port (the same app on
-    /// Android, say) must not pass or fail the scenario, so it is not run, and its output is not the app's.
+    /// Android, say) must not pass or fail the scenario, so it is not run, and its output is not the app's. Nor is a
+    /// refusal (401, 403) from the app itself.
     static func foreign(_ response: BridgeClient.Response, port: Int) -> Result.Outcome? {
-      response.identity.isOurs ? nil : .broken(Message.anotherAppAnswered(port: port, answeredAs: response.identity))
+      guard response.identity.isOurs else {
+        return .broken(Message.anotherAppAnswered(port: port, answeredAs: response.identity))
+      }
+      return response.refusal(port: port).map { .broken($0.description) }
     }
 
     /// What one run through the bridge amounts to, from the steps it printed and its exit code.

@@ -78,12 +78,13 @@
       }
       do {
         let requested = try BridgePort.requested(flag: nil, environment: ProcessInfo.processInfo.environment)
-        let (device, port, _) = try await AppCommands.launchApp(
+        let (device, port, token, _) = try await AppCommands.launchApp(
           root: root, seed: check.seed, simulator: simulator, latency: nil, clearSession: true, build: true,
           port: requested
         )
         let script = try String(contentsOf: scenarios.appending(path: "\(scenario).appctl"), encoding: .utf8)
-        let bridge = BridgeClient(port: port)
+        // The launch's own token, kept in memory.
+        let bridge = BridgeClient(port: port, token: token)
         let run = try await bridge.send("POST", "/run", body: script)
         // Every response is checked, as `app test` checks them (CONTRACT.md §8.6): another app's is not this one's.
         guard run.identity.isOurs else {
@@ -91,6 +92,7 @@
           print("  \(Message.anotherAppAnswered(port: port, answeredAs: run.identity))")
           return .internalError
         }
+        if let refused = run.refusal(port: port) { throw refused }
         guard run.exitCode == 0 else {
           report("L4 app", ok: false, detail: "\(scenario) failed in the app", since: start)
           print(run.body.split(separator: "\n").map { "  \($0)" }.joined(separator: "\n"))
@@ -104,6 +106,7 @@
             print("  \(Message.anotherAppAnswered(port: port, answeredAs: snapshot.identity))")
             return .internalError
           }
+          if let refused = snapshot.refusal(port: port) { throw refused }
           guard Self.shows(expected, snapshot.body) else {
             report("L4 app", ok: false, detail: "unexpected final screen", since: start)
             print("  \(snapshot.body)")

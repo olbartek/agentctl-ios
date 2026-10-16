@@ -86,7 +86,8 @@ The whole integration, in five steps — each is a few lines of real code in
 
 1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.8.0")`, and take only
    the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` or `AgentCtlObservation` for the
-   config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, `AgentCtlTestSupport` for tests).
+   config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, gated behind `AgentLaunchArguments.isRequested()`,
+   and for UI tests that launch the app, `AgentCtlTestSupport` for tests).
 2. **Conform your screens** — beside each reducer (or view model), an `AgentScreen` extension: its path, a `key=value` summary, an
    error code and its commands; a container (`AgentContainer`) resolves which screen is active.
 3. **Write your CLI** — one `AppCtlConfig` describing your app, and a four-line executable that runs it.
@@ -97,12 +98,12 @@ The whole integration, in five steps — each is a few lines of real code in
 
 | Guide | What it covers |
 |---|---|
-| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7 and 0.8. |
+| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7, 0.8 and 0.9. |
 | [Commands](docs/guides/commands.md) | Every command your CLI gets (`run`, `test`, `docs`, `check`, `app …`), the exit codes, the runtime commands, and what a headless run pins to stay deterministic. |
 | [The device environment](docs/guides/device-environment.md) | `device …`: permissions and system prompts, links, pushes, background, foreground and relaunch, the network, location and biometry — one row per capability, with what your app wires and the real-OS `app` wrapper. |
 | [The verification ladder](docs/guides/verification-ladder.md) | `check`, from `swift build` to the real app on a simulator, and verifying at the cheapest rung that proves a change. |
 | [Coverage and scenario checks](docs/guides/coverage-and-checks.md) | The guards that fail your build when the agent surface drifts, and the scenario checks every host's tests need. |
-| [The in-app bridge](docs/guides/bridge.md) | Driving the real app on a simulator: `AgentLaunch`, launch seeds, `advance` on real time, `app test`. |
+| [The in-app bridge](docs/guides/bridge.md) | Driving the real app on a simulator: `AgentLaunch` and `isRequested()`, launch seeds, `advance` on real time, `app test`, the bridge's token, and UI tests that launch the app. |
 | [CONTRACT.md](CONTRACT.md) | The engine specified independently of Swift: what a port implements. |
 
 ## The contract

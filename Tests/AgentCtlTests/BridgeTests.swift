@@ -20,13 +20,15 @@
         let port: UInt16
       }
 
+      static let token = BridgeConnectionsTests.token
+
       /// A live app with zero latency whose runner synthesizes appearance (there are no views in a test).
       func startBridge() async throws -> Bridge {
         let app = TinyAppConfig.live(latency: .zero)
         let runner = app.makeRunner(synthesizesAppearance: true)
         _ = await runner.launch()
         let router = BridgeRouter(runner: runner, screensText: { ScreensRenderer.render(TinyAppConfig.screens, mockExample: TinyAppConfig.docsText.mockExample) })
-        let server = BridgeServer { try await router.handle($0) }
+        let server = BridgeServer(token: Self.token) { try await router.handle($0) }
         let port = try await server.start(port: 0)
         return Bridge(server: server, port: port)
       }
@@ -40,6 +42,7 @@
         var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(port)\(path)")))
         request.httpMethod = method
         if !body.isEmpty { request.httpBody = Data(body.utf8) }
+        request.setValue(Self.token, forHTTPHeaderField: "X-Appctl-Token")
         let (data, response) = try await URLSession.shared.data(for: request)
         let http = try #require(response as? HTTPURLResponse)
         return (http.statusCode, String(decoding: data, as: UTF8.self), http.value(forHTTPHeaderField: "X-Appctl-Exit"))
@@ -146,7 +149,7 @@
 
       /// Every response names the app, errors included, so a CLI can tell its own app from another one on the port.
       @Test func everyResponseNamesTheApp() async throws {
-        let server = BridgeServer(app: "com.example.tinyapp") { request in
+        let server = BridgeServer(app: "com.example.tinyapp", token: Self.token) { request in
           BridgeResponse(status: request.path == "/snapshot" ? 200 : 404, body: "x\n", exitCode: 0)
         }
         let port = try await server.start(port: 0)
@@ -154,6 +157,7 @@
         for path in ["/snapshot", "/nowhere"] {
           var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(port)\(path)")))
           request.httpMethod = "GET"
+          request.setValue(Self.token, forHTTPHeaderField: "X-Appctl-Token")
           let (_, response) = try await URLSession.shared.data(for: request)
           let http = try #require(response as? HTTPURLResponse)
           #expect(http.value(forHTTPHeaderField: "X-Appctl-App") == "com.example.tinyapp", "\(path)")
@@ -168,10 +172,10 @@
       /// it (CONTRACT.md §8.1). A CLI that reaches the port then reaches the other listener, which is why launches
       /// check `X-Appctl-App`.
       @Test func theBridgeDoesNotBindAPortSomethingElseListensOn() async throws {
-        let first = BridgeServer(app: "first") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        let first = BridgeServer(app: "first", token: Self.token) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
         let port = try await first.start(port: 0)
         defer { first.stop() }
-        let second = BridgeServer(app: "second") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        let second = BridgeServer(app: "second", token: Self.token) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
         await #expect(throws: (any Error).self) { _ = try await second.start(port: port) }
         second.stop()
       }
@@ -220,9 +224,10 @@
 
       @Test func launchArguments() {
         let options = AgentLaunch<AgentStoreDriver<TinyRoot>>.Options(arguments: [
-          "TinyApp", "-agent-port", "9000", "-appctl-seed", "open 2; save", "-mock-latency", "0",
+          "TinyApp", "-agent-token", Self.token, "-agent-port", "9000", "-appctl-seed", "open 2; save", "-mock-latency", "0",
           "-clear-session",
         ])
+        #expect(options.token == Self.token)
         #expect(options.port == 9000)
         #expect(options.seed == "open 2; save")
         #expect(options.latency == .zero)
@@ -230,6 +235,62 @@
         #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.Options(arguments: ["TinyApp"]) == AgentLaunch<AgentStoreDriver<TinyRoot>>.Options(arguments: []))
         // With no `-agent-port`, the app listens where the CLI connects by default.
         #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.Options(arguments: []).port == BridgeDefaults.port)
+        #expect(
+          AgentLaunch<AgentStoreDriver<TinyRoot>>.Options(arguments: ["TinyApp", "-agent-token", Self.token]).port
+            == BridgeDefaults.port
+        )
+      }
+
+      /// Without a well-formed `-agent-token`, every other bridge argument is ignored: a launch without one does not
+      /// seed the app, clear its session or pick its port (CONTRACT.md §8.2).
+      @Test func withoutATokenEveryLaunchArgumentIsIgnored() {
+        typealias Options = AgentLaunch<AgentStoreDriver<TinyRoot>>.Options
+        let rest = ["-agent-port", "9000", "-appctl-seed", "open 2; save", "-mock-latency", "0", "-clear-session"]
+        let plain = Options(arguments: ["TinyApp"])
+        #expect(plain.token == nil && plain.port == BridgeDefaults.port && plain.seed == nil && plain.latency == nil)
+        #expect(!plain.clearSession)
+        let malformed = [
+          [], ["-agent-token"], ["-agent-token", ""], ["-agent-token", String(Self.token.dropLast())],
+          ["-agent-token", Self.token + "0"], ["-agent-token", Self.token.uppercased()],
+          ["-agent-token", "g" + Self.token.dropFirst()], ["-agent-token=\(Self.token)"],
+        ]
+        for token in malformed {
+          #expect(Options(arguments: ["TinyApp"] + token + rest) == plain, "\(token)")
+        }
+        // The executable's own name is not an argument.
+        #expect(Options(arguments: ["-agent-token", Self.token]) == plain)
+      }
+
+      /// The token is never printed or dumped: not in the launch options, not in the server, not in the launch.
+      @Test func theTokenIsNeverPrinted() async throws {
+        let options = AgentLaunch<AgentStoreDriver<TinyRoot>>.Options(arguments: ["TinyApp", "-agent-token", Self.token])
+        let server = BridgeServer(token: Self.token) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        let launch = AgentLaunch(config: TinyAppConfig.appCtl, arguments: ["TinyApp", "-agent-token", Self.token])
+        var texts = ["\(options)", String(reflecting: options), String(reflecting: server)]
+        for value in [options as Any, server, launch] {
+          var dumped = ""
+          dump(value, to: &dumped, maxDepth: 4)
+          texts.append(dumped)
+        }
+        for text in texts {
+          #expect(!text.contains(Self.token), "\(text)")
+        }
+        #expect("\(options)".contains("token: <redacted>"))
+      }
+
+      /// Without a token the app starts no bridge: `start()` returns at once and nothing listens.
+      @Test func withoutATokenNoBridgeStarts() async throws {
+        let config = TinyAppConfig.appCtl
+        let launch = AgentLaunch(config: config, arguments: ["TinyApp", "-agent-port", "0", "-appctl-seed", "open 2"])
+        #expect(launch.options.token == nil)
+        #expect(launch.isReady, "a seed was taken without a token")
+        await launch.start()
+        #expect(!launch.isListening)
+        // With one, the same launch listens.
+        let listening = AgentLaunch(config: config, arguments: ["TinyApp", "-agent-token", Self.token, "-agent-port", "0"])
+        await listening.start()
+        #expect(listening.isListening)
+        listening.stop()
       }
     }
   }

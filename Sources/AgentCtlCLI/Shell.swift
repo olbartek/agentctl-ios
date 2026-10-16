@@ -1,4 +1,5 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
+  import AgentCtlCore
   import Foundation
 
   /// Runs the tools the CLI drives (`simctl`, `xcodebuild`, `ps`), each with a time limit where one makes sense.
@@ -24,6 +25,15 @@
     /// The exit status ``run(_:in:log:append:timeout:)`` returns for a child it had to stop.
     static let timedOut: Int32 = -2
 
+    /// A command line as it may be logged: the bridge's token (after `-agent-token`) is never written down.
+    static func redacted(_ arguments: [String]) -> [String] {
+      var result = arguments
+      for index in result.indices.dropLast() where result[index] == BridgeToken.argument {
+        result[index + 1] = "<redacted>"
+      }
+      return result
+    }
+
     static func which(_ tool: String) -> Bool {
       capture(["which", tool], in: URL(fileURLWithPath: "/"), timeout: 10).contains("/")
     }
@@ -46,7 +56,7 @@
       process.standardError = handle
       guard let exited = start(process) else { return -1 }
       guard wait(for: process, exited: exited, timeout: timeout) else {
-        handle.write(Data("\nagentctl: \(arguments.joined(separator: " ")) did not finish within \(Int(timeout ?? 0)) s; stopped it\n".utf8))
+        handle.write(Data("\nagentctl: \(redacted(arguments).joined(separator: " ")) did not finish within \(Int(timeout ?? 0)) s; stopped it\n".utf8))
         return timedOut
       }
       return process.terminationStatus

@@ -353,6 +353,13 @@
   /// Talks to the agent bridge (AgentCtlBridge) in the running app over loopback HTTP.
   struct BridgeClient {
     let port: Int
+    /// Sent as `X-Appctl-Token` on every request; without one, the bridge answers 401 (CONTRACT.md §8.4).
+    var token: String?
+
+    init(port: Int, token: String?) {
+      self.port = port
+      self.token = token
+    }
 
     struct Response {
       var status: Int
@@ -360,6 +367,33 @@
       var exitCode: Int32
       /// `X-Appctl-App` and `X-Appctl-Platform`: the app that answered, as far as it says.
       var identity: BridgeIdentity
+      /// Whether the answer carried `X-Appctl-Exit`, as every answer of a bridge does.
+      var carriesExit = true
+
+      /// The bridge's refusal of the request, a 401 or a 403 with `X-Appctl-Exit`, or `nil` when it did not refuse
+      /// it. A 401 or 403 without the header is not a bridge's.
+      func refusal(port: Int) -> Refused? {
+        guard carriesExit else { return nil }
+        switch status {
+        case 401: return Refused(port: port, reason: .token)
+        case 403: return Refused(port: port, reason: .forbidden)
+        default: return nil
+        }
+      }
+    }
+
+    /// The bridge refused the request (CONTRACT.md §8.4): exit 3, with a message that says why.
+    struct Refused: Error, CustomStringConvertible, Equatable {
+      enum Reason { case token, forbidden }
+      var port: Int
+      var reason: Reason
+
+      var description: String {
+        switch reason {
+        case .token: Message.refusedToken(port: port)
+        case .forbidden: Message.forbidden(port: port)
+        }
+      }
     }
 
     /// How long a request that runs nothing (`GET`, the readiness poll) may go without an answer.
@@ -392,6 +426,7 @@
       var request = URLRequest(url: url, timeoutInterval: runsScript ? limit : timeout ?? Self.idleTimeout)
       request.httpMethod = method
       request.httpBody = body.map { Data($0.utf8) }
+      if let token { request.setValue(token, forHTTPHeaderField: BridgeToken.header) }
       let session = runsScript ? Self.scriptSession(limit) : URLSession.shared
       defer { if runsScript { session.finishTasksAndInvalidate() } }
       let data: Data
@@ -402,14 +437,16 @@
         throw ScriptTimedOut(port: port, limit: limit)
       }
       let http = response as? HTTPURLResponse
+      let exit = http?.value(forHTTPHeaderField: "X-Appctl-Exit")
       return Response(
         status: http?.statusCode ?? 0,
         body: String(decoding: data, as: UTF8.self),
-        exitCode: Int32(http?.value(forHTTPHeaderField: "X-Appctl-Exit") ?? "") ?? 3,
+        exitCode: Int32(exit ?? "") ?? 3,
         identity: BridgeIdentity(
           app: http?.value(forHTTPHeaderField: "X-Appctl-App"),
           platform: http?.value(forHTTPHeaderField: "X-Appctl-Platform")
-        )
+        ),
+        carriesExit: exit != nil
       )
     }
 
@@ -421,17 +458,27 @@
       return URLSession(configuration: configuration)
     }
 
-    /// Polls `GET /snapshot` until the bridge answers, and returns its answer.
+    /// Polls `GET /snapshot` until the bridge answers, and returns its answer: a snapshot, or a refusal (401, 403),
+    /// which the caller judges once it knows who sent it.
     func waitUntilReady(timeout: Duration = .seconds(60)) async throws -> Response {
       let clock = ContinuousClock()
       let deadline = clock.now.advanced(by: timeout)
       while clock.now < deadline {
-        if let response = try? await send("GET", "/snapshot", timeout: 2), response.status == 200 {
+        if let response = try? await send("GET", "/snapshot", timeout: 2), [200, 401, 403].contains(response.status) {
           return response
         }
         try await Task.sleep(for: .milliseconds(100))
       }
       throw AppCtlError("the app's agent bridge did not answer on 127.0.0.1:\(port) within \(timeout)")
+    }
+  }
+
+  /// The token never appears in a description or a dump of the client.
+  extension BridgeClient: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    var description: String { "BridgeClient(port: \(port), token: \(token == nil ? "nil" : BridgeToken.redacted))" }
+    var debugDescription: String { description }
+    var customMirror: Mirror {
+      Mirror(self, children: ["port": port, "token": token.map { _ in BridgeToken.redacted } as Any])
     }
   }
 

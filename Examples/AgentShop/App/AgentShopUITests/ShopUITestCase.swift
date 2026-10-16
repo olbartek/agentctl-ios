@@ -1,3 +1,4 @@
+import AgentCtlBridge
 import XCTest
 
 /// The driver every generated UI test runs on (`Generated/*UITests.swift`, written by `bench/gen_uitests.py`).
@@ -9,7 +10,8 @@ import XCTest
 ///
 /// The app is launched the way the benchmark launches it for the bridge: no saved session, no mock latency. A
 /// scenario's `mock` lines become `-mock-fault <method>#<n>=<code>` launch arguments, since a UI test cannot
-/// send them later.
+/// send them later. Like the CLI, every launch passes a fresh `-agent-token` (`AgentLaunchArguments.makeToken()`):
+/// without one, the app ignores `-clear-session` and `-mock-latency` and runs as the plain app.
 @MainActor
 class ShopUITestCase: XCTestCase {
   var app: XCUIApplication!
@@ -30,9 +32,11 @@ class ShopUITestCase: XCTestCase {
 
   func launch(faults: [String] = []) {
     app = XCUIApplication()
-    // An ephemeral bridge port, so the running app never clashes with another copy's bridge.
+    // A fresh token, without which the app ignores the bridge's launch arguments (CONTRACT.md §8.2); an ephemeral
+    // bridge port, so the running app never clashes with another copy's bridge.
     // `-ui-testing` turns off the password autofill hints that fight XCUITest typing (see DesignSystem/Fields.swift).
-    app.launchArguments = ["-ui-testing", "-clear-session", "-mock-latency", "0", "-agent-port", "0"]
+    app.launchArguments =
+      ["-ui-testing", "-agent-token", AgentLaunchArguments.makeToken(), "-clear-session", "-mock-latency", "0", "-agent-port", "0"]
       + faults.flatMap { ["-mock-fault", $0] }
     app.launch()
   }

@@ -126,6 +126,11 @@ extension Gadget: AgentScreen, AgentContainer {
   }
 }
 
+@MainActor
+final class HearingOrder {
+  var indices: [Int] = []
+}
+
 /// What this guards: the `device` runtime command (CONTRACT.md §2.4). Its texts are shared with agentctl-android
 /// byte for byte.
 extension AgentCtlSuite {
@@ -350,6 +355,43 @@ extension AgentCtlSuite {
         AgentRegistry.runtimeCommands(device: Gadget.device.surface)[0].help
           .contains("error=<code|none>, pending=<n> or prompt=<service|none>")
       )
+    }
+
+    /// Observers hear a change in the order they subscribed, the same in every process (CONTRACT.md §6), not in
+    /// the order of a hash table seeded per process: two refetches when the network comes back must run in one order.
+    @Test func observersHearAChangeInTheOrderTheySubscribed() async {
+      let device = AgentDevice(driven: true)
+      let subscribed = Array(0..<32)
+      let online = await hearingOrder(count: subscribed.count, subscribe: device.onlineUpdates) {
+        device.setOnline(false)
+      } heard: { !$0 }
+      #expect(online == subscribed)
+      let location = await hearingOrder(count: subscribed.count, subscribe: device.locationUpdates) {
+        device.setLocation(.init(latitude: 52.2297, longitude: 21.0122))
+      } heard: { $0 != nil }
+      #expect(location == subscribed)
+    }
+
+    /// The order in which `count` observers, each subscribed by `subscribe` one after another, hear `change`.
+    func hearingOrder<Value: Sendable>(
+      count: Int, subscribe: () -> AsyncStream<Value>, change: () -> Void, heard: @escaping @MainActor (Value) -> Bool
+    ) async -> [Int] {
+      await serially {
+        let order = HearingOrder()
+        let observers = (0..<count).map { index in
+          let updates = subscribe()
+          return Task { @MainActor in
+            for await value in updates where heard(value) {
+              order.indices.append(index)
+              return
+            }
+          }
+        }
+        await Task.megaYield()
+        change()
+        for observer in observers { await observer.value }
+        return order.indices
+      }
     }
 
     @Test func theCoverageGuardNamesUnusedDeviceCommands() throws {

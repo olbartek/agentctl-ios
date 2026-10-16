@@ -43,6 +43,10 @@
   /// All three run the same fixed set of scenario files, read once when this value is constructed — later
   /// changes to the directory on disk aren't picked up without constructing a new `AgentCoverage`.
   ///
+  /// The two guards that run scenarios turn on the main serial executor (``Deterministic``) for each run, as the
+  /// CLI does, and restore it after. That is process-global state, so the tests that call them must not run in
+  /// parallel with other tests that drive an app: put them in a `.serialized` suite.
+  ///
   /// ## What this does not cover
   /// A `nil`/empty result from a guard means the scenarios that exist don't exhibit the problem; it says
   /// nothing about scenarios that don't exist. In particular these guards cannot tell a thorough scenario
@@ -109,7 +113,7 @@
     public func undocumentedSummaryKeys() async -> [String] {
       var undocumented: Set<String> = []
       for file in files {
-        let result = await ScenarioRunner.run(file: file, make: make)
+        let result = await deterministically { await ScenarioRunner.run(file: file, make: make) }
         for step in result.steps {
           guard let doc = screens.first(where: { Self.matches(pattern: $0.path, path: step.screen) }) else {
             undocumented.insert("\(step.screen): no documented screen")
@@ -127,7 +131,7 @@
     public func unvisitedScreens() async -> [String] {
       var visited: Set<String> = []
       for file in files {
-        let result = await ScenarioRunner.run(file: file, make: make)
+        let result = await deterministically { await ScenarioRunner.run(file: file, make: make) }
         visited.formUnion(result.steps.map(\.screen))
       }
       return screens.map(\.path).filter { pattern in

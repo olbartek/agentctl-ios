@@ -288,14 +288,6 @@
       await ScenarioRunner.run(file: file, make: { config.makeHeadless().makeRunner() })
     }
 
-    /// Runs `operation` with the main serial executor, as the CLI runs every headless command, and restores it.
-    private func deterministically<T>(_ operation: @MainActor () async -> T) async -> T {
-      let previous = Deterministic.isEnabled
-      Deterministic.isEnabled = true
-      defer { Deterministic.isEnabled = previous }
-      return await operation()
-    }
-
     /// ``sessionReplayMatches(parts:)`` for one file: `nil` when the split run matches the single one.
     private func replayProblem(_ file: URL, parts: Int) async -> String? {
       let name = file.lastPathComponent
@@ -377,5 +369,15 @@
         Array(lines[(index * lines.count / count)..<((index + 1) * lines.count / count)])
       }
     }
+  }
+
+  /// Runs `operation` with the main serial executor, as the CLI runs every headless command, and restores it.
+  /// ``AgentScenarioChecks`` and ``AgentCoverage`` run every scenario through it.
+  @MainActor
+  func deterministically<T>(_ operation: @MainActor () async -> T) async -> T {
+    let previous = Deterministic.isEnabled
+    Deterministic.isEnabled = true
+    defer { Deterministic.isEnabled = previous }
+    return await operation()
   }
 #endif

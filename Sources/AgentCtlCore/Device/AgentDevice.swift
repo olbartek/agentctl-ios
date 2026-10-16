@@ -271,7 +271,7 @@ public final class AgentDevice: Sendable {
   package func setOnline(_ online: Bool) {
     let observers = state.withLock { state in
       state.isOnline = online
-      return Array(state.onlineObservers.values)
+      return state.onlineObservers.sorted { $0.key < $1.key }.map(\.value)
     }
     for observer in observers { observer.yield(online) }
   }
@@ -279,7 +279,7 @@ public final class AgentDevice: Sendable {
   package func setLocation(_ location: AgentDevice.Location?) {
     let observers = state.withLock { state in
       state.location = location
-      return Array(state.locationObservers.values)
+      return state.locationObservers.sorted { $0.key < $1.key }.map(\.value)
     }
     for observer in observers { observer.yield(location) }
   }

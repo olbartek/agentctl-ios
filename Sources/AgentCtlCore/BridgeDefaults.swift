@@ -1,5 +1,7 @@
 import Foundation
+#if DEBUG || AGENTCTL_RELEASE
 import Security
+#endif
 
 /// Defaults of the in-app bridge that both of its ends rely on: the app (`AgentLaunch`, in AgentCtlBridge) and
 /// the CLI's `app` commands and `check --ui` (AgentCtlCLI). They live here, the one target both ends see, so the
@@ -14,6 +16,9 @@ public enum BridgeDefaults {
   public static let platform = "ios"
 }
 
+#if DEBUG || AGENTCTL_RELEASE
+// Only the CLI and the bridge use the token, and both compile to nothing in a release build (see Package.swift), so
+// the token goes too: a host's Release binary carries neither `-agent-token` nor `X-Appctl-Token`.
 /// The bridge's token (CONTRACT.md §8.2, §8.4): a launch's secret, which the CLI makes and passes as `-agent-token`, and
 /// every request then carries as `X-Appctl-Token`. Both ends use it — the CLI makes one, the app checks its form — so it
 /// lives here beside ``BridgeDefaults``. A host names it as `AgentLaunchArguments.makeToken()` (AgentCtlBridge).
@@ -53,3 +58,4 @@ public enum BridgeToken {
     return difference == 0
   }
 }
+#endif

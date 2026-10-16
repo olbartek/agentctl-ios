@@ -131,6 +131,15 @@ jobs:
       - name: Build in release
         run: swift build -c release
 
+      # AgentCtlCore ships, so it must not carry the bridge's token: no `-agent-token`, no `X-Appctl-Token`.
+      - name: Check the release AgentCtlCore has no bridge token
+        run: |
+          set -euo pipefail
+          if LC_ALL=C grep -l -a -e 'X-Appctl-Token' -e 'agent-token' .build/release/AgentCtlCore.build/*.o; then
+            echo "The release AgentCtlCore carries the bridge token" >&2
+            exit 1
+          fi
+
       # The other release path a host relies on: Templates/appctl with CONFIGURATION="release" builds the host's CLI
       # with -DAGENTCTL_RELEASE, which brings AgentCtl back into a release build. Build TinyApp's CLI that way and run
       # a script with it.

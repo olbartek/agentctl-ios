@@ -118,13 +118,15 @@
     private static func send(_ method: String, _ path: String, body: String?, port flag: Int?) async -> Int32 {
       let port: Int
       let source: BridgePort.Source
+      let token: String?
       do {
         (port, source) = try connection(flag: flag)
+        token = try Self.token(port: port, source: source)
       } catch {
         return fail(error)
       }
       do {
-        let client = BridgeClient(port: port, token: token(port: port, source: source))
+        let client = BridgeClient(port: port, token: token)
         if case let .launchState(state) = source {
           // A script changes the app it runs in, so it is only posted once the recorded app is known to answer;
           // a GET changes nothing, and its own answer is checked instead.
@@ -152,8 +154,8 @@
 
     /// The token to send to the bridge on `port`: `APPCTL_TOKEN`, else the launch state's when it names that port. The
     /// file is read again only when the port did not come from it, and then a file that cannot be read has no token.
-    static func token(port: Int, source: BridgePort.Source) -> String? {
-      BridgeTokenSource.connecting(port: port, environment: ProcessInfo.processInfo.environment) {
+    static func token(port: Int, source: BridgePort.Source) throws -> String? {
+      try BridgeTokenSource.connecting(port: port, environment: ProcessInfo.processInfo.environment) {
         if case let .launchState(state) = source { return state }
         return try? Repo.find().flatMap { try LaunchState.read(in: $0) }
       }

@@ -72,17 +72,29 @@
 
       /// `APPCTL_TOKEN`, as `APPCTL_PORT` does for the port, beats the file (an empty one is unset); the file's token
       /// goes only to the port it records; otherwise there is none.
-      @Test func theTokenComesFromTheVariableThenTheFileForItsPort() {
+      @Test func theTokenComesFromTheVariableThenTheFileForItsPort() throws {
         let file = { () -> LaunchState? in Self.state }
         let none = { () -> LaunchState? in nil }
         let variable = ["APPCTL_TOKEN": "fedcba9876543210fedcba9876543210"]
-        #expect(BridgeTokenSource.connecting(port: 8766, environment: variable, launchState: file) == variable["APPCTL_TOKEN"])
-        #expect(BridgeTokenSource.connecting(port: 9000, environment: variable, launchState: none) == variable["APPCTL_TOKEN"])
-        #expect(BridgeTokenSource.connecting(port: 8766, environment: [:], launchState: file) == Self.token)
-        #expect(BridgeTokenSource.connecting(port: 8766, environment: ["APPCTL_TOKEN": ""], launchState: file) == Self.token)
-        #expect(BridgeTokenSource.connecting(port: 9000, environment: [:], launchState: file) == nil)
-        #expect(BridgeTokenSource.connecting(port: 8766, environment: [:], launchState: none) == nil)
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: variable, launchState: file) == variable["APPCTL_TOKEN"])
+        #expect(try BridgeTokenSource.connecting(port: 9000, environment: variable, launchState: none) == variable["APPCTL_TOKEN"])
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: [:], launchState: file) == Self.token)
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: ["APPCTL_TOKEN": ""], launchState: file) == Self.token)
+        #expect(try BridgeTokenSource.connecting(port: 9000, environment: [:], launchState: file) == nil)
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: [:], launchState: none) == nil)
         #expect(BridgeTokenSource.environmentVariable == "APPCTL_TOKEN")
+      }
+
+      /// An `APPCTL_TOKEN` that is not a token is a usage error (exit 2), like a bad `APPCTL_PORT`, and its value is
+      /// never echoed: it could hold a line break, or a secret meant for something else.
+      @Test func aMalformedTokenVariableIsAUsageError() {
+        for value in ["FEDCBA9876543210FEDCBA9876543210", "abc", "fedcba9876543210fedcba9876543210\r\nX: y", "secret-value-123"] {
+          let error = #expect(throws: UsageError.self, "\(value)") {
+            try BridgeTokenSource.connecting(port: 8766, environment: ["APPCTL_TOKEN": value]) { Self.state }
+          }
+          #expect(error?.description == "APPCTL_TOKEN is not a token (32 lowercase hex characters)")
+          #expect(AppCommands.fail(error!) == 2)
+        }
       }
 
       /// The CLI makes a fresh token for every launch: 32 lowercase hex characters, never the same twice.

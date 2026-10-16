@@ -902,6 +902,10 @@ launches never reads the file: it may name another device, or an app that has qu
 port it connects to, however that port was given; else none. An empty `APPCTL_TOKEN` is unset. A
 command that launches sends the token it made, kept in memory.
 
+- An `APPCTL_TOKEN` that is not a well-formed token (§8.2) is a usage error, exit 2, and nothing is
+  sent: `error: APPCTL_TOKEN is not a token (32 lowercase hex characters)`. Its value is never
+  printed.
+
 - A 401 or 403 that carries `X-Appctl-Exit` is the bridge refusing the request: exit 3, with
   `error: the app's agent bridge on 127.0.0.1:<port> refused the token (relaunch it: <cli> app
   launch)` for a 401 and `error: the app's agent bridge on 127.0.0.1:<port> refused the request

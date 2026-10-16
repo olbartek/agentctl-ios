@@ -243,12 +243,19 @@
 
   /// Which token the commands that talk to a running app send (CONTRACT.md §8.6): `APPCTL_TOKEN`, else the launch
   /// state's when its port is the one they connect to, else none, which the bridge answers with 401. A command that
-  /// launches keeps the token it made in memory instead.
+  /// launches keeps the token it made in memory instead. An `APPCTL_TOKEN` that is not a token is a usage error, as a
+  /// bad `APPCTL_PORT` is; its value is never echoed.
   enum BridgeTokenSource {
     static let environmentVariable = "APPCTL_TOKEN"
+    static let notAToken = "APPCTL_TOKEN is not a token (32 lowercase hex characters)"
 
-    static func connecting(port: Int, environment: [String: String], launchState: () -> LaunchState?) -> String? {
-      if let token = environment[environmentVariable], !token.isEmpty { return token }
+    static func connecting(
+      port: Int, environment: [String: String], launchState: () -> LaunchState?
+    ) throws -> String? {
+      if let token = environment[environmentVariable], !token.isEmpty {
+        guard BridgeToken.isWellFormed(token) else { throw UsageError(notAToken) }
+        return token
+      }
       guard let state = launchState(), state.port == port else { return nil }
       return state.token
     }

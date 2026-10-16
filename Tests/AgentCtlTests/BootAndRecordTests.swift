@@ -28,6 +28,11 @@
             .split(separator: "\n").map(String.init)
         }
 
+        /// The recorder says "Recording started" only once its SIGINT trap is set, as `simctl` does once it handles
+        /// SIGINT. It waits in the `wait` builtin, never on a foreground child: macOS's bash 3.2 loses a trapped SIGINT
+        /// that lands just after a foreground child exited normally, and the recorder would then run until `stop()`
+        /// gives up 30 s later, with no video (#61). A SIGINT interrupts `wait` and runs the trap at once.
+        ///
         /// - Parameter recorder: what `recordVideo` leaves: `nothing`, `empty` (a 0-byte file) or `video` (some bytes).
         init(booted: Bool, recorder: String = "video") throws {
           directory = try CLICommandTests.temporaryDirectory()
@@ -47,9 +52,9 @@
             "launch "*) echo "An error was encountered processing the command"; exit 1 ;;
             "io "*)
               video="${@: -1}"
-              echo "Recording started"
               trap 'case "\(recorder)" in empty) : > "$video" ;; video) echo frames > "$video" ;; esac; exit 0' INT
-              while true; do sleep 0.05; done ;;
+              echo "Recording started"
+              while true; do sleep 0.05 & wait $!; done ;;
           esac
           exit 0
           """.write(to: tool, atomically: true, encoding: .utf8)

@@ -14,7 +14,7 @@ Neither it nor `tinyctl` is a product, so nothing you build against AgentCtl bui
 swift run tinyctl run "open 2; save"          # one step per command
 swift run tinyctl run "open 2; save; advance 3s"   # let the cooldown run out
 swift run tinyctl run --diff "open 2"         # with a state diff per step
-swift run tinyctl test                        # the three scenarios below
+swift run tinyctl test                        # the five scenarios below
 swift run tinyctl screens                     # every screen, command and summary key
 swift run tinyctl state                       # the full root state
 swift run tinyctl docs                        # regenerate agent-commands.md (--check verifies it)
@@ -23,10 +23,12 @@ swift run tinyctl --help
 
 ```
 $ swift run tinyctl test
-PASS browse (10 steps, 15 ms)
-PASS refresh-error (7 steps, 6 ms)
-PASS save-cooldown (13 steps, 20 ms)
-3 passed, 0 failed
+PASS browse (10 steps, 17 ms)
+PASS deep-link (8 steps, 13 ms)
+PASS push (5 steps, 5 ms)
+PASS refresh-error (7 steps, 3 ms)
+PASS save-cooldown (13 steps, 10 ms)
+5 passed, 0 failed
 ```
 
 (The step counts are fixed — scenario output is deterministic — the millisecond timings are not.)

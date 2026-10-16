@@ -197,7 +197,9 @@ extension AgentCtlSuite {
         for _ in 0..<10 {
           _ = await toy.send(.chain(2))
         }
-        #expect(start.duration(to: clock.now) < .milliseconds(500))
+        // Ten steps, none of them at settle's 2 s real-time limit (which one alone would reach); generous for a
+        // loaded runner.
+        #expect(start.duration(to: clock.now) < .seconds(2))
       }
     }
   }

@@ -116,7 +116,7 @@ examples are TinyApp's, and their output is real.
 ## The example apps
 
 [`Examples/TinyApp`](Examples/TinyApp) is the smallest complete integration and this package's fixture: two screens,
-one mocked client, three scenarios, its own `tinyctl` executable and a committed
+one mocked client, five scenarios, its own `tinyctl` executable and a committed
 [generated command reference](Examples/TinyApp/agent-commands.md). See
 [its README](Examples/TinyApp/README.md), or just run it:
 
@@ -130,7 +130,7 @@ swift test          # this package's own suite, driven against TinyApp
 unchanged and prints the same output byte for byte (`swift run tinymvvmctl test`). See [its README](Examples/TinyMVVM/README.md).
 
 [`Examples/AgentShop`](Examples/AgentShop) is the showcase: a real iOS app (sign-in, onboarding, a shop with a
-cart and checkout) with an Xcode project, 105 scenarios, UI tests generated from them, and the benchmark behind
+cart and checkout) with an Xcode project, 123 scenarios, UI tests generated from them, and the benchmark behind
 [the numbers above](#how-much-faster). It is its own package, depending on this one by path. See
 [its README](Examples/AgentShop/README.md).
 

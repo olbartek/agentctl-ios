@@ -101,7 +101,11 @@
         let port = Int(try await server.start(port: 0))
         #expect(!BridgePort.isFree(port))
         server.stop()
-        try await Task.sleep(for: .milliseconds(100))
+        // The listener closes asynchronously, so poll for up to five seconds rather than sleep a fixed time.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !BridgePort.isFree(port), ContinuousClock.now < deadline {
+          try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(BridgePort.isFree(port))
         #expect(!BridgePort.isFree(70000))
       }

@@ -8,7 +8,7 @@ import PackageDescription
 // AgentCtl comes from this repository itself, by path. A path dependency's identity is its directory's name,
 // which is why the products below name the package `agentctl-ios`: clone the repository under that name (the
 // `git clone` default). A host app depends on the published package instead:
-// `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.3.0")`.
+// `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.7.0")`.
 
 let tca: Target.Dependency = .product(name: "ComposableArchitecture", package: "swift-composable-architecture")
 let agentCore: Target.Dependency = .product(name: "AgentCtlCore", package: "agentctl-ios")

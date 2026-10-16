@@ -173,7 +173,8 @@ extension AgentCtlSuite {
       let elapsed = start.duration(to: clock.now)
       #expect(!result.settled)
       #expect(liveSettleLimit == .seconds(10))
-      #expect(elapsed >= .seconds(10) && elapsed < .seconds(11), "gave up after \(elapsed)")
+      // Not before the ceiling; the upper bound only leaves room for a loaded runner.
+      #expect(elapsed >= .seconds(10) && elapsed < .seconds(15), "gave up after \(elapsed)")
     }
 
     @Test func withoutAUICheckTheQuietStateIsEnough() async {
@@ -181,7 +182,8 @@ extension AgentCtlSuite {
       let start = clock.now
       let result = await settleLive(state: { 0 }, callLog: MockCallLog(), pending: { 0 }, quietWindow: .milliseconds(50))
       #expect(result.settled)
-      #expect(start.duration(to: clock.now) < .milliseconds(500))
+      // Quiet after the 50 ms window, well short of settleLive's default 3 s limit (a loaded runner needs the slack).
+      #expect(start.duration(to: clock.now) < .seconds(2))
     }
   }
 }

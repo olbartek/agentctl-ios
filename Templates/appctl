@@ -7,9 +7,9 @@
 # goes to stderr and a build failure exits 3, the CLI's "internal or build error" code.
 #
 # After a pull or a branch switch, SwiftPM's incremental build sometimes fails on its own stale cache ("couldn't
-# build … because of missing inputs", "unable to load output file map"): a file it remembers is gone. Such a
-# failure cleans this package's build (`swift package clean`, which keeps the resolved dependencies) and builds
-# once more; any other failure, or a second one, exits 3.
+# build … because of missing inputs", "unable to load output file map"). A failed build is then planned afresh, in
+# seconds, up to three rounds, and only then cleaned once (`swift package clean`, which rebuilds every dependency);
+# a genuine compile error costs one quick extra build and exits 3. The details are below, at `stale()`.
 #
 # --- Change these three lines for your repo ------------------------------------------------------------------
 PACKAGE="Packages/AppCtl"   # the SwiftPM package that declares the executable, relative to this script

@@ -8,7 +8,7 @@ implementation; see the README for the layout and commands.
 
 1. **Two ports, one product.** [agentctl-android](https://github.com/olbartek/agentctl-android) (locally
    `~/Developer/Projects/bartosz/agentctl-android`) is the Kotlin port. Every change lands in both repositories:
-   the same features, the same CLI commands and options, the same example apps (TinyApp, AgentShop) with
+   the same features, the same CLI commands and options, the same example apps (TinyApp, TinyMVVM, AgentShop) with
    byte-identical scenario files, and the same MAJOR.MINOR version (see Releases). A difference only Kotlin or Android forces is recorded
    in the Android README's contract section.
 2. **CONTRACT.md is the spec, and it lives here.** Change it here first, then copy it to the Android repo unchanged.

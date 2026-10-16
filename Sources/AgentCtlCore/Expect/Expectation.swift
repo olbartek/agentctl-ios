@@ -45,15 +45,15 @@ public struct Expectation: Equatable, Sendable {
 
   public static let reservedKeys = ["screen", "call", "error", "pending", "prompt"]
 
-  /// Parses the argument of `expect`. Values containing spaces must be quoted: `name="Alice Smith"`.
+  /// Parses the argument of `expect`. Values containing spaces must be quoted: `name="Alice Smith"`. Each token's
+  /// first unquoted `=` splits it; a token whose `=` is only inside quotes is a syntax error.
   public static func parse(_ argument: String?) throws(ExpectationSyntaxError) -> Self {
     guard let argument else { throw ExpectationSyntaxError(message: "expect needs at least one key=value pair") }
     var pairs: [Pair] = []
-    for token in ArgumentText.tokens(argument) {
-      guard let equals = token.firstIndex(of: "="), equals != token.startIndex else {
-        throw ExpectationSyntaxError(message: "expected key=value, got '\(token)'")
-      }
-      pairs.append(Pair(String(token[..<equals]), String(token[token.index(after: equals)...])))
+    for (token, pair) in ArgumentText.pairs(argument) {
+      // The `=` must be outside quotes: `"title=Second item"` is one quoted value, not a pair (CONTRACT.md §2.1).
+      guard let pair else { throw ExpectationSyntaxError(message: "expected key=value, got '\(token)'") }
+      pairs.append(Pair(pair.key, pair.value))
     }
     return Self(pairs: pairs)
   }

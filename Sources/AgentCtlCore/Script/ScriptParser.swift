@@ -35,7 +35,7 @@ public struct ScriptError: Error, Equatable, Sendable {
 
 /// Parses the script language shared by the CLI's `run`, scenarios, `-appctl-seed` and the agent bridge.
 ///
-/// - Commands are separated by `;` or newlines.
+/// - Commands are separated by `;` or newlines. A newline is `\n` or `\r\n`; a lone `\r` is whitespace.
 /// - `#` starts a comment that runs to the end of the line.
 /// - Double quotes protect `;` and `#`; inside quotes `\"` and `\\` are escapes. Quotes are kept in the
 ///   argument so that commands like `expect` can split on unquoted spaces; use ``ArgumentText`` to unquote.
@@ -63,7 +63,7 @@ public enum ScriptParser {
 
     for character in source {
       column += 1
-      if character == "\n" {
+      if character.isScriptNewline {
         if inQuotes {
           throw ScriptError(line: quoteStart.line, column: quoteStart.column, message: "unterminated quote")
         }
@@ -113,17 +113,50 @@ public enum ScriptParser {
 public enum ArgumentText {
   /// Removes surrounding quotes and resolves escapes when the whole argument is one quoted string.
   /// `"a;b"` → `a;b`, `Alice Smith` → `Alice Smith`.
+  /// Only one quoted span counts: the quote that closes the opening one must be the last character, so `"a"b"c"`
+  /// and `"a" "b"` stay as written.
   public static func unquoted(_ text: String) -> String {
-    guard text.count >= 2, text.first == "\"", text.last == "\"" else { return text }
-    let tokens = self.tokens(text)
-    return tokens.count == 1 ? tokens[0] : text
+    guard text.first == "\"" else { return text }
+    var content = ""
+    var escaping = false
+    for (offset, character) in text.dropFirst().enumerated() {
+      if escaping {
+        content.append(character)
+        escaping = false
+      } else if character == "\\" {
+        escaping = true
+      } else if character == "\"" {
+        // The closing quote: the argument is one quoted span only if nothing follows it.
+        return offset == text.count - 2 ? content : text
+      } else {
+        content.append(character)
+      }
+    }
+    return text
   }
 
   /// Splits on unquoted whitespace, then removes quotes and resolves escapes in each token.
   /// `name="Alice Smith" email=a` → `["name=Alice Smith", "email=a"]`.
   public static func tokens(_ text: String) -> [String] {
-    var tokens: [String] = []
+    splitTokens(text).map(\.text)
+  }
+
+  /// Splits `text` into `key=value` pairs at each token's first *unquoted* `=`, the key and value unquoted
+  /// (CONTRACT.md §2.1). `nil` for a token whose `=` is missing, only inside quotes, or first: `"title=a b"` is
+  /// not a pair, `"a=b"=c` is the key `a=b`.
+  static func pairs(_ text: String) -> [(token: String, pair: (key: String, value: String)?)] {
+    splitTokens(text).map { token in
+      guard let equals = token.equals, equals > 0 else { return (token.text, nil) }
+      let index = token.text.index(token.text.startIndex, offsetBy: equals)
+      return (token.text, (String(token.text[..<index]), String(token.text[token.text.index(after: index)...])))
+    }
+  }
+
+  /// Each token, unquoted, with the offset in it of its first `=` that was outside quotes.
+  private static func splitTokens(_ text: String) -> [(text: String, equals: Int?)] {
+    var tokens: [(text: String, equals: Int?)] = []
     var current = ""
+    var equals: Int?
     var hasToken = false
     var inQuotes = false
     var escaping = false
@@ -143,15 +176,17 @@ public enum ArgumentText {
         inQuotes = true
         hasToken = true
       } else if character.isWhitespace {
-        if hasToken { tokens.append(current) }
+        if hasToken { tokens.append((current, equals)) }
         current = ""
+        equals = nil
         hasToken = false
       } else {
+        if character == "=", equals == nil { equals = current.count }
         current.append(character)
         hasToken = true
       }
     }
-    if hasToken { tokens.append(current) }
+    if hasToken { tokens.append((current, equals)) }
     return tokens
   }
 }
@@ -189,4 +224,8 @@ extension StringProtocol {
 
 extension Character {
   var isASCIIDigit: Bool { isASCII && isNumber }
+
+  /// A line break in a script (CONTRACT.md §1.1): `\n`, or `\r\n`, which Swift reads as one `Character`. A lone
+  /// `\r` is not one.
+  var isScriptNewline: Bool { self == "\n" || self == "\r\n" }
 }

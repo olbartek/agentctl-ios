@@ -25,6 +25,22 @@ struct ExpectationTests {
     #expect(throws: ExpectationSyntaxError.self) { try Expectation.parse("=value") }
   }
 
+  /// A token's `=` must be outside quotes (CONTRACT.md §2.1): `"title=Second item"` used to be read as the pair
+  /// `title=Second item`, because the `=` was looked for after the quotes were removed.
+  @Test func requiresAnUnquotedEquals() throws {
+    #expect(throws: ExpectationSyntaxError(message: "expected key=value, got 'title=Second item'")) {
+      try Expectation.parse(#""title=Second item""#)
+    }
+    #expect(throws: ExpectationSyntaxError.self) { try Expectation.parse(#"title"=x""#) }
+    #expect(throws: ExpectationSyntaxError.self) { try Expectation.parse(#"screen=items "a=b""#) }
+    #expect(throws: ExpectationSyntaxError.self) { try Expectation.parse(#"""=x"#) }
+    // The first unquoted `=` splits the token; a quoted `=` before it belongs to the key.
+    #expect(try Expectation.parse(#"title="a=b""#).pairs == [.init("title", "a=b")])
+    #expect(try Expectation.parse(#""a=b"=c"#).pairs == [.init("a=b", "c")])
+    #expect(try Expectation.parse(#"title=a=b"#).pairs == [.init("title", "a=b")])
+    #expect(try Expectation.parse(#"title="""#).pairs == [.init("title", "")])
+  }
+
   @Test func passingExpectation() throws {
     let expectation = try Expectation.parse(
       #"screen=auth/otp/code resendIn=29 name="Alice Smith" call=auth.sendOTP error=none pending=1"#

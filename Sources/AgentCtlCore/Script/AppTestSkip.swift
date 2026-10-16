@@ -18,7 +18,7 @@ public enum AppTestSkip {
   /// The reason `source` gives for skipping it in the app, or `nil` if it gives none. A marker without a reason
   /// still skips, with "no reason given".
   public static func reason(in source: String) -> String? {
-    for rawLine in source.split(separator: "\n", omittingEmptySubsequences: true) {
+    for rawLine in source.split(omittingEmptySubsequences: true, whereSeparator: \.isScriptNewline) {
       let line = rawLine.trimmingCharacters(in: .whitespaces)
       guard line.hasPrefix("#") else { continue }
       let comment = line.dropFirst().trimmingCharacters(in: .whitespaces)

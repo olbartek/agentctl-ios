@@ -66,7 +66,11 @@
         let locked = directory.appending(path: "locked")
         try "refresh\n".write(to: locked, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
-        for (path, reason) in [(directory.path, "Is a directory"), (locked.path, "Permission denied")] {
+        let latin1 = directory.appending(path: "latin1")
+        try Data([0x72, 0x65, 0x66, 0x72, 0x65, 0x73, 0x68, 0xE9, 0x0A]).write(to: latin1)
+        for (path, reason) in [
+          (directory.path, "Is a directory"), (locked.path, "Permission denied"), (latin1.path, "not valid UTF-8"),
+        ] {
           let error = #expect(throws: (any Error).self, "\(path)") { try Session.load(path) }
           // The bare reason, never the path: the message names the path as given once, before it.
           #expect(error.map(Session.reason) == reason, "\(path)")

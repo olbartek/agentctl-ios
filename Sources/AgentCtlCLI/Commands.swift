@@ -188,13 +188,21 @@
       guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) else { return "" }
       // Foundation reports a directory without its errno; read(2) would say EISDIR.
       if isDirectory.boolValue { throw POSIXError(.EISDIR) }
-      return try String(contentsOfFile: path, encoding: .utf8)
+      let data = try Data(contentsOf: URL(fileURLWithPath: path))
+      guard let text = String(data: data, encoding: .utf8) else { throw NotUTF8() }
+      return text
+    }
+
+    /// A session file whose bytes are not UTF-8: it cannot be read, as agentctl-android says it.
+    struct NotUTF8: Error, CustomStringConvertible {
+      var description: String { "not valid UTF-8" }
     }
 
     /// Why a read or write failed, without the path: the POSIX `strerror` text of the underlying errno
     /// ("Permission denied", "Is a directory"), as agentctl-android prints it; Foundation's own description when
     /// there is no errno, since that one names the file.
     static func reason(_ error: any Error) -> String {
+      if let error = error as? NotUTF8 { return error.description }
       var current: NSError? = error as NSError
       while let nsError = current {
         if nsError.domain == NSPOSIXErrorDomain { return String(cString: strerror(Int32(nsError.code))) }

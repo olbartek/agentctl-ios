@@ -322,6 +322,51 @@
             == Message.bridgeUnreachable(port: 8765, error: StubError())
         )
       }
+
+      /// The `.app` to install without XcodeBuildMCP: the application in `xcodebuild -showBuildSettings -json`, which
+      /// need not be named after the scheme.
+      @Test func theBuiltAppIsReadFromTheBuildSettings() {
+        let settings = """
+          [
+            {"action": "build", "target": "MyKit", "buildSettings": {"PRODUCT_TYPE": "com.apple.product-type.framework",
+              "TARGET_BUILD_DIR": "/dd/Build/Products/Debug-iphonesimulator", "FULL_PRODUCT_NAME": "MyKit.framework"}},
+            {"action": "build", "target": "MyApp-Dev", "buildSettings": {"PRODUCT_TYPE": "com.apple.product-type.application",
+              "TARGET_BUILD_DIR": "/dd/Build/Products/Dev-iphonesimulator", "FULL_PRODUCT_NAME": "MyApp.app"}}
+          ]
+          """
+        #expect(Simulator.appPath(fromBuildSettings: settings)?.path == "/dd/Build/Products/Dev-iphonesimulator/MyApp.app")
+        #expect(Simulator.appPath(fromBuildSettings: "xcodebuild: error: no scheme") == nil)
+        #expect(Simulator.appPath(fromBuildSettings: "[]") == nil)
+      }
+
+      /// The bridge answers `POST /run` only once the script is done, so a script may be silent for longer than a
+      /// request that runs nothing may be: it is not cut off, and one past its own limit says so rather than calling
+      /// the bridge unreachable.
+      @Test func aLongScriptIsNotAnUnreachableBridge() async throws {
+        AgentCtl.install(StubRuntime())
+        let server = BridgeServer(app: "com.example.stub") { request in
+          if request.method == "POST" { try? await Task.sleep(for: .seconds(2)) }
+          return BridgeResponse(status: 200, body: "> open 1\n", exitCode: 0)
+        }
+        let port = Int(try await server.start(port: 0))
+        defer { server.stop() }
+        let client = BridgeClient(port: port)
+        let answer = try await BridgeClient.$idleTimeout.withValue(0.5) {
+          try await client.send("POST", "/run", body: "open 1")
+        }
+        #expect(answer.body == "> open 1\n")
+        let error = await BridgeClient.$scriptLimit.withValue(1) { () async -> (any Error)? in
+          do { _ = try await client.send("POST", "/run", body: "open 1") } catch { return error }
+          return nil
+        }
+        let timedOut = try #require(error as? BridgeClient.ScriptTimedOut)
+        #expect(
+          Message.bridgeUnreachable(port: port, source: .launchState(Self.state), error: timedOut)
+            == "the app did not finish the script within 1 s (agent bridge on 127.0.0.1:\(port)); it may still be running it"
+        )
+        // Waiting for the first answer before the next request: the bridge handles one at a time.
+        try await Task.sleep(for: .seconds(2))
+      }
     }
   }
 #endif

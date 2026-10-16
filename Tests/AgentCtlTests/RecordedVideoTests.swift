@@ -82,6 +82,20 @@
         try Data("not a video".utf8).write(to: video)
         #expect(throws: (any Error).self) { try RecordedVideo.holdLastFrame(video) }
       }
+
+      /// A rewrite that fails after it has started writing (here: a video whose frames are cut off) leaves no
+      /// temporary file beside the user's video.
+      @Test func aFailedRewriteLeavesNoTemporaryFile() throws {
+        let video = try copyOfFixture()
+        let directory = video.deletingLastPathComponent()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // The fixture's `moov` comes before its `mdat`: the header reads, the frames do not.
+        let handle = try FileHandle(forWritingTo: video)
+        try handle.truncate(atOffset: 900)
+        try handle.close()
+        #expect(throws: (any Error).self) { try RecordedVideo.holdLastFrame(video) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["still.mp4"])
+      }
     }
   }
 #endif

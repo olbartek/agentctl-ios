@@ -124,6 +124,27 @@
         let error = #expect(throws: AppCtlError.self) { try resolve("iPhone 99", [Fake(id: 1, runtime: "26.5")]) }
         #expect("\(error.map { "\($0)" } ?? "")" == "no available simulator named 'iPhone 99'. Available: iPhone 16 Pro")
       }
+
+      /// A `simctl` that fails (no Xcode selected) says why, in simctl's own words, instead of a JSON parse error.
+      @Test func aFailingSimctlSaysWhy() throws {
+        let directory = try CLICommandTests.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let tool = directory.appending(path: "simctl")
+        try """
+        #!/bin/sh
+        echo 'xcrun: error: unable to find utility "simctl", not a developer tool or in PATH' >&2
+        exit 72
+        """.write(to: tool, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
+        let error = Simulator.$simctl.withValue([tool.path]) {
+          #expect(throws: AppCtlError.self) { try Simulator(root: directory).resolve("iPhone 16 Pro") }
+        }
+        #expect(
+          error?.description
+            == "cannot read `xcrun simctl list runtimes` (exit 72): xcrun: error: unable to find utility \"simctl\", not a "
+            + "developer tool or in PATH"
+        )
+      }
     }
   }
 

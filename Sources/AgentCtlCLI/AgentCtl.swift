@@ -38,7 +38,7 @@
       install(ErasedConfig(config: config))
       // What `AsyncParsableCommand.main()` does, except for the exit code of a usage error: see ``exitStatus(for:)``.
       do {
-        var command = try await AppCtlCommand.asyncParseAsRoot()
+        var command = try await AppCtlCommand.asyncParseAsRoot(arguments(Array(CommandLine.arguments.dropFirst())))
         if var asyncCommand = command as? AsyncParsableCommand {
           try await asyncCommand.run()
         } else {
@@ -57,6 +57,18 @@
         }
         exit(status)
       }
+    }
+
+    /// The command line as ArgumentParser should read it. `app location -33.86,151.20` (a southern latitude) would
+    /// read as an option, so a value that starts with `-` and a digit moves behind a `--`, where it is the argument;
+    /// the options around it keep working.
+    static func arguments(_ arguments: [String]) -> [String] {
+      guard arguments.starts(with: ["app", "location"]), !arguments.contains("--"),
+        let index = arguments.indices.dropFirst(2).first(where: { arguments[$0].firstMatch(of: #/^-\.?[0-9]/#) != nil })
+      else { return arguments }
+      var moved = arguments
+      let value = moved.remove(at: index)
+      return moved + ["--", value]
     }
 
     /// The exit code for an error thrown while parsing or running a command.

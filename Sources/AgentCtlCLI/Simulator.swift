@@ -109,16 +109,21 @@
         app = path
       } else {
         let derivedData = Layout(root: root).derivedData
+        let destination = ["-destination", "id=\(device.udid)", "-derivedDataPath", derivedData.path]
         let status = Shell.run(
-          ["xcodebuild"] + Self.target.xcodebuildArguments + [
-            "-destination", "id=\(device.udid)", "-derivedDataPath", derivedData.path, "-skipMacroValidation", "-quiet",
-            "build",
-          ],
+          ["xcodebuild"] + Self.target.xcodebuildArguments + destination + ["-skipMacroValidation", "-quiet", "build"],
           in: root,
           log: log
         )
         guard status == 0 else { throw AppCtlError("xcodebuild failed; log: \(log.path(percentEncoded: false))") }
-        app = derivedData.appending(path: "Build/Products/Debug-iphonesimulator/\(Self.target.scheme).app")
+        // The product is not always named after the scheme (scheme `MyApp-Dev` building `MyApp.app`): ask.
+        let settings = Shell.capture(
+          ["xcodebuild"] + Self.target.xcodebuildArguments + destination + ["-showBuildSettings", "-json"],
+          in: root,
+          timeout: Shell.slow
+        )
+        app = Self.appPath(fromBuildSettings: settings)
+          ?? derivedData.appending(path: "Build/Products/Debug-iphonesimulator/\(Self.target.scheme).app")
       }
       _ = Shell.run(Self.simctl + ["boot", device.udid], in: root, log: log, append: true, timeout: Shell.slow)
       guard Shell.run(Self.simctl + ["install", device.udid, app.path], in: root, log: log, append: true, timeout: Shell.slow) == 0 else {
@@ -135,6 +140,20 @@
       let path = line[range.upperBound...].trimmingCharacters(in: .whitespaces)
       guard path.hasSuffix(".app") else { return nil }
       return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+    }
+
+    /// The application `xcodebuild -showBuildSettings -json` describes: its `TARGET_BUILD_DIR` and
+    /// `FULL_PRODUCT_NAME`. A scheme may build other targets too; the first application is the one to install.
+    static func appPath(fromBuildSettings output: String) -> URL? {
+      guard let targets = try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [[String: Any]] else { return nil }
+      for target in targets {
+        guard let settings = target["buildSettings"] as? [String: String],
+          settings["PRODUCT_TYPE"] == "com.apple.product-type.application",
+          let directory = settings["TARGET_BUILD_DIR"], let name = settings["FULL_PRODUCT_NAME"], name.hasSuffix(".app")
+        else { continue }
+        return URL(fileURLWithPath: directory).appending(path: name)
+      }
+      return nil
     }
 
     /// Stops the app if it is running. A device where it is not running is not an error.
@@ -284,11 +303,18 @@
     }
 
     private func simctlJSON(_ arguments: [String]) throws -> [String: Any] {
-      let (output, finished) = Shell.captureResult(Self.simctl + ["list"] + arguments + ["-j"], in: root)
-      guard finished else { throw AppCtlError(Message.simctlDidNotAnswer(["list"] + arguments)) }
-      guard let data = output.data(using: .utf8),
-        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-      else { throw AppCtlError("cannot read `xcrun simctl list \(arguments.joined(separator: " "))`") }
+      let result = Shell.captureResult(Self.simctl + ["list"] + arguments + ["-j"], in: root)
+      guard result.finished else { throw AppCtlError(Message.simctlDidNotAnswer(["list"] + arguments)) }
+      // A missing simctl (`xcode-select` pointing at the Command Line Tools) prints nothing on stdout and says why
+      // on stderr: that is the error, not the empty JSON.
+      guard result.status == 0, let object = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any]
+      else {
+        let reason = result.error.trimmingCharacters(in: .whitespacesAndNewlines)
+        throw AppCtlError(
+          "cannot read `xcrun simctl list \(arguments.joined(separator: " "))`"
+            + (result.status == 0 ? ": not JSON" : " (exit \(result.status))") + (reason.isEmpty ? "" : ": \(reason)")
+        )
+      }
       return object
     }
   }
@@ -336,12 +362,45 @@
       var identity: BridgeIdentity
     }
 
-    func send(_ method: String, _ path: String, body: String? = nil, timeout: TimeInterval = 60) async throws -> Response {
+    /// How long a request that runs nothing (`GET`, the readiness poll) may go without an answer.
+    @TaskLocal static var idleTimeout: TimeInterval = 60
+    /// How long `POST /run` may take. The bridge answers only once the script is done (CONTRACT.md §8.4), so a
+    /// script that waits on the app's real time stays silent for as long as it runs: the limit is on the whole
+    /// request, and generous.
+    @TaskLocal static var scriptLimit: TimeInterval = 3600
+
+    /// `POST /run` that did not finish within ``scriptLimit``: the bridge was reached, and the app may still be
+    /// running the script.
+    struct ScriptTimedOut: Error, CustomStringConvertible {
+      var port: Int
+      var limit: TimeInterval
+
+      var description: String {
+        "the app did not finish the script within \(Int(limit)) s (agent bridge on 127.0.0.1:\(port)); it may still be "
+          + "running it"
+      }
+    }
+
+    /// Sends one request. `timeout` replaces ``idleTimeout`` for a request that runs nothing; `POST /run` is
+    /// limited by ``scriptLimit`` instead, and throws ``ScriptTimedOut`` past it.
+    func send(_ method: String, _ path: String, body: String? = nil, timeout: TimeInterval? = nil) async throws -> Response {
       guard let url = URL(string: "http://127.0.0.1:\(port)\(path)") else { throw AppCtlError("bad path \(path)") }
-      var request = URLRequest(url: url, timeoutInterval: timeout)
+      let runsScript = method == "POST" && path.hasPrefix("/run")
+      let limit = Self.scriptLimit
+      // `timeoutInterval` is an idle timeout, which a silent script would hit; the session's resource timeout
+      // bounds the whole request.
+      var request = URLRequest(url: url, timeoutInterval: runsScript ? limit : timeout ?? Self.idleTimeout)
       request.httpMethod = method
       request.httpBody = body.map { Data($0.utf8) }
-      let (data, response) = try await URLSession.shared.data(for: request)
+      let session = runsScript ? Self.scriptSession(limit) : URLSession.shared
+      defer { if runsScript { session.finishTasksAndInvalidate() } }
+      let data: Data
+      let response: URLResponse
+      do {
+        (data, response) = try await session.data(for: request)
+      } catch let error as URLError where runsScript && error.code == .timedOut {
+        throw ScriptTimedOut(port: port, limit: limit)
+      }
       let http = response as? HTTPURLResponse
       return Response(
         status: http?.statusCode ?? 0,
@@ -352,6 +411,14 @@
           platform: http?.value(forHTTPHeaderField: "X-Appctl-Platform")
         )
       )
+    }
+
+    /// A session whose requests may take `limit` seconds in all.
+    private static func scriptSession(_ limit: TimeInterval) -> URLSession {
+      let configuration = URLSessionConfiguration.ephemeral
+      configuration.timeoutIntervalForRequest = limit
+      configuration.timeoutIntervalForResource = limit
+      return URLSession(configuration: configuration)
     }
 
     /// Polls `GET /snapshot` until the bridge answers, and returns its answer.

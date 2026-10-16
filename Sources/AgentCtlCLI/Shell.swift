@@ -94,26 +94,35 @@
       captureResult(arguments, in: directory, timeout: timeout).output
     }
 
-    /// ``capture(_:in:timeout:)``, saying whether the command finished in time.
+    /// ``capture(_:in:timeout:)``, saying whether the command finished in time, and with its exit status and
+    /// standard error, for a caller that reports why it failed.
     static func captureResult(
       _ arguments: [String], in directory: URL, timeout: TimeInterval = quick
-    ) -> (output: String, finished: Bool) {
+    ) -> (output: String, finished: Bool, status: Int32, error: String) {
       let process = Self.process(arguments, in: directory)
       let pipe = Pipe()
+      let errorPipe = Pipe()
       process.standardOutput = pipe
-      process.standardError = FileHandle.nullDevice
-      // Read on another thread: reading to the end here would block until the pipe closes, before any deadline.
+      process.standardError = errorPipe
+      // Read on other threads: reading to the end here would block until the pipe closes, before any deadline.
       let output = Output()
-      let reader = DispatchSemaphore(value: 0)
-      guard let exited = start(process) else { return ("", false) }
-      DispatchQueue.global().async {
-        output.set(pipe.fileHandleForReading.readDataToEndOfFile())
-        reader.signal()
+      let error = Output()
+      let readers = DispatchGroup()
+      guard let exited = start(process) else { return ("", false, -1, "") }
+      for (pipe, output) in [(pipe, output), (errorPipe, error)] {
+        readers.enter()
+        DispatchQueue.global().async {
+          output.set(pipe.fileHandleForReading.readDataToEndOfFile())
+          readers.leave()
+        }
       }
       let finished = wait(for: process, exited: exited, timeout: timeout)
-      // A grandchild that inherited the pipe keeps it open after the child is gone; do not wait on it for long.
-      _ = reader.wait(timeout: .now() + 1)
-      return (String(decoding: output.data, as: UTF8.self), finished)
+      // A grandchild that inherited the pipes keeps them open after the child is gone; do not wait on it for long.
+      _ = readers.wait(timeout: .now() + 1)
+      return (
+        String(decoding: output.data, as: UTF8.self), finished, finished ? process.terminationStatus : timedOut,
+        String(decoding: error.data, as: UTF8.self)
+      )
     }
 
     // MARK: - Helpers

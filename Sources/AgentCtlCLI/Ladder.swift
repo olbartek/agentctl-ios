@@ -52,10 +52,7 @@
       let start = ContinuousClock.now
       let check = AgentCtl.runtime.appCheck
       let scenarios = root.appending(path: AgentCtl.runtime.scenariosPath)
-      guard
-        let scenario = check.scenario
-          ?? ScenarioRunner.files(in: scenarios).first?.deletingPathExtension().lastPathComponent
-      else {
+      guard let scenario = check.scenario ?? Self.firstScenario(in: ScenarioRunner.files(in: scenarios)) else {
         report("L4 app", ok: false, detail: "no scenario to run", since: start)
         return false
       }
@@ -68,6 +65,12 @@
         let script = try String(contentsOf: scenarios.appending(path: "\(scenario).appctl"), encoding: .utf8)
         let bridge = BridgeClient(port: port)
         let run = try await bridge.send("POST", "/run", body: script)
+        // Every response is checked, as `app test` checks them (CONTRACT.md §8.6): another app's is not this one's.
+        guard run.identity.isOurs else {
+          report("L4 app", ok: false, detail: "another app answered", since: start)
+          print("  \(Message.anotherAppAnswered(port: port, answeredAs: run.identity))")
+          return false
+        }
         guard run.exitCode == 0 else {
           report("L4 app", ok: false, detail: "\(scenario) failed in the app", since: start)
           print(run.body.split(separator: "\n").map { "  \($0)" }.joined(separator: "\n"))
@@ -75,7 +78,12 @@
         }
         if let expected = check.expectScreen {
           let snapshot = try await bridge.send("GET", "/snapshot")
-          guard snapshot.body.contains("screen=\(expected)") else {
+          guard snapshot.identity.isOurs else {
+            report("L4 app", ok: false, detail: "another app answered", since: start)
+            print("  \(Message.anotherAppAnswered(port: port, answeredAs: snapshot.identity))")
+            return false
+          }
+          guard Self.shows(expected, snapshot.body) else {
             report("L4 app", ok: false, detail: "unexpected final screen", since: start)
             print("  \(snapshot.body)")
             return false
@@ -91,6 +99,23 @@
         report("L4 app", ok: false, detail: "error", since: start)
         print("  \(error)")
         return false
+      }
+    }
+
+    /// The scenario L4 runs when the config names none: the first file without a `# app-test: skip` line, which
+    /// `app test` would skip too.
+    static func firstScenario(in files: [URL]) -> String? {
+      files.first { file in
+        guard let source = try? String(contentsOf: file, encoding: .utf8) else { return false }
+        return AppTestSkip.reason(in: source) == nil
+      }?.deletingPathExtension().lastPathComponent
+    }
+
+    /// Whether a step shows `screen`: a line whose first token is `screen=<screen>`, the whole path. Not
+    /// `home/orders/42` for `home/orders`, nor a summary value that contains the text.
+    static func shows(_ screen: String, _ step: String) -> Bool {
+      step.split(separator: "\n").contains { line in
+        line.drop { $0 == " " }.prefix { $0 != " " } == "screen=\(screen)"
       }
     }
 

@@ -213,15 +213,20 @@
   /// The messages that name the CLI itself. They spell it with the host's own invocation, never `./appctl`:
   /// a host's users are told to run a command that exists in their repo.
   enum Message {
+    /// A request to the bridge that failed. A script that ran past its limit reached the bridge, so it says that
+    /// instead.
     static func bridgeUnreachable(port: Int, error: any Error) -> String {
-      "cannot reach the app's agent bridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): "
+      if let timedOut = error as? BridgeClient.ScriptTimedOut { return timedOut.description }
+      return "cannot reach the app's agent bridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): "
         + "\(error)"
     }
 
     /// ``bridgeUnreachable(port:error:)``, saying where the port came from when the last launch recorded it: that
     /// app may have quit since.
     static func bridgeUnreachable(port: Int, source: BridgePort.Source, error: any Error) -> String {
-      guard case let .launchState(state) = source else { return bridgeUnreachable(port: port, error: error) }
+      guard case let .launchState(state) = source, !(error is BridgeClient.ScriptTimedOut) else {
+        return bridgeUnreachable(port: port, error: error)
+      }
       return bridgeUnreachable(port: port, error: error)
         + "; the port is from \(LaunchState.relativePath) (launched \(state.launchedAt) on \(state.device)), "
         + "which is stale once that app has quit: relaunch with \(help.invocation) app launch"

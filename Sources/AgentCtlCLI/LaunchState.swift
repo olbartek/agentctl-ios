@@ -18,6 +18,9 @@
     var appId: String
     /// When the bridge first answered, ISO 8601 in UTC to the second.
     var launchedAt: String
+    /// The launch's token, which every request to its bridge carries (CONTRACT.md §8.6). A file from before 0.9 has
+    /// none, and its bridge then answers 401.
+    var token: String?
 
     static let fileName = "bridge.json"
 
@@ -28,12 +31,16 @@
       Layout(root: root).output.appending(path: fileName)
     }
 
-    init(platform: String = BridgeDefaults.platform, device: String, port: Int, appId: String, launchedAt: Date) {
+    init(
+      platform: String = BridgeDefaults.platform, device: String, port: Int, appId: String, launchedAt: Date,
+      token: String?
+    ) {
       self.platform = platform
       self.device = device
       self.port = port
       self.appId = appId
       self.launchedAt = Self.timestamp(launchedAt)
+      self.token = token
     }
 
     static func timestamp(_ date: Date) -> String {
@@ -49,10 +56,25 @@
       return String(decoding: try encoder.encode(self), as: UTF8.self) + "\n"
     }
 
+    /// Writes the file readable by its owner only (mode 0600), since it holds the token: a new file is created with that
+    /// mode and renamed into place, and the mode is then set explicitly, whatever the file's was before.
     func write(in root: URL) throws {
       let file = Self.file(in: root)
-      try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-      try encoded().write(to: file, atomically: true, encoding: .utf8)
+      let directory = file.deletingLastPathComponent()
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      let temporary = directory.appending(path: ".\(Self.fileName).\(ProcessInfo.processInfo.processIdentifier).tmp")
+      try? FileManager.default.removeItem(at: temporary)
+      guard
+        FileManager.default.createFile(
+          atPath: temporary.path, contents: Data(try encoded().utf8), attributes: [.posixPermissions: 0o600]
+        )
+      else { throw AppCtlError("cannot write \(temporary.path(percentEncoded: false))") }
+      guard rename(temporary.path, file.path) == 0 else {
+        let reason = String(cString: strerror(errno))
+        try? FileManager.default.removeItem(at: temporary)
+        throw AppCtlError("cannot write \(file.path(percentEncoded: false)): \(reason)")
+      }
+      try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
     }
 
     /// The last launch's state, or `nil` when there is no file.
@@ -64,6 +86,26 @@
       } catch {
         throw AppCtlError(Message.unreadableLaunchState(error: error))
       }
+    }
+  }
+
+  /// The token never appears in a description or a dump of the state.
+  extension LaunchState: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    var description: String {
+      "LaunchState(platform: \(platform), device: \(device), port: \(port), appId: \(appId), launchedAt: \(launchedAt), "
+        + "token: \(token == nil ? "nil" : BridgeToken.redacted))"
+    }
+
+    var debugDescription: String { description }
+
+    var customMirror: Mirror {
+      Mirror(
+        self,
+        children: [
+          "platform": platform, "device": device, "port": port, "appId": appId, "launchedAt": launchedAt,
+          "token": token.map { _ in BridgeToken.redacted } as Any,
+        ]
+      )
     }
   }
 
@@ -196,6 +238,26 @@
           }
         }
       }
+    }
+  }
+
+  /// Which token the commands that talk to a running app send (CONTRACT.md §8.6): `APPCTL_TOKEN`, else the launch
+  /// state's when its port is the one they connect to, else none, which the bridge answers with 401. A command that
+  /// launches keeps the token it made in memory instead. An `APPCTL_TOKEN` that is not a token is a usage error, as a
+  /// bad `APPCTL_PORT` is; its value is never echoed.
+  enum BridgeTokenSource {
+    static let environmentVariable = "APPCTL_TOKEN"
+    static let notAToken = "APPCTL_TOKEN is not a token (32 lowercase hex characters)"
+
+    static func connecting(
+      port: Int, environment: [String: String], launchState: () -> LaunchState?
+    ) throws -> String? {
+      if let token = environment[environmentVariable], !token.isEmpty {
+        guard BridgeToken.isWellFormed(token) else { throw UsageError(notAToken) }
+        return token
+      }
+      guard let state = launchState(), state.port == port else { return nil }
+      return state.token
     }
   }
 

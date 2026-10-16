@@ -1,4 +1,5 @@
 #if os(macOS) && (DEBUG || AGENTCTL_RELEASE)
+  import AgentCtlCore
   import AgentCtlRuntime
   import Foundation
 
@@ -35,6 +36,9 @@
     /// The bridge that answers must say it is this app (`X-Appctl-App`): the app was built from the same checkout,
     /// so one that says nothing is another app. Then the app is relaunched once on the next free port, unless the
     /// port was requested.
+    ///
+    /// Every launch makes a fresh token, passes it as `-agent-token` and records it beside the port; the caller gets it
+    /// too, so a command that launches sends it without reading the file back (CONTRACT.md §8.6).
     static func launchApp(
       root: URL,
       seed: String?,
@@ -43,7 +47,7 @@
       clearSession: Bool,
       build: Bool,
       port requested: Int?
-    ) async throws -> (device: Simulator.Device, port: Int, report: String) {
+    ) async throws -> (device: Simulator.Device, port: Int, token: String, report: String) {
       let clock = ContinuousClock()
       let start = clock.now
       let sim = Simulator(root: root)
@@ -52,7 +56,8 @@
       sim.terminate(on: resolved, log: log)
       let device = try sim.ready(resolved, boot: build, log: log)
       if build { try sim.buildAndInstall(on: device, log: log) }
-      var options: [String] = []
+      let token = BridgeToken.make()
+      var options = [BridgeToken.argument, token]
       if let seed { options += ["-appctl-seed", seed] }
       if let latency { options += ["-mock-latency", String(latency)] }
       if clearSession { options.append("-clear-session") }
@@ -61,7 +66,7 @@
       func launch(on port: Int) async throws -> BridgeClient.Response? {
         try sim.launch(on: device, launchArguments: ["-agent-port", String(port)] + options, log: log)
         do {
-          return try await BridgeClient(port: port).waitUntilReady()
+          return try await BridgeClient(port: port, token: token).waitUntilReady()
         } catch {
           sim.terminate(on: device, log: log)
           for _ in 0..<10 where !BridgePort.isFree(port) {
@@ -87,12 +92,18 @@
           answer.map { Message.anotherApp(port: port, answeredAs: $0.identity) } ?? Message.portHeld(port: port)
         )
       }
+      // Our own app, refusing our own token: nothing a relaunch on another port would change.
+      if let refused = answer.refusal(port: port) {
+        sim.terminate(on: device, log: log)
+        throw refused
+      }
       let snapshot = answer.body
-      try LaunchState(device: device.udid, port: port, appId: Simulator.bundleID, launchedAt: Date()).write(in: root)
+      try LaunchState(device: device.udid, port: port, appId: Simulator.bundleID, launchedAt: Date(), token: token)
+        .write(in: root)
       let elapsed = start.duration(to: clock.now)
       let seconds = String(format: "%.1f", Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
       let line = snapshot.split(separator: "\n").dropFirst().first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-      return (device, port, "launched on \(device.label) [\(device.udid)] at 127.0.0.1:\(port) in \(seconds)s: \(line)")
+      return (device, port, token, "launched on \(device.label) [\(device.udid)] at 127.0.0.1:\(port) in \(seconds)s: \(line)")
     }
 
     static func run(script: String, json: Bool, port flag: Int?) async -> Int32 {
@@ -107,13 +118,15 @@
     private static func send(_ method: String, _ path: String, body: String?, port flag: Int?) async -> Int32 {
       let port: Int
       let source: BridgePort.Source
+      let token: String?
       do {
         (port, source) = try connection(flag: flag)
+        token = try Self.token(port: port, source: source)
       } catch {
         return fail(error)
       }
       do {
-        let client = BridgeClient(port: port)
+        let client = BridgeClient(port: port, token: token)
         if case let .launchState(state) = source {
           // A script changes the app it runs in, so it is only posted once the recorded app is known to answer;
           // a GET changes nothing, and its own answer is checked instead.
@@ -122,17 +135,29 @@
             printError(Message.anotherApp(port: port, answeredAs: answer.identity, recorded: state))
             return RunStatus.internalError.rawValue
           }
+          if let refused = answer?.refusal(port: port) { throw refused }
         }
         let response = try await client.send(method, path, body: body)
         if case let .launchState(state) = source, response.identity.contradicts(state) {
           printError(Message.anotherApp(port: port, answeredAs: response.identity, recorded: state))
           return RunStatus.internalError.rawValue
         }
+        // Who answered is checked first: a refusal from another app is that app's, not a wrong token.
+        if let refused = response.refusal(port: port) { throw refused }
         print(response.body, terminator: response.body.hasSuffix("\n") ? "" : "\n")
         return response.exitCode
       } catch {
         printError(Message.bridgeUnreachable(port: port, source: source, error: error))
         return RunStatus.internalError.rawValue
+      }
+    }
+
+    /// The token to send to the bridge on `port`: `APPCTL_TOKEN`, else the launch state's when it names that port. The
+    /// file is read again only when the port did not come from it, and then a file that cannot be read has no token.
+    static func token(port: Int, source: BridgePort.Source) throws -> String? {
+      try BridgeTokenSource.connecting(port: port, environment: ProcessInfo.processInfo.environment) {
+        if case let .launchState(state) = source { return state }
+        return try? Repo.find().flatMap { try LaunchState.read(in: $0) }
       }
     }
 

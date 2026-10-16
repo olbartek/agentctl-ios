@@ -19,12 +19,15 @@
     /// §2.2).
     @MainActor
     @Suite struct BridgeConnectionsTests {
-      static let get = "GET /snapshot HTTP/1.1\r\nHost: x\r\n\r\n"
+      /// The launch's token, and the headers every request the bridge serves carries (CONTRACT.md §8.4).
+      static let token = "0123456789abcdef0123456789abcdef"
+      static let auth = "Host: 127.0.0.1\r\nX-Appctl-Token: \(token)\r\n"
+      static let get = "GET /snapshot HTTP/1.1\r\n\(auth)\r\n"
 
       func start(
         _ handler: @escaping BridgeServer.Handler = { _ in BridgeResponse(status: 200, body: "ok\n", exitCode: 0) }
       ) async throws -> (BridgeServer, UInt16) {
-        let server = BridgeServer(app: "app", handler: handler)
+        let server = BridgeServer(app: "app", token: Self.token, handler: handler)
         return (server, try await server.start(port: 0))
       }
 
@@ -80,6 +83,8 @@
 
         init(port: UInt16) throws {
           descriptor = socket(AF_INET, SOCK_STREAM, 0)
+          var noSignal: Int32 = 1
+          setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
           var address = sockaddr_in()
           address.sin_family = sa_family_t(AF_INET)
           address.sin_port = port.bigEndian
@@ -99,6 +104,23 @@
           _ = Array(text.utf8).withUnsafeBytes { write(descriptor, $0.baseAddress, $0.count) }
         }
 
+        /// Writes all of `text` off the main thread (a large write blocks until the bridge reads it).
+        func sendAll(_ text: String) async {
+          await Task.detached { [descriptor] in
+            let bytes = Array(text.utf8)
+            var sent = 0
+            while sent < bytes.count {
+              let count = bytes[sent...].withUnsafeBytes { write(descriptor, $0.baseAddress, $0.count) }
+              if count <= 0 { return }
+              sent += count
+            }
+          }.value
+        }
+
+        private let readError = Mutex<Int32>(0)
+        /// The errno of the read that ended ``readToEnd()``, or 0 when it ended at the bridge's clean close.
+        var lastReadError: Int32 { readError.withLock { $0 } }
+
         /// Ends the sending side; the connection stays open for reading.
         func shutDownSending() {
           shutdown(descriptor, SHUT_WR)
@@ -106,11 +128,12 @@
 
         /// Everything until the bridge closes the connection, read off the main thread (reads block).
         func readToEnd() async -> String {
-          await Task.detached { [descriptor] in
+          await Task.detached { [self] in
             var received = [UInt8]()
             var buffer = [UInt8](repeating: 0, count: 64 * 1024)
             while true {
               let count = buffer.withUnsafeMutableBytes { read(descriptor, $0.baseAddress, $0.count) }
+              if count < 0 { let code = errno; readError.withLock { $0 = code } }
               if count <= 0 { break }
               received += buffer[0..<count]
             }
@@ -170,7 +193,7 @@
       }
 
       @Test func theDeadlineIsTenSecondsAndTheLimitSixteenConnections() {
-        let server = BridgeServer(app: "app") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        let server = BridgeServer(app: "app", token: Self.token) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
         #expect(server.requestDeadline == .seconds(10))
         #expect(server.maxReadingConnections == 16)
       }
@@ -223,6 +246,294 @@
         }
       }
 
+      // MARK: - The body cap (#69, CONTRACT.md §8.1)
+
+      /// A `Content-Length` over 1 MiB is malformed as soon as the headers are in: the body is never waited for, and
+      /// the request reaches no handler. Exactly 1 MiB is a request like any other.
+      @Test func aBodyOverTheCapIsMalformedBeforeItIsRead() async throws {
+        #expect(HTTPParser.maxBodyBytes == 1_048_576)
+        let over = "POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: 1048577\r\n\r\n"
+        #expect(HTTPParser.parseHead(Data(over.utf8)) == .malformed)
+        #expect(HTTPParser.parse(Data(over.utf8)) == .malformed)
+        let atTheCap = "POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: 1048576\r\n\r\n"
+        #expect(HTTPParser.parse(Data(atTheCap.utf8)) == .incomplete)
+        let whole = Data(atTheCap.utf8) + Data(repeating: 0x61, count: 1_048_576)
+        guard case let .request(parsed) = HTTPParser.parse(whole) else {
+          Issue.record("a body of exactly 1 MiB did not parse")
+          return
+        }
+        #expect(parsed.body.utf8.count == 1_048_576)
+        #expect(HTTPParser.parse(Data("GET / HTTP/1.1\r\nContent-Length: 99999999999999999999999\r\n\r\n".utf8)) == .malformed)
+
+        var handled = 0
+        let (server, port) = try await start { _ in
+          handled += 1
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.stop() }
+        server.requestDeadline = .seconds(30)
+        let started = ContinuousClock.now
+        // Headers only, the body never sent: answered at once, not at the deadline. Without a token too: the cap
+        // comes first.
+        for text in [over, "POST /run HTTP/1.1\r\nContent-Length: 2097152\r\n\r\n"] {
+          let answer = try await request(text, port: port)
+          #expect(answer.hasPrefix("HTTP/1.1 400 Bad Request\r\n"), "\(answer)")
+          #expect(answer.contains("\r\nX-Appctl-Exit: 2\r\n"))
+          #expect(answer.contains("\r\nX-Appctl-App: app\r\nX-Appctl-Platform: ios\r\n"))
+          #expect(answer.hasSuffix("\r\n\r\nbad request\n"))
+        }
+        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(handled == 0)
+      }
+
+      // MARK: - Strict headers (CONTRACT.md §8.1)
+
+      /// Each of these is malformed while the headers are parsed, before Host, Origin or the token are looked at.
+      static let malformedHeads: [(String, String)] = [
+        ("a Transfer-Encoding", "POST /run HTTP/1.1\r\n\(auth)Transfer-Encoding: chunked\r\n\r\n"),
+        ("a Transfer-Encoding beside a Content-Length", "POST /run HTTP/1.1\r\n\(auth)Content-Length: 3\r\ntransfer-encoding: identity\r\n\r\nabc"),
+        ("two Content-Lengths that differ", "POST /run HTTP/1.1\r\n\(auth)Content-Length: 3\r\nContent-Length: 4\r\n\r\nabcd"),
+        ("two identical Content-Lengths", "POST /run HTTP/1.1\r\n\(auth)Content-Length: 3\r\ncontent-length: 3\r\n\r\nabc"),
+        ("a signed Content-Length", "POST /run HTTP/1.1\r\n\(auth)Content-Length: +3\r\n\r\nabc"),
+        ("a negative Content-Length", "POST /run HTTP/1.1\r\n\(auth)Content-Length: -1\r\n\r\n"),
+        ("a Content-Length with letters", "POST /run HTTP/1.1\r\n\(auth)Content-Length: 3a\r\n\r\nabc"),
+        ("an empty Content-Length", "POST /run HTTP/1.1\r\n\(auth)Content-Length: \r\n\r\n"),
+        ("a Content-Length of non-ASCII digits", "POST /run HTTP/1.1\r\n\(auth)Content-Length: \u{0663}\r\n\r\nabc"),
+        ("a Content-Length of two numbers", "POST /run HTTP/1.1\r\n\(auth)Content-Length: 3 3\r\n\r\nabc"),
+        ("a folded line (space)", "GET /snapshot HTTP/1.1\r\n\(auth)X-Note: a\r\n b\r\n\r\n"),
+        ("a folded line (tab)", "GET /snapshot HTTP/1.1\r\n\(auth)X-Note: a\r\n\tb\r\n\r\n"),
+        ("a space before the colon", "GET /snapshot HTTP/1.1\r\nHost : 127.0.0.1\r\nX-Appctl-Token: \(token)\r\n\r\n"),
+        ("a tab before the colon", "GET /snapshot HTTP/1.1\r\n\(auth)Content-Length\t: 0\r\n\r\n"),
+        ("a header without a name", "GET /snapshot HTTP/1.1\r\n\(auth): x\r\n\r\n"),
+      ]
+
+      @Test func strictHeadersAreMalformedWhileParsing() {
+        for (name, text) in Self.malformedHeads {
+          #expect(HTTPParser.parseHead(Data(text.utf8)) == .malformed, "\(name)")
+          #expect(HTTPParser.parse(Data(text.utf8)) == .malformed, "\(name)")
+        }
+        // Optional whitespace around a value, spaces or tabs, is not part of it.
+        let spaced = "POST /run HTTP/1.1\r\nHost:\t127.0.0.1 \r\nContent-Length:  3 \r\nX-Appctl-Token: \(Self.token)\t\r\n\r\nabc"
+        #expect(HTTPParser.parse(Data(spaced.utf8)) == .request(BridgeRequest(method: "POST", path: "/run", body: "abc")))
+        guard case let .head(head) = HTTPParser.parseHead(Data(spaced.utf8)) else {
+          Issue.record("did not parse")
+          return
+        }
+        #expect(head.value("Host") == "127.0.0.1")
+        #expect(head.value("X-Appctl-Token") == Self.token)
+        #expect(BridgeAccess.refusal(head, token: Self.token) == nil)
+      }
+
+      @Test func strictHeadersAreMalformedOverTheWire() async throws {
+        var handled = 0
+        let (server, port) = try await start { _ in
+          handled += 1
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.stop() }
+        for (name, text) in Self.malformedHeads {
+          let answer = try await request(text, port: port)
+          #expect(answer.hasPrefix("HTTP/1.1 400 Bad Request\r\n"), "\(name): \(answer)")
+          #expect(answer.contains("\r\nX-Appctl-Exit: 2\r\n"), "\(name)")
+          #expect(answer.hasSuffix("\r\n\r\nbad request\n"), "\(name)")
+        }
+        // Malformed comes before forbidden and unauthorized.
+        let foreign = try await request("GET /snapshot HTTP/1.1\r\nOrigin: null\r\nTransfer-Encoding: chunked\r\n\r\n", port: port)
+        #expect(foreign.hasPrefix("HTTP/1.1 400 Bad Request\r\n"))
+        #expect(handled == 0)
+        // What URLSession sends passes: a Host with the port, a Content-Length, and its own other headers.
+        var request = URLRequest(url: try #require(URL(string: "http://127.0.0.1:\(port)/run")))
+        request.httpMethod = "POST"
+        request.httpBody = Data("open 1".utf8)
+        request.setValue(Self.token, forHTTPHeaderField: "X-Appctl-Token")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        #expect(String(decoding: data, as: UTF8.self) == "ok\n")
+        #expect(handled == 1)
+      }
+
+      // MARK: - A refusal is a whole answer and a clean close
+
+      /// A request refused from its headers whose client has already sent a large body still gets the whole answer:
+      /// the bridge ends its side and drops the rest, so the close is never a reset.
+      @Test func aRefusedClientThatSentItsBodyReadsTheWholeAnswer() async throws {
+        let (server, port) = try await start()
+        defer { server.stop() }
+        let megabyte = String(repeating: "a", count: 1_048_576)
+        let cases: [(String, String, String)] = [
+          ("POST /run HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Appctl-Token: \(BridgeToken.make())\r\nContent-Length: 1048576\r\n\r\n\(megabyte)",
+           Self.unauthorized, "unauthorized\n"),
+          ("POST /run HTTP/1.1\r\nHost: example.com\r\n\(Self.auth.split(separator: "\r\n")[1])\r\nContent-Length: 1048576\r\n\r\n\(megabyte)",
+           Self.forbidden, "forbidden\n"),
+          ("POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: 2097152\r\n\r\n\(megabyte)\(megabyte)",
+           "HTTP/1.1 400 Bad Request\r\n", "bad request\n"),
+        ]
+        for (text, status, body) in cases {
+          let client = try SocketClient(port: port)
+          let reading = Task { await client.readToEnd() }
+          await client.sendAll(text)
+          client.shutDownSending()
+          let answer = await reading.value
+          #expect(answer.hasPrefix(status), "\(answer.prefix(60))")
+          #expect(answer.hasSuffix("\r\n\r\n\(body)"), "\(answer.prefix(200))")
+          #expect(client.lastReadError == 0, "the answer ended in a reset: errno \(client.lastReadError)")
+        }
+      }
+
+      // MARK: - Host, Origin and the token (#70, CONTRACT.md §8.4)
+
+      /// What the bridge answers a `GET /snapshot` with these header lines, and whether it reached the handler.
+      func answer(_ headers: [String], server: (BridgeServer, UInt16), handled: () -> Int) async throws -> (String, Bool) {
+        let before = handled()
+        let text = "GET /snapshot HTTP/1.1\r\n" + headers.map { "\($0)\r\n" }.joined() + "\r\n"
+        let answer = try await request(text, port: server.1)
+        return (answer, handled() > before)
+      }
+
+      static let forbidden = "HTTP/1.1 403 Forbidden\r\n"
+      static let unauthorized = "HTTP/1.1 401 Unauthorized\r\n"
+
+      @Test func onlyLoopbackHostNamesAreServedWhateverThePort() async throws {
+        var handled = 0
+        let server = try await start { _ in
+          handled += 1
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.0.stop() }
+        let token = "X-Appctl-Token: \(Self.token)"
+        for host in ["127.0.0.1", "127.0.0.1:\(server.1)", "127.0.0.1:1", "localhost", "localhost:8765", "LocalHost:9", "LOCALHOST", "localhost:", "127.0.0.1:"] {
+          let (answer, reached) = try await self.answer(["Host: \(host)", token], server: server) { handled }
+          #expect(answer.hasPrefix("HTTP/1.1 200 OK\r\n"), "\(host): \(answer)")
+          #expect(reached, "\(host)")
+        }
+        let foreign = [
+          "example.com", "example.com:\(server.1)", "127.0.0.2", "127.0.0.1.example.com", "localhost.example.com",
+          "[::1]:\(server.1)", "[::1]", "0.0.0.0", "", ":8765", "local\u{17F}host", "localhost:abc", "localhost:8765x",
+          "localhost:-1", "localhost: 8765", "localhost:\u{0668}", "127.0.0.1:80:80", "\u{FF4C}ocalhost", "localhost.",
+        ]
+        for host in foreign {
+          let (answer, reached) = try await self.answer(["Host: \(host)", token], server: server) { handled }
+          #expect(answer.hasPrefix(Self.forbidden), "\(host): \(answer)")
+          #expect(!reached, "\(host)")
+        }
+        // No Host at all, and a second Host, loopback or not: repeated values are joined with ", ", so never match.
+        for headers in [[token], ["Host: 127.0.0.1", "Host: example.com", token], ["Host: 127.0.0.1", "host: 127.0.0.1", token]] {
+          let (answer, reached) = try await self.answer(headers, server: server) { handled }
+          #expect(answer.hasPrefix(Self.forbidden), "\(headers): \(answer)")
+          #expect(!reached)
+        }
+      }
+
+      /// Any Origin is refused, a loopback one included: a browser sends one, the CLI never does.
+      @Test func aRequestWithAnOriginIsForbidden() async throws {
+        var handled = 0
+        let server = try await start { _ in
+          handled += 1
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.0.stop() }
+        for origin in ["Origin: http://127.0.0.1:\(server.1)", "Origin: null", "origin: http://example.com"] {
+          let (answer, reached) = try await self.answer(
+            ["Host: 127.0.0.1", "X-Appctl-Token: \(Self.token)", origin], server: server
+          ) { handled }
+          #expect(answer.hasPrefix(Self.forbidden), "\(origin): \(answer)")
+          #expect(answer.contains("\r\nX-Appctl-Exit: 3\r\n"))
+          #expect(answer.contains("\r\nX-Appctl-App: app\r\nX-Appctl-Platform: ios\r\n"))
+          #expect(answer.hasSuffix("\r\n\r\nforbidden\n"))
+          #expect(!reached)
+        }
+      }
+
+      @Test func onlyTheLaunchsTokenIsServed() async throws {
+        var handled = 0
+        let server = try await start { _ in
+          handled += 1
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.0.stop() }
+        let other = BridgeToken.make()
+        let wrong = [
+          [], ["X-Appctl-Token: "], ["X-Appctl-Token: \(other)"], ["X-Appctl-Token: \(Self.token.uppercased())"],
+          ["X-Appctl-Token: \(Self.token.dropLast())"], ["X-Appctl-Token: \(Self.token)0"],
+          ["X-Appctl-Token: \(Self.token)", "X-Appctl-Token: \(other)"], ["X-Appctl-Tokens: \(Self.token)"],
+          // Sent twice, even the same token: the values are joined, so it is not 32 hex characters.
+          ["X-Appctl-Token: \(Self.token)", "x-appctl-token: \(Self.token)"],
+        ]
+        for headers in wrong {
+          let (answer, reached) = try await self.answer(["Host: 127.0.0.1"] + headers, server: server) { handled }
+          #expect(answer.hasPrefix(Self.unauthorized), "\(headers): \(answer)")
+          #expect(answer.contains("\r\nX-Appctl-Exit: 3\r\n"))
+          #expect(answer.contains("\r\nX-Appctl-App: app\r\nX-Appctl-Platform: ios\r\n"))
+          #expect(answer.hasSuffix("\r\n\r\nunauthorized\n"))
+          #expect(!reached, "\(headers)")
+        }
+        // The header's name is matched without regard to case, as HTTP's are.
+        for name in ["X-Appctl-Token", "x-appctl-token", "X-APPCTL-TOKEN"] {
+          let (answer, reached) = try await self.answer(["Host: 127.0.0.1", "\(name): \(Self.token)"], server: server) {
+            handled
+          }
+          #expect(answer.hasPrefix("HTTP/1.1 200 OK\r\n"), "\(name): \(answer)")
+          #expect(answer.hasSuffix("\r\n\r\nok\n"))
+          #expect(reached)
+        }
+      }
+
+      /// Malformed, then forbidden, then unauthorized, then routing: the first that applies answers. A refusal is
+      /// decided from the headers, so a body that never comes is not waited for.
+      @Test func theChecksComeInOrder() async throws {
+        var handled = 0
+        let server = try await start { _ in
+          handled += 1
+          return BridgeResponse(status: 404, body: "not found\n", exitCode: 2)
+        }
+        defer { server.0.stop() }
+        server.0.requestDeadline = .seconds(30)
+        let cases: [(String, String)] = [
+          // Over the cap, without a Host, with an Origin and no token: malformed.
+          ("POST /run HTTP/1.1\r\nOrigin: http://example.com\r\nContent-Length: 1048577\r\n\r\n", "HTTP/1.1 400 Bad Request\r\n"),
+          // No Host and no token: forbidden.
+          ("GET /snapshot HTTP/1.1\r\n\r\n", Self.forbidden),
+          // A foreign Host with the right token, and an Origin with a wrong one: forbidden.
+          ("GET /snapshot HTTP/1.1\r\nHost: example.com\r\nX-Appctl-Token: \(Self.token)\r\n\r\n", Self.forbidden),
+          ("GET /snapshot HTTP/1.1\r\nHost: localhost\r\nOrigin: null\r\nX-Appctl-Token: x\r\n\r\n", Self.forbidden),
+          // A loopback Host and a wrong token, the body still to come: unauthorized at once.
+          ("POST /run HTTP/1.1\r\nHost: localhost\r\nX-Appctl-Token: x\r\nContent-Length: 10\r\n\r\n", Self.unauthorized),
+          // A foreign Host, the body still to come: forbidden at once.
+          ("POST /run HTTP/1.1\r\nHost: example.com\r\n\(Self.auth.split(separator: "\r\n")[1])\r\nContent-Length: 10\r\n\r\n", Self.forbidden),
+          // Everything in order: routing, which here answers 404.
+          ("GET /nowhere HTTP/1.1\r\n\(Self.auth)\r\n", "HTTP/1.1 404 Not Found\r\n"),
+        ]
+        let started = ContinuousClock.now
+        for (text, status) in cases {
+          let answer = try await request(text, port: server.1)
+          #expect(answer.hasPrefix(status), "\(text.debugDescription): \(answer)")
+        }
+        #expect(started.duration(to: .now) < .seconds(5))
+        #expect(handled == 1)
+      }
+
+      /// A refusal is answered at once, never queued behind a request that is running; an authorized request whose body
+      /// does not come is answered as incomplete once its deadline passes, as before.
+      @Test func aRefusalIsNotQueuedAndAnUnfinishedBodyIsStillIncomplete() async throws {
+        let (server, port) = try await start { request in
+          if request.path == "/slow" { try? await Task.sleep(for: .seconds(30)) }
+          return BridgeResponse(status: 200, body: "ok\n", exitCode: 0)
+        }
+        defer { server.stop() }
+        server.requestDeadline = .milliseconds(500)
+        let slow = try await Client(port: port)
+        defer { slow.close() }
+        slow.send("GET /slow HTTP/1.1\r\n\(Self.auth)\r\n")
+        try await Task.sleep(for: .milliseconds(100))
+        let started = ContinuousClock.now
+        #expect(try await request("GET /snapshot HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n", port: port).hasPrefix(Self.unauthorized))
+        #expect(try await request("GET /snapshot HTTP/1.1\r\n\r\n", port: port).hasPrefix(Self.forbidden))
+        #expect(started.duration(to: .now) < .milliseconds(400), "a refusal waited")
+        let unfinished = try await request("POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: 10\r\n\r\nopen", port: port)
+        #expect(unfinished.hasPrefix("HTTP/1.1 400 Bad Request\r\n"), "\(unfinished)")
+        #expect(unfinished.hasSuffix("\r\n\r\nincomplete request\n"))
+      }
+
       // MARK: - A client that goes away (#54, CONTRACT.md §8.1)
 
       /// A live TinyApp whose every fetch takes `latency`, behind a bridge that records how each `/run` ended: its
@@ -260,7 +571,7 @@
         defer { server.stop() }
         let client = try SocketClient(port: port)
         let script = "refresh; expect loading=false"
-        let request = "POST /run HTTP/1.1\r\nContent-Length: \(script.utf8.count)\r\n\r\n\(script)"
+        let request = "POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: \(script.utf8.count)\r\n\r\n\(script)"
         client.send(request)
         try await until { app.started == 1 }
         let started = ContinuousClock.now
@@ -285,7 +596,7 @@
         }
         defer { server.stop() }
         let client = try SocketClient(port: port)
-        client.send("GET /slow HTTP/1.1\r\n\r\n")
+        client.send("GET /slow HTTP/1.1\r\n\(Self.auth)\r\n")
         client.shutDownSending()
         #expect(await client.readToEnd() == "")
         #expect(try await request(Self.get, port: port).hasPrefix("HTTP/1.1 200 OK\r\n"))
@@ -299,20 +610,20 @@
         defer { server.stop() }
         let gone = try await Client(port: port)
         let script = "refresh; refresh"
-        gone.send("POST /run HTTP/1.1\r\nContent-Length: \(script.utf8.count)\r\n\r\n\(script)")
+        gone.send("POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: \(script.utf8.count)\r\n\r\n\(script)")
         try await Task.sleep(for: .milliseconds(200))
         gone.close()
         try await until { !app.outcomes.isEmpty }
         #expect(app.outcomes == ["cancelled"])
         let started = ContinuousClock.now
         let next = try await request(
-          "POST /run HTTP/1.1\r\nContent-Length: 14\r\n\r\nexpect items=3", port: port
+          "POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: 14\r\n\r\nexpect items=3", port: port
         )
         #expect(started.duration(to: .now) < .seconds(1))
         #expect(next.hasPrefix("HTTP/1.1 200 OK\r\n"), "\(next)")
         #expect(next.contains("\r\nX-Appctl-Exit: 0\r\n"), "\(next)")
         // The fetch the cancelled run started finishes on its own; then the app settles as usual.
-        let after = try await request("POST /run HTTP/1.1\r\nContent-Length: 7\r\n\r\nrefresh", port: port)
+        let after = try await request("POST /run HTTP/1.1\r\n\(Self.auth)Content-Length: 7\r\n\r\nrefresh", port: port)
         #expect(after.contains("\r\nX-Appctl-Exit: 0\r\n"), "\(after)")
         #expect(!after.contains("settled=false"))
       }
@@ -327,10 +638,10 @@
         }
         defer { server.stop() }
         let slow = try await Client(port: port)
-        slow.send("GET /slow HTTP/1.1\r\n\r\n")
+        slow.send("GET /slow HTTP/1.1\r\n\(Self.auth)\r\n")
         try await until { ran == ["/slow"] }
         let queued = try await Client(port: port)
-        queued.send("GET /queued HTTP/1.1\r\n\r\n")
+        queued.send("GET /queued HTTP/1.1\r\n\(Self.auth)\r\n")
         try await Task.sleep(for: .milliseconds(100))
         queued.close()
         slow.close()
@@ -415,7 +726,7 @@
       @Test func aStopBeforeTheListenerIsReadyEndsTheStart() async throws {
         var cancelled = 0
         for _ in 0..<20 {
-          let server = BridgeServer(app: "app") { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+          let server = BridgeServer(app: "app", token: Self.token) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
           let start = Task { try await server.start(port: 0) }
           while server.listener == nil { await Task.yield() }
           server.stop()

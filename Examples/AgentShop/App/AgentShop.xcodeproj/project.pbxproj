@@ -10,6 +10,7 @@
 		8B41F6852DEDD25C001A66F9 /* AppFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6842DEDD25C001A66F9 /* AppFeature */; };
 		8B41F6872DEDD25C001A66F9 /* AgentShopCtl in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6862DEDD25C001A66F9 /* AgentShopCtl */; };
 		8B41F6892DEDD25C001A66F9 /* AgentCtlBridge in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F6882DEDD25C001A66F9 /* AgentCtlBridge */; };
+		8B41F68B2DEDD25C001A66F9 /* AgentCtlBridge in Frameworks */ = {isa = PBXBuildFile; productRef = 8B41F68A2DEDD25C001A66F9 /* AgentCtlBridge */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,6 +78,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8B41F68B2DEDD25C001A66F9 /* AgentCtlBridge in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -157,6 +159,7 @@
 			);
 			name = AgentShopUITests;
 			packageProductDependencies = (
+				8B41F68A2DEDD25C001A66F9 /* AgentCtlBridge */,
 			);
 			productName = AgentShopUITests;
 			productReference = 8B41F65C2DEDD0D6001A66F9 /* AgentShop.xctest */;
@@ -490,6 +493,11 @@
 			productName = AgentShopCtl;
 		};
 		8B41F6882DEDD25C001A66F9 /* AgentCtlBridge */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8B41F6912DEDD25C001A66F9 /* XCLocalSwiftPackageReference "../../.." */;
+			productName = AgentCtlBridge;
+		};
+		8B41F68A2DEDD25C001A66F9 /* AgentCtlBridge */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 8B41F6912DEDD25C001A66F9 /* XCLocalSwiftPackageReference "../../.." */;
 			productName = AgentCtlBridge;

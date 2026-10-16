@@ -268,6 +268,7 @@
     /// instead.
     static func bridgeUnreachable(port: Int, error: any Error) -> String {
       if let timedOut = error as? BridgeClient.ScriptTimedOut { return timedOut.description }
+      if let refused = error as? BridgeClient.Refused { return refused.description }
       return "cannot reach the app's agent bridge on 127.0.0.1:\(port) (is the app running? \(help.invocation) app launch): "
         + "\(error)"
     }
@@ -275,7 +276,8 @@
     /// ``bridgeUnreachable(port:error:)``, saying where the port came from when the last launch recorded it: that
     /// app may have quit since.
     static func bridgeUnreachable(port: Int, source: BridgePort.Source, error: any Error) -> String {
-      guard case let .launchState(state) = source, !(error is BridgeClient.ScriptTimedOut) else {
+      guard case let .launchState(state) = source, !(error is BridgeClient.ScriptTimedOut), !(error is BridgeClient.Refused)
+      else {
         return bridgeUnreachable(port: port, error: error)
       }
       return bridgeUnreachable(port: port, error: error)
@@ -290,6 +292,16 @@
       return "the app's agent bridge on 127.0.0.1:\(port) answers as \(answer), not \(BridgeIdentity.ours): another "
         + "app holds that port; pass --port or set \(BridgePort.environmentVariable)"
         + (missing.map { " (or the installed app predates \($0): launch without --no-build)" } ?? "")
+    }
+
+    /// A bridge that answered 401: the request's token is missing or not the launch's (CONTRACT.md §8.6).
+    static func refusedToken(port: Int) -> String {
+      "the app's agent bridge on 127.0.0.1:\(port) refused the token (relaunch it: \(help.invocation) app launch)"
+    }
+
+    /// A bridge that answered 403: the request's Host or Origin is not one it serves (CONTRACT.md §8.4).
+    static func forbidden(port: Int) -> String {
+      "the app's agent bridge on 127.0.0.1:\(port) refused the request (forbidden)"
     }
 
     /// A launch whose bridge never answered while something else listens on its port.

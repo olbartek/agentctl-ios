@@ -20,6 +20,8 @@
     public typealias Handler = @MainActor (BridgeRequest) async throws -> BridgeResponse
 
     private let handler: Handler
+    /// The launch's token: every request must carry it as `X-Appctl-Token` (CONTRACT.md §8.4).
+    private let token: String
     /// Sent as `X-Appctl-App` on every response.
     private let app: String?
     private let platform: String?
@@ -53,11 +55,15 @@
     ///   app on the port is the one it launched.
     /// - Parameter platform: sent as `X-Appctl-Platform` beside the app; tests name another platform, or none, to play
     ///   the same app on Android or one built before the header.
+    /// - Parameter token: the launch's `-agent-token`. A request without it in `X-Appctl-Token` is answered 401, and one
+    ///   addressed to another Host or sent with an Origin 403, before it reaches `handler` (CONTRACT.md §8.4).
     public init(
-      app: String? = Bundle.main.bundleIdentifier, platform: String? = BridgeDefaults.platform, handler: @escaping Handler
+      app: String? = Bundle.main.bundleIdentifier, platform: String? = BridgeDefaults.platform, token: String,
+      handler: @escaping Handler
     ) {
       self.app = app
       self.platform = platform
+      self.token = token
       self.handler = handler
     }
 
@@ -230,11 +236,21 @@
         MainActor.assumeIsolated {
           guard let self, exchange.phase == .reading else { return }
           if let data { exchange.buffer.append(data) }
-          switch HTTPParser.parse(exchange.buffer) {
-          case let .request(request):
-            self.enqueue(request, on: exchange)
-            // Its side closed with the request's last bytes: it has gone away already.
-            if isComplete || error != nil { self.abandon(exchange) }
+          // Malformed (a body over the cap included), then forbidden, then unauthorized: each decided from the
+          // headers alone, so a refused request's body is never read (CONTRACT.md §8.1, §8.4).
+          switch HTTPParser.parseHead(exchange.buffer) {
+          case let .head(head):
+            if let refusal = BridgeAccess.refusal(head, token: self.token) {
+              self.answer(exchange, with: refusal)
+            } else if let request = HTTPParser.request(head, in: exchange.buffer) {
+              self.enqueue(request, on: exchange)
+              // Its side closed with the request's last bytes: it has gone away already.
+              if isComplete || error != nil { self.abandon(exchange) }
+            } else if isComplete || error != nil {
+              self.answer(exchange, with: BridgeResponse(status: 400, body: "incomplete request\n", exitCode: 2))
+            } else {
+              self.receive(on: exchange)
+            }
           case .malformed:
             self.answer(exchange, with: BridgeResponse(status: 400, body: "bad request\n", exitCode: 2))
           case .incomplete:
@@ -320,10 +336,44 @@
       exchange.phase = .done
       let connection = exchange.connection
       connection.stateUpdateHandler = nil
+      // The answer ends this side of the connection (a FIN, not a reset); what the client still sends, such as the
+      // body of a request refused from its headers, is read and dropped until it closes its side, so the close never
+      // turns into a reset that could cost the client the answer.
+      let linger = lingerLimit
       connection.send(
         content: HTTPParser.serialize(response, app: app, platform: platform),
-        completion: .contentProcessed { _ in connection.cancel() }
+        contentContext: .finalMessage,
+        isComplete: true,
+        completion: .contentProcessed { _ in Self.drain(connection, for: linger) }
       )
+    }
+
+    /// How long an answered connection may go on sending before it is closed regardless.
+    var lingerLimit: Duration = .seconds(2)
+
+    /// Reads and drops what `connection` still sends, then closes it once the client has closed its side, or once
+    /// `limit` has passed.
+    private nonisolated static func drain(_ connection: NWConnection, for limit: Duration) {
+      let seconds = Double(limit.components.seconds) + Double(limit.components.attoseconds) / 1e18
+      DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { connection.cancel() }
+      discard(connection)
+    }
+
+    private nonisolated static func discard(_ connection: NWConnection) {
+      connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { _, _, isComplete, error in
+        if isComplete || error != nil {
+          connection.cancel()
+        } else {
+          discard(connection)
+        }
+      }
+    }
+  }
+
+  /// A dump of the server never shows its token.
+  extension BridgeServer: CustomReflectable {
+    public nonisolated var customMirror: Mirror {
+      Mirror(self, children: ["token": BridgeToken.redacted], displayStyle: .class)
     }
   }
 #endif

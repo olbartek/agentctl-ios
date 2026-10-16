@@ -19,6 +19,9 @@ How a scenario becomes a UI test:
    checked headlessly only, and counted as such in `bench/uitests.json`.
 5. `mock <method> <code>` becomes a launch argument `-mock-fault <method>#<n>=<code>`: n is the index of the call
    the fault hits, counted from the headless run's `calls`.
+6. Every test starts with the driver's `launch()`, which passes a fresh `-agent-token` from
+   `AgentLaunchArguments.makeToken()` beside `-clear-session` and `-mock-latency 0`: without a token the app ignores
+   them (CONTRACT.md §8.2). The generator refuses a driver whose launch does not pass one.
 
 A scenario that uses `advance`, `login-as`, `reset` or `device` cannot be replayed through the UI and is skipped (it
 stays a headless and bridge scenario: `device` simulates the device inside the app, which a UI test cannot reach). Anything else that has no UI mapping is an error, so the mapping never silently drifts.
@@ -37,6 +40,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCENARIOS = ROOT / "scenarios"
 OUT_DIR = ROOT / "App/AgentShopUITests/Generated"
+DRIVER = ROOT / "App/AgentShopUITests/ShopUITestCase.swift"
+#: What the driver's launch arguments must hold for the generated tests to launch the app as the benchmark does.
+DRIVER_TOKEN = '"-agent-token", AgentLaunchArguments.makeToken()'
 MANIFEST = ROOT / "bench/uitests.json"
 
 GROUPS = {"auth": "AuthUITests", "onboarding": "OnboardingUITests", "shop": "ShopUITests"}
@@ -288,7 +294,17 @@ def is_comparable(text: str) -> bool:
     return not any(command.split(" ", 1)[0] in HEADLESS_ONLY for _, command in script_lines(text))
 
 
+def check_driver() -> None:
+    """The generated tests launch through the driver: without a token its other launch arguments would be ignored."""
+    if DRIVER_TOKEN not in DRIVER.read_text():
+        raise GenerationError(
+            f"{DRIVER.relative_to(ROOT)} does not launch the app with {DRIVER_TOKEN}: the app would ignore "
+            "-clear-session and -mock-latency"
+        )
+
+
 def generate_all() -> tuple[dict[Path, str], dict]:
+    check_driver()
     screens = parse_screens(appctl("screens"))
     files: dict[Path, str] = {}
     manifest: dict = {"scenarios": {}}

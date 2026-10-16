@@ -1,4 +1,7 @@
 #if os(macOS)
+  #if DEBUG
+    import AgentCtlBridge
+  #endif
   import AgentCtlCore
   import AgentCtlTCA
   import Foundation
@@ -34,7 +37,8 @@
         /// gives up 30 s later, with no video (#61). A SIGINT interrupts `wait` and runs the trap at once.
         ///
         /// - Parameter recorder: what `recordVideo` leaves: `nothing`, `empty` (a 0-byte file) or `video` (some bytes).
-        init(booted: Bool, recorder: String = "video") throws {
+        /// - Parameter launches: whether `launch` succeeds (logging its arguments like any call) instead of failing.
+        init(booted: Bool, recorder: String = "video", launches: Bool = false) throws {
           directory = try CLICommandTests.temporaryDirectory()
           try (booted ? "Booted" : "Shutdown").write(
             to: directory.appending(path: "state"), atomically: true, encoding: .utf8
@@ -49,7 +53,7 @@
               printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"udid":"\(BootAndRecordTests.udid)",'
               printf '"name":"iPhone 17 Pro","state":"%s"}]}}\\n' "$(cat "$dir/state")" ;;
             "bootstatus "*) echo Booted > "$dir/state" ;;
-            "launch "*) echo "An error was encountered processing the command"; exit 1 ;;
+            "launch "*) \(launches ? "exit 0" : "echo \"An error was encountered processing the command\"; exit 1") ;;
             "io "*)
               video="${@: -1}"
               trap 'case "\(recorder)" in empty) : > "$video" ;; video) echo frames > "$video" ;; esac; exit 0' INT
@@ -205,6 +209,43 @@
           #expect(detached.isRunning)
         }
       }
+
+      #if DEBUG
+      /// Every launch passes a fresh `-agent-token`. Our own app refusing it (a stale bridge of ours on the port) stops
+      /// the launch with the refusal's text; another app's refusal is another app (CONTRACT.md §8.6).
+      @Test func aLaunchPassesAFreshTokenAndStopsWhenItsOwnAppRefusesIt() async throws {
+        AgentCtl.install(StubRuntime())
+        let fake = try FakeSimctl(booted: true, launches: true)
+        defer { try? FileManager.default.removeItem(at: fake.directory) }
+        for (app, expected) in [
+          ("com.example.stub", "the app's agent bridge on 127.0.0.1:%d refused the token (relaunch it: xctl app launch)"),
+          ("com.example.other", "the app's agent bridge on 127.0.0.1:%d answers as com.example.other (ios), not com.example.stub (ios)"),
+        ] {
+          let server = BridgeServer(app: app, token: BridgeToken.make()) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+          let port = Int(try await server.start(port: 0))
+          let error = try await fake.run { () async -> (any Error)? in
+            do {
+              _ = try await AppCommands.launchApp(
+                root: fake.directory, seed: nil, simulator: Self.udid, latency: nil, clearSession: false, build: false,
+                port: port
+              )
+              return nil
+            } catch { return error }
+          }
+          server.stop()
+          #expect("\(error.map { "\($0)" } ?? "")".hasPrefix(String(format: expected, port)), "\(String(describing: error))")
+        }
+        let launches = fake.calls.filter { $0.hasPrefix("launch ") }
+        #expect(launches.count == 2)
+        let tokens = launches.compactMap { line -> String? in
+          let words = line.split(separator: " ").map(String.init)
+          return words.firstIndex(of: "-agent-token").map { words[$0 + 1] }
+        }
+        #expect(tokens.count == 2 && Set(tokens).count == 2)
+        #expect(tokens.allSatisfy(BridgeToken.isWellFormed))
+        #expect(!FileManager.default.fileExists(atPath: LaunchState.file(in: fake.directory).path))
+      }
+      #endif
 
       /// Each `/run` response of `app test` is checked: one from the same app on Android marks the scenario not run.
       @Test func aScenarioAnsweredByAnotherAppIsNotRun() {

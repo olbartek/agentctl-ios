@@ -23,7 +23,7 @@ The package identity is `agentctl-ios`. Take only the products each target needs
 | `AgentCtlObservation` | the target holding your config, in an MVVM-C app | `AgentObservationDriver`, and its hosts (see [MVVM-C](#mvvm-c-apps-without-tca)) — no TCA |
 | `AgentCtlRuntime` | rarely directly: both adapters re-export it | `AgentDriver`, `AppCtlConfig`, `ScriptRunner`, the deterministic headless host |
 | `AgentCtlCLI` | your CLI's executable target | `AgentCtl.run(config:)` (macOS-only) |
-| `AgentCtlBridge` | your app shell | `AgentLaunch`, the DEBUG-only in-app server |
+| `AgentCtlBridge` | your app shell, and a UI-test target that launches the app | `AgentLaunch`, the DEBUG-only in-app server; `AgentLaunchArguments` |
 | `AgentCtlTestSupport` | your test target | the coverage guards and scenario checks |
 
 ```swift
@@ -478,6 +478,29 @@ and settling relies on every one of them:
 
 In the app shell, `AgentLaunch(config:)` works as it does for TCA; `launch.app` is the coordinator, and a
 `device relaunch` replaces it (see [the bridge guide](bridge.md)).
+
+### Moving a host to 0.9
+
+0.9 hardens the in-app bridge (CONTRACT.md version 4, §8): every request carries the token of the launch that started
+it, a loopback `Host` and no `Origin`, and the bridge parses requests strictly. The token ties requests to whoever
+launched the app; the launch itself is not authenticated, so anything that can launch a debug build can still give it
+a token of its own, as before. The Host and Origin checks do not stop every request a web page can make; the token
+does. Scripts and scenarios are unchanged; what launches the app may need a line:
+
+- **Gate `AgentLaunch` behind `AgentLaunchArguments.isRequested()`**, as [the bridge guide](bridge.md) shows. It is now
+  true only for a well-formed `-agent-token` (32 lowercase hex characters), which every CLI launch passes; `-agent-port`
+  alone no longer counts.
+- **An `AgentLaunch` started without a token does not listen.** It logs `AgentCtlBridge: no -agent-token; not
+  listening` and ignores `-agent-port`, `-appctl-seed`, `-mock-latency` and `-clear-session`: a launch without a token
+  neither seeds nor resets the app.
+- **UI tests that launch the app themselves pass a token**: add `"-agent-token", AgentLaunchArguments.makeToken()` to
+  `launchArguments` beside `-clear-session` or `-appctl-seed`, and link `AgentCtlBridge` to the UI-test target (see
+  [UI tests that launch the app themselves](bridge.md#ui-tests-that-launch-the-app-themselves)).
+- **The token travels in `bridge.json`.** `app launch` writes it beside the port, with mode 0600, and `app run`,
+  `app state` and `app screens` send it to the port the file records. `APPCTL_TOKEN` overrides it, as `APPCTL_PORT`
+  does the port. A bridge that refuses it exits 3 with `refused the token (relaunch it: <cli> app launch)`: relaunch
+  the app, since a `bridge.json` from before 0.9 has no token. A script or tool that calls the bridge itself sends
+  `X-Appctl-Token` and a loopback `Host`, and no `Origin`.
 
 ### Moving a host to 0.8
 

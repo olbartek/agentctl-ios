@@ -184,13 +184,28 @@ struct HelpersTests {
   }
 
   #if DEBUG
-    @Test func theBridgeIsRequestedByAnAgentPort() {
-      #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port", "8799"]))
-      #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port"]))
-      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App"]))
-      // Seeding or latency alone is not an opt-in: only `app launch` passes `-agent-port`, and it always does.
-      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-appctl-seed", "open 1", "-mock-latency", "0"]))
-      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port=8799"]))
+    /// Since 0.9 the bridge is requested by a well-formed `-agent-token`, which every CLI launch passes; a port, a seed
+    /// or a latency alone is not an opt-in (CONTRACT.md §8.2).
+    @Test func theBridgeIsRequestedByAWellFormedToken() {
+      let token = AgentLaunchArguments.makeToken()
+      #expect(AgentLaunchArguments.isRequested(["/path/App", "-agent-token", token]))
+      #expect(AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-token", token, "-agent-port", "8799"]))
+      #expect(AgentLaunchArguments.isRequested(["/path/App", "-clear-session", "-agent-token", token]))
+      #expect(!AgentLaunchArguments.isRequested(["/path/App"]))
+      #expect(!AgentLaunch<AgentStoreDriver<TinyRoot>>.isRequested(["/path/App", "-agent-port", "8799"]))
+      #expect(!AgentLaunchArguments.isRequested(["/path/App", "-appctl-seed", "open 1", "-mock-latency", "0", "-clear-session"]))
+      #expect(!AgentLaunchArguments.isRequested(["/path/App", "-agent-token"]))
+      #expect(!AgentLaunchArguments.isRequested(["/path/App", "-agent-token", token.uppercased()]))
+      #expect(!AgentLaunchArguments.isRequested(["/path/App", "-agent-token", String(token.dropLast())]))
+      #expect(!AgentLaunchArguments.isRequested(["/path/App", "-agent-token=\(token)"]))
+      #expect(!AgentLaunchArguments.isRequested(["-agent-token", token]), "the executable's name is not an argument")
+    }
+
+    /// The helper a UI test launches the app with: a fresh, well-formed token each time.
+    @Test func makeTokenGivesAFreshWellFormedToken() {
+      let tokens = (0..<50).map { _ in AgentLaunchArguments.makeToken() }
+      #expect(Set(tokens).count == tokens.count)
+      #expect(tokens.allSatisfy { $0.utf8.count == 32 && $0.allSatisfy { "0123456789abcdef".contains($0) } })
     }
   #endif
 }

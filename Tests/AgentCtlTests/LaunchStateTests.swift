@@ -15,8 +15,9 @@
     @Suite struct LaunchStateTests {
       static let state = LaunchState(
         device: "5C0A5A2E-0000-4000-8000-000000000001", port: 8766, appId: "com.example.stub",
-        launchedAt: Date(timeIntervalSince1970: 1_790_000_000)
+        launchedAt: Date(timeIntervalSince1970: 1_790_000_000), token: "0123456789abcdef0123456789abcdef"
       )
+      static let token = state.token!
 
       /// Sorted keys, Foundation's pretty form, no escaped slashes, one trailing newline: the same bytes as the
       /// Kotlin port writes.
@@ -28,11 +29,177 @@
               "device" : "5C0A5A2E-0000-4000-8000-000000000001",
               "launchedAt" : "2026-09-21T14:13:20Z",
               "platform" : "ios",
-              "port" : 8766
+              "port" : 8766,
+              "token" : "0123456789abcdef0123456789abcdef"
             }
 
             """
         )
+      }
+
+      /// The file holds the token, so only its owner may read it: 0600 when it is new, and when it was there before
+      /// with another mode.
+      @Test func theFileIsReadableByItsOwnerOnly() throws {
+        AgentCtl.install(StubRuntime())
+        let root = try CLICommandTests.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let file = LaunchState.file(in: root)
+        func mode() throws -> Int {
+          try #require(FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int)
+        }
+        try Self.state.write(in: root)
+        #expect(try mode() == 0o600)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path)
+        #expect(try mode() == 0o644)
+        try Self.state.write(in: root)
+        #expect(try mode() == 0o600)
+        #expect(try LaunchState.read(in: root) == Self.state)
+        // Nothing is left beside it.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: file.deletingLastPathComponent().path) == ["bridge.json"])
+      }
+
+      /// A file from before 0.9 has no token: it still reads, and its bridge then answers 401.
+      @Test func aFileWithoutATokenReads() throws {
+        AgentCtl.install(StubRuntime())
+        let root = try CLICommandTests.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var state = Self.state
+        state.token = nil
+        try state.write(in: root)
+        #expect(!(try String(contentsOf: LaunchState.file(in: root), encoding: .utf8)).contains("token"))
+        #expect(try LaunchState.read(in: root)?.token == nil)
+      }
+
+      /// `APPCTL_TOKEN`, as `APPCTL_PORT` does for the port, beats the file (an empty one is unset); the file's token
+      /// goes only to the port it records; otherwise there is none.
+      @Test func theTokenComesFromTheVariableThenTheFileForItsPort() throws {
+        let file = { () -> LaunchState? in Self.state }
+        let none = { () -> LaunchState? in nil }
+        let variable = ["APPCTL_TOKEN": "fedcba9876543210fedcba9876543210"]
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: variable, launchState: file) == variable["APPCTL_TOKEN"])
+        #expect(try BridgeTokenSource.connecting(port: 9000, environment: variable, launchState: none) == variable["APPCTL_TOKEN"])
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: [:], launchState: file) == Self.token)
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: ["APPCTL_TOKEN": ""], launchState: file) == Self.token)
+        #expect(try BridgeTokenSource.connecting(port: 9000, environment: [:], launchState: file) == nil)
+        #expect(try BridgeTokenSource.connecting(port: 8766, environment: [:], launchState: none) == nil)
+        #expect(BridgeTokenSource.environmentVariable == "APPCTL_TOKEN")
+      }
+
+      /// An `APPCTL_TOKEN` that is not a token is a usage error (exit 2), like a bad `APPCTL_PORT`, and its value is
+      /// never echoed: it could hold a line break, or a secret meant for something else.
+      @Test func aMalformedTokenVariableIsAUsageError() {
+        for value in ["FEDCBA9876543210FEDCBA9876543210", "abc", "fedcba9876543210fedcba9876543210\r\nX: y", "secret-value-123"] {
+          let error = #expect(throws: UsageError.self, "\(value)") {
+            try BridgeTokenSource.connecting(port: 8766, environment: ["APPCTL_TOKEN": value]) { Self.state }
+          }
+          #expect(error?.description == "APPCTL_TOKEN is not a token (32 lowercase hex characters)")
+          #expect(AppCommands.fail(error!) == 2)
+        }
+      }
+
+      /// The CLI makes a fresh token for every launch: 32 lowercase hex characters, never the same twice.
+      @Test func aLaunchTokenIsThirtyTwoLowercaseHexCharactersAndFresh() {
+        let tokens = (0..<100).map { _ in BridgeToken.make() }
+        #expect(Set(tokens).count == tokens.count)
+        for token in tokens {
+          #expect(token.count == 32)
+          #expect(token.allSatisfy { "0123456789abcdef".contains($0) }, "\(token)")
+          #expect(BridgeToken.isWellFormed(token))
+        }
+        #expect(BridgeToken.argument == "-agent-token")
+        #expect(BridgeToken.header == "X-Appctl-Token")
+      }
+
+      @Test func onlyThirtyTwoLowercaseHexCharactersAreAToken() {
+        #expect(BridgeToken.isWellFormed("0123456789abcdef0123456789abcdef"))
+        for token in [
+          "", "0123456789abcdef0123456789abcde", "0123456789abcdef0123456789abcdef0", "0123456789ABCDEF0123456789abcdef",
+          "0123456789abcdeg0123456789abcdef", " 0123456789abcdef0123456789abcdef", "0123456789abcdef0123456789abcde\u{0662}",
+          "０123456789abcdef0123456789abcdef",
+        ] {
+          #expect(!BridgeToken.isWellFormed(token), "\(token)")
+        }
+        #expect(BridgeToken.matches(Self.token, Self.token))
+        #expect(!BridgeToken.matches(Self.token, String(Self.token.reversed())))
+        #expect(!BridgeToken.matches(Self.token + "0", Self.token))
+        #expect(!BridgeToken.matches("", Self.token))
+      }
+
+      /// The token is never printed, logged or dumped: not in the state's or the client's description or dump, and
+      /// not in a command line the CLI writes to a log.
+      @Test func theTokenIsNeverPrinted() {
+        var dumped = ""
+        dump(Self.state, to: &dumped)
+        let client = BridgeClient(port: 8766, token: Self.token)
+        var dumpedClient = ""
+        dump(client, to: &dumpedClient)
+        for text in [
+          "\(Self.state)", String(reflecting: Self.state), dumped, "\(client)", String(reflecting: client), dumpedClient,
+          Shell.redacted(["xcrun", "simctl", "launch", "U", "com.example.stub", "-agent-token", Self.token, "-agent-port", "8766"])
+            .joined(separator: " "),
+        ] {
+          #expect(!text.contains(Self.token), "\(text)")
+        }
+        #expect("\(Self.state)".contains("token: <redacted>"))
+        #expect(
+          Shell.redacted(["launch", "-agent-token", Self.token, "-clear-session"]) == ["launch", "-agent-token", "<redacted>", "-clear-session"]
+        )
+        #expect(Shell.redacted(["launch", "-agent-token"]) == ["launch", "-agent-token"])
+      }
+
+      /// A launch that times out notes its command line in the log, without the token.
+      @Test func aTimedOutCommandLineIsLoggedWithoutTheToken() throws {
+        let root = try CLICommandTests.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let log = root.appending(path: "launch.log")
+        let status = Shell.run(["/bin/sh", "-c", "sleep 5", "sh", "-agent-token", Self.token], in: root, log: log, timeout: 0.2)
+        #expect(status == Shell.timedOut)
+        let text = try String(contentsOf: log, encoding: .utf8)
+        #expect(text.contains("-agent-token <redacted>"), "\(text)")
+        #expect(!text.contains(Self.token))
+      }
+
+      /// A 401 and a 403 are exit 3, each with its own message, naming the CLI as the host calls it.
+      @Test func aRefusalSaysWhy() {
+        AgentCtl.install(StubRuntime())
+        #expect(
+          Message.refusedToken(port: 8766)
+            == "the app's agent bridge on 127.0.0.1:8766 refused the token (relaunch it: xctl app launch)"
+        )
+        #expect(Message.forbidden(port: 8766) == "the app's agent bridge on 127.0.0.1:8766 refused the request (forbidden)")
+        func response(_ status: Int) -> BridgeClient.Response {
+          BridgeClient.Response(
+            status: status, body: "x\n", exitCode: 3, identity: BridgeIdentity(app: "com.example.stub", platform: "ios")
+          )
+        }
+        #expect(response(401).refusal(port: 8766) == BridgeClient.Refused(port: 8766, reason: .token))
+        #expect(response(403).refusal(port: 8766) == BridgeClient.Refused(port: 8766, reason: .forbidden))
+        #expect(response(200).refusal(port: 8766) == nil)
+        #expect(response(404).refusal(port: 8766) == nil)
+        // A 401 or 403 without X-Appctl-Exit is not a bridge's refusal.
+        var other = response(401)
+        other.carriesExit = false
+        #expect(other.refusal(port: 8766) == nil)
+        other.status = 403
+        #expect(other.refusal(port: 8766) == nil)
+        // Another app's refusal is another app: its "answers as" text wins.
+        var android = response(401)
+        android.identity = BridgeIdentity(app: "com.example.stub", platform: "android")
+        #expect(AppTest.foreign(android, port: 8766).map { AppTest.Result(name: "b", outcome: $0).report }?.contains("answers as") == true)
+        // However the port was found: the message is the refusal's alone.
+        let refused = BridgeClient.Refused(port: 8766, reason: .token)
+        #expect(Message.bridgeUnreachable(port: 8766, source: .launchState(Self.state), error: refused) == Message.refusedToken(port: 8766))
+        #expect("\(BridgeClient.Refused(port: 8766, reason: .forbidden))" == Message.forbidden(port: 8766))
+        #expect(AppCommands.fail(refused) == 3)
+        // `app test`: a scenario the app refused is not run (exit 3), like one another app answered.
+        let outcome = AppTest.foreign(response(401), port: 8766)
+        #expect(
+          outcome.map { AppTest.Result(name: "browse", outcome: $0).report }
+            == "FAIL browse\n  the app's agent bridge on 127.0.0.1:8766 refused the token (relaunch it: xctl app launch)"
+        )
+        #expect(outcome.map { AppTest.Result(name: "browse", outcome: $0).isBroken } == true)
+        #expect(AppTest.foreign(response(403), port: 8766).map { AppTest.Result(name: "b", outcome: $0).isBroken } == true)
+        #expect(AppTest.foreign(response(200), port: 8766) == nil)
       }
 
       @Test func theFileLivesInTheOutputDirectoryAndRoundTrips() throws {
@@ -97,7 +264,7 @@
       /// A port something listens on is taken, even when a bind with address reuse (as the bridge does) would
       /// succeed; it is free again once the listener closes.
       @Test func aPortIsFreeOnlyWhenNothingListensOnIt() async throws {
-        let server = BridgeServer { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
+        let server = BridgeServer(token: Self.token) { _ in BridgeResponse(status: 200, body: "", exitCode: 0) }
         let port = Int(try await server.start(port: 0))
         #expect(!BridgePort.isFree(port))
         server.stop()
@@ -192,7 +359,9 @@
         let root = try CLICommandTests.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         // The app the launch state names, as its bridge says.
-        let server = BridgeServer(app: "com.example.stub") { _ in BridgeResponse(status: 200, body: "state\n", exitCode: 0) }
+        let server = BridgeServer(app: "com.example.stub", token: Self.token) { _ in
+          BridgeResponse(status: 200, body: "state\n", exitCode: 0)
+        }
         let port = Int(try await server.start(port: 0))
         defer { server.stop() }
         var state = Self.state
@@ -204,6 +373,44 @@
         #expect(code == 0)
         let connection = await CLICommandTests.withRepoRoot(root.path) { try? AppCommands.connection(flag: nil) }
         #expect(connection?.port == port)
+      }
+
+      /// End to end: the file's token reaches the bridge with the port it records, through `--port` too; a token that
+      /// is not the launch's, or none (a port the file does not name), is refused with exit 3.
+      @Test func theFilesTokenReachesTheBridgeAndAnotherIsRefused() async throws {
+        AgentCtl.install(StubRuntime())
+        let root = try CLICommandTests.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        var seen: [String] = []
+        let server = BridgeServer(app: "com.example.stub", token: Self.token) { request in
+          seen.append("\(request.method) \(request.path)")
+          return BridgeResponse(status: 200, body: "> open 1\n", exitCode: 0)
+        }
+        let port = Int(try await server.start(port: 0))
+        defer { server.stop() }
+        var state = Self.state
+        state.port = port
+        try state.write(in: root)
+        #expect(await CLICommandTests.withRepoRoot(root.path) { await AppCommands.get("/state", port: nil) } == 0)
+        #expect(await CLICommandTests.withRepoRoot(root.path) { await AppCommands.get("/state", port: port) } == 0)
+        #expect(await CLICommandTests.withRepoRoot(root.path) { await AppCommands.run(script: "open 1", json: false, port: nil) } == 0)
+        #expect(seen == ["GET /state", "GET /state", "GET /snapshot", "POST /run"])
+        // A stale token: the script is never posted.
+        state.token = BridgeToken.make()
+        try state.write(in: root)
+        seen = []
+        #expect(await CLICommandTests.withRepoRoot(root.path) { await AppCommands.run(script: "open 1", json: false, port: nil) } == 3)
+        #expect(await CLICommandTests.withRepoRoot(root.path) { await AppCommands.get("/state", port: nil) } == 3)
+        // No file: no token.
+        try FileManager.default.removeItem(at: LaunchState.file(in: root))
+        #expect(await CLICommandTests.withRepoRoot(root.path) { await AppCommands.get("/state", port: port) } == 3)
+        #expect(seen.isEmpty)
+        // And straight from the client: its refusal, which names the port.
+        let answer = try await BridgeClient(port: port, token: nil).send("GET", "/state")
+        #expect(answer.status == 401)
+        #expect(answer.exitCode == 3)
+        #expect(answer.identity == BridgeIdentity(app: "com.example.stub", platform: "ios"))
+        #expect(answer.refusal(port: port) == BridgeClient.Refused(port: port, reason: .token))
       }
 
       /// The build's `.app`, from XcodeBuildMCP's report; anything else is not a path to install.
@@ -235,7 +442,7 @@
           ("com.example.stub", "ios", 0),
         ]
         for (app, platform, expected) in answers {
-          let server = BridgeServer(app: app, platform: platform) { _ in
+          let server = BridgeServer(app: app, platform: platform, token: Self.token) { _ in
             BridgeResponse(status: 200, body: "state\n", exitCode: 0)
           }
           let port = Int(try await server.start(port: 0))
@@ -296,7 +503,7 @@
         let root = try CLICommandTests.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
         var requests: [String] = []
-        let server = BridgeServer(app: "com.example.other") { request in
+        let server = BridgeServer(app: "com.example.other", token: Self.token) { request in
           requests.append("\(request.method) \(request.path)")
           return BridgeResponse(status: 200, body: "> open 1\n", exitCode: 0)
         }
@@ -348,13 +555,13 @@
       /// the bridge unreachable.
       @Test func aLongScriptIsNotAnUnreachableBridge() async throws {
         AgentCtl.install(StubRuntime())
-        let server = BridgeServer(app: "com.example.stub") { request in
+        let server = BridgeServer(app: "com.example.stub", token: Self.token) { request in
           if request.method == "POST" { try? await Task.sleep(for: .seconds(2)) }
           return BridgeResponse(status: 200, body: "> open 1\n", exitCode: 0)
         }
         let port = Int(try await server.start(port: 0))
         defer { server.stop() }
-        let client = BridgeClient(port: port)
+        let client = BridgeClient(port: port, token: Self.token)
         let answer = try await BridgeClient.$idleTimeout.withValue(0.5) {
           try await client.send("POST", "/run", body: "open 1")
         }

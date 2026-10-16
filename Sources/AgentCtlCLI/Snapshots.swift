@@ -14,23 +14,41 @@
     static var runtimeMajor: Int { AgentCtl.runtime.snapshotRuntimeMajor }
 
     struct Result {
-      var ok: Bool
+      /// The exit status (CONTRACT.md §5): 0 when every snapshot matched (or was recorded); 1 when the tests ran
+      /// and failed — screens that differ, or a recording that recorded nothing; 2 for an ambiguous `--sim`; 3 when
+      /// they could not run — no simulator for the runtime, nothing configured to record, a package with no
+      /// snapshot tests or no scheme to test them with, or `xcodebuild` that could not start or timed out.
+      var status: RunStatus
       var tests: Int
       var device: Simulator.Device?
       /// Lines worth showing: failing tests and where their failure images are.
       var details: [String]
+      var ok: Bool { status == .ok }
     }
 
-    static func run(root: URL, simulator: String, record: Bool) -> Result {
+    static func run(root: URL, simulator: String, record: Bool, packages: [String] = packages) -> Result {
+      // Nothing configured: nothing to compare is a pass, nothing to record is a configuration problem.
+      guard !packages.isEmpty else {
+        guard record else { return Result(status: .ok, tests: 0, device: nil, details: []) }
+        let detail = "nothing to record: no package (the config's snapshotPackages is empty)"
+        return Result(status: .internalError, tests: 0, device: nil, details: [detail])
+      }
       let device: Simulator.Device
       do {
         device = try Simulator(root: root).resolve(simulator, runtimeMajor: runtimeMajor)
       } catch {
-        return Result(ok: false, tests: 0, device: nil, details: ["\(error). Snapshots need an iOS \(runtimeMajor) simulator."])
+        return Result(
+          status: error is UsageError ? .usage : .internalError, tests: 0, device: nil,
+          details: ["\(error). Snapshots need an iOS \(runtimeMajor) simulator."]
+        )
       }
       var tests = 0
       var details: [String] = []
-      var ok = true
+      var status = RunStatus.ok
+      /// The run's status is its worst package's: 3 (could not run) over 1 (ran and failed).
+      func worsen(_ problem: RunStatus) {
+        if problem.rawValue > status.rawValue { status = problem }
+      }
       // Failure images (actual + difference) go here instead of the simulator's temporary directory.
       let layout = Layout(root: root)
       let artifacts = layout.snapshotFailures
@@ -42,13 +60,13 @@
         let log = layout.logs.appending(path: "L3-snapshots-\(package).log")
         let targets = snapshotTargets(in: directory)
         guard !targets.isEmpty else {
-          ok = false
+          worsen(.internalError)
           details.append("\(package): no Tests/*SnapshotTests directory in \(path)")
           continue
         }
         let listed = listedSchemes(in: directory)
         guard let scheme = scheme(for: package, listed: listed) else {
-          ok = false
+          worsen(.internalError)
           let schemes = listed.isEmpty ? "none" : listed.joined(separator: ", ")
           details.append("\(package): no scheme to test it with; xcodebuild -list offers: \(schemes)")
           continue
@@ -63,8 +81,19 @@
           $0.contains("Test run with") && ($0.contains(" passed after ") || $0.contains(" failed after "))
         }
         let output = (try? String(contentsOf: log, encoding: .utf8)) ?? ""
-        // A hung xcodebuild (terminated by the watchdog) still counts when its test run finished and passed.
-        let status: Int32 = exitStatus ?? (output.firstMatch(of: #/Test run with \d+ tests? .* passed after/#) != nil ? 0 : 1)
+        guard exitStatus != -1 else {
+          worsen(.internalError)
+          details.append("\(package): xcodebuild could not start; log: \(log.path(percentEncoded: false))")
+          continue
+        }
+        // Stopped by the watchdog: once its test run had finished, it still counts; before that, it timed out.
+        let finished = output.firstMatch(of: #/Test run with \d+ tests? .* (passed|failed) after/#) != nil
+        if exitStatus == nil, !finished {
+          worsen(.internalError)
+          details.append("\(package): xcodebuild did not finish in time; it was stopped; log: \(log.path(percentEncoded: false))")
+          continue
+        }
+        let testStatus: Int32 = exitStatus ?? (output.firstMatch(of: #/Test run with \d+ tests? .* passed after/#) != nil ? 0 : 1)
         if exitStatus == nil {
           details.append("\(package): xcodebuild didn't exit after the tests finished; it was stopped")
         }
@@ -73,16 +102,16 @@
           let recorded = output.components(separatedBy: "Automatically recorded snapshot").count - 1
           details.append("\(package): recorded \(recorded) snapshots")
           if recorded == 0 {
-            ok = false
+            worsen(.failed)
             details.append("  nothing recorded; log: \(log.path(percentEncoded: false))")
           }
-        } else if status != 0 {
-          ok = false
+        } else if testStatus != 0 {
+          worsen(.failed)
           details.append("\(package): failed; log: \(log.path(percentEncoded: false))")
           details += failureLines(in: output)
         }
       }
-      return Result(ok: ok, tests: tests, device: device, details: details)
+      return Result(status: status, tests: tests, device: device, details: details)
     }
 
     /// The snapshot packages' paths, for the help text.

@@ -43,3 +43,19 @@ The example app in this repository shows the headless end of this: TinyApp is a 
 root, so its config lists `packages: ["."]`, and `swift run tinyctl check` builds and tests this whole package,
 runs TinyApp's scenarios and checks its docs. It has no Xcode project, so `app`, `snapshots` and `check --ui`
 cannot work there; they are the parts of the CLI this repository does not exercise end to end.
+
+## Exit codes
+
+`check` exits with its first failing rung's code, else 0 (CONTRACT.md §5):
+
+- **1** — the rung ran and found the app wrong: a package that does not build (L0) or whose tests fail (L1), a
+  scenario that fails (L2), stale docs, snapshots that differ or a recording that recorded nothing (L3), a scenario
+  that fails in the app or an unexpected final screen (L4).
+- **2** — a usage error: a bad `APPCTL_PORT` or an ambiguous `--sim`.
+- **3** — the rung could not run: `swift` or `xcodebuild` could not start or timed out, no scenario files (L2, or
+  none for L4 to run), a scenario the config's `appCheck` names that does not exist (checked before L0, printed
+  as L4's row followed by `cannot read <path>`), a snapshot package with no snapshot tests or no scheme, no
+  simulator for the runtime, a failed build, install or launch of the app, an unreachable bridge.
+
+`snapshots` exits the same way as L3; with nothing in `snapshotPackages` it passes, and `snapshots --record`
+exits 3.

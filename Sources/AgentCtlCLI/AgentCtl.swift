@@ -39,6 +39,10 @@
       // What `AsyncParsableCommand.main()` does, except for the exit code of a usage error: see ``exitStatus(for:)``.
       do {
         var command = try await AppCtlCommand.asyncParseAsRoot(arguments(Array(CommandLine.arguments.dropFirst())))
+        if let usage = missingSubcommand(command) {
+          FileHandle.standardError.write(Data((usage + "\n").utf8))
+          exit(RunStatus.usage.rawValue)
+        }
         if var asyncCommand = command as? AsyncParsableCommand {
           try await asyncCommand.run()
         } else {
@@ -69,6 +73,17 @@
       var moved = arguments
       let value = moved.remove(at: index)
       return moved + ["--", value]
+    }
+
+    /// The help of a command group run without a subcommand (`appctl`, `appctl app`), or `nil` for any other
+    /// command. ArgumentParser prints a group's help and exits 0 for it, as if `--help` had been asked; but a
+    /// missing subcommand is a malformed command line, so the CLI prints that help on stderr and exits 2
+    /// (CONTRACT.md §5), as a script's `device` line with no subcommand does. `--help`, `-h` and `help` still print
+    /// it on stdout and exit 0: they parse to ArgumentParser's own help command, never to the group.
+    static func missingSubcommand(_ command: any ParsableCommand) -> String? {
+      let group = type(of: command)
+      guard !group.configuration.subcommands.isEmpty else { return nil }
+      return AppCtlCommand.helpMessage(for: group)
     }
 
     /// The exit code for an error thrown while parsing or running a command.

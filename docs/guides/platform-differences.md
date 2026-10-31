@@ -4,7 +4,7 @@
 the same [`CONTRACT.md`](../../CONTRACT.md), run the same scenario files and print the same bytes; where Kotlin or
 Android forces a difference, the port records it in
 [its own platform-differences guide](https://github.com/olbartek/agentctl-android/blob/main/docs/guides/platform-differences.md),
-the full list. This page maps the types whose names do not line up, from this side.
+the full list. This page maps the types whose names do not line up, and the CLI behaviour that differs, from this side.
 
 ## Starting the bridge in the app
 
@@ -20,6 +20,13 @@ So the name `AgentLaunchSession` means different things on the two sides: here i
 Android's `AgentLaunch` plays), there it is the JVM piece under Android's `AgentLaunch`. Code that names the role is
 the same on both; code that names the type is not.
 
+## The app after `app test`
+
+- `app test` and `check --ui` leave the app the last scenario ran on its port, and `app run` right after them still
+  reaches it: a simulator app holds its port on the Mac itself, and nothing outlives it. On Android they remove the
+  `adb forward` each launch made once its scenario has run, so the next run of the app, from any checkout, finds the
+  port free; the app keeps running, but `app run` right after them needs an `app launch` first.
+
 ## Before 1.0
 
-The differences above are to be settled by 1.0; [Before 1.0](before-1.0.md) lists them.
+The type names above are to be settled by 1.0; [Before 1.0](before-1.0.md) lists them.

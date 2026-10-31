@@ -2,7 +2,7 @@
 
 [TinyApp](../TinyApp) rebuilt as MVVM-C: `@Observable` view models under a coordinator, no Composable Architecture.
 It runs TinyApp's own scenario files, unchanged, and prints what TinyApp prints byte for byte. That is the proof that
-the engine — the script language, `expect`, `advance`, `mock`, `device`, the step output — does not depend on how an
+the engine — the script language, `expect`, `advance`, `mock`, `wait`, `device`, the step output — does not depend on how an
 app is built.
 
 TinyMVVM is its own package, depending on this repository by path, like AgentShop: Swift's `@Observable` needs iOS 17,

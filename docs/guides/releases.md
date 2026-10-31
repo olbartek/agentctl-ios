@@ -1,5 +1,22 @@
 # Releases
 
+## 0.12.0 (2026-10-31)
+
+The runtime command `wait` blocks until the app matches or changes, so neither a scenario nor a bridge client polls (CONTRACT.md version 5). Released with agentctl-android 0.12.0. [Release notes](https://github.com/olbartek/agentctl-ios/releases/tag/0.12.0).
+
+### Moving a host to 0.12
+
+0.12 adds the runtime command `wait [<duration>] [k=v …]` (CONTRACT.md version 5, §2.5): it waits until the pairs
+match or, with none, until the screen changes, moving the clock headlessly and in real time in the running app. A
+scenario that waited in a shell loop, or a bridge client that polled `GET /snapshot`, uses it instead. No breaking API
+changes, but three things a host may see:
+
+- **`wait` is now a runtime command,** and a runtime command takes precedence over a screen's: an app command named
+  `wait` no longer runs. Rename it.
+- **The unknown-command message lists it:** `Valid here: …, expect, advance, mock, wait, device`. A scenario or a
+  test that compares that line changes with it.
+- **The command docs and the coverage check count it.** Regenerate the command docs with `docs` (they gain a `wait` row), and use `wait` in at least one scenario, or the coverage check ("every command is used by a scenario") fails with `wait` unused.
+
 ## 0.11.0 (2026-10-31)
 
 A UIKit app, or any app on iOS 16, starts the debug bridge in one line: `AgentLaunchSession` does everything `AgentLaunch` does, without `@Observable`. Released with agentctl-android 0.11.0; CONTRACT.md is unchanged (version 4). [Release notes](https://github.com/olbartek/agentctl-ios/releases/tag/0.11.0).

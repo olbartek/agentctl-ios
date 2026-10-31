@@ -212,6 +212,17 @@ extension ScriptParser {
   }
 }
 
+extension ScriptParser {
+  /// A duration as a script writes it, in the largest unit that holds it exactly: `90s`, `5m`, `1h`, `1500ms`.
+  public static func formatDuration(_ duration: Duration) -> String {
+    let (seconds, attoseconds) = duration.components
+    guard attoseconds == 0 else { return "\(seconds * 1000 + attoseconds / 1_000_000_000_000_000)ms" }
+    if seconds != 0, seconds % 3600 == 0 { return "\(seconds / 3600)h" }
+    if seconds != 0, seconds % 60 == 0 { return "\(seconds / 60)m" }
+    return "\(seconds)s"
+  }
+}
+
 extension StringProtocol {
   func trimmingWhitespace() -> String {
     let characters = Array(self)

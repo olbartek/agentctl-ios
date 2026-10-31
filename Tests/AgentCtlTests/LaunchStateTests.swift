@@ -4,6 +4,7 @@
   import AgentCtlTCA
   import Foundation
   import Testing
+  import TinyApp
 
   @testable import AgentCtlCLI
 
@@ -577,6 +578,42 @@
         )
         // Waiting for the first answer before the next request: the bridge handles one at a time.
         try await Task.sleep(for: .seconds(2))
+      }
+
+      /// A `wait` keeps `POST /run` silent for as long as it waits, so the CLI allows a script its waits plus a margin
+      /// whenever that is longer than its usual limit (CONTRACT.md §8.6).
+      @Test func aScriptIsAllowedItsWaits() {
+        BridgeClient.$scriptLimit.withValue(10) {
+          #expect(BridgeClient.limit(for: "open 1") == 10)
+          #expect(BridgeClient.limit(for: "wait 5s screen=a") == 65)
+          #expect(BridgeClient.limit(for: "wait 2m; wait 30s; wait") == 120 + 30 + 10 + 60)
+          #expect(BridgeClient.limit(for: "wait 1500ms") == 61.5)
+          #expect(BridgeClient.limit(for: "wait \"open") == 10)
+        }
+        #expect(BridgeClient.limit(for: "wait 2h") == 7260)
+      }
+
+      /// The claim above, live: a 30-second `wait` in the running app, through the CLI's client with a limit and an
+      /// idle timeout far below it, times out on the app's side (exit 1), not on the client's.
+      @Test func aThirtySecondWaitIsNotCutOff() async throws {
+        let app = TinyAppConfig.live(latency: .zero)
+        let runner = app.makeRunner(synthesizesAppearance: true)
+        _ = await runner.launch()
+        let router = BridgeRouter(runner: runner, screensText: { "" })
+        let server = BridgeServer(app: "com.example.tinyapp", token: Self.token) { try await router.handle($0) }
+        let port = Int(try await server.start(port: 0))
+        defer { server.stop() }
+        let client = BridgeClient(port: port, token: Self.token)
+        let clock = ContinuousClock()
+        let start = clock.now
+        let answer = try await BridgeClient.$idleTimeout.withValue(1) {
+          try await BridgeClient.$scriptLimit.withValue(1) {
+            try await client.send("POST", "/run", body: "wait 30s screen=nowhere")
+          }
+        }
+        #expect(start.duration(to: clock.now) >= .seconds(30))
+        #expect(answer.exitCode == 1)
+        #expect(answer.body.hasSuffix("  FAIL wait timed out after 30s\n  FAIL expected screen=nowhere, got screen=items\n"), "\(answer.body)")
       }
     }
   }

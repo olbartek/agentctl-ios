@@ -42,7 +42,7 @@ extension AgentCtlSuite {
       #expect(result.status == .failed)
       let message = try? #require(result.steps.last?.message)
       #expect(message?.contains("unknown command 'frobnicate' on \(firstScreen)") == true)
-      #expect(message?.contains("expect, advance, mock") == true)
+      #expect(message?.contains("expect, advance, mock, wait") == true)
     }
 
     @Test func failedExpectationsStopTheScript() async throws {

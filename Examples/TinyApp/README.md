@@ -27,7 +27,7 @@ PASS browse (10 steps, 17 ms)
 PASS deep-link (8 steps, 13 ms)
 PASS push (5 steps, 5 ms)
 PASS refresh-error (7 steps, 3 ms)
-PASS save-cooldown (13 steps, 10 ms)
+PASS save-cooldown (12 steps, 10 ms)
 5 passed, 0 failed
 ```
 

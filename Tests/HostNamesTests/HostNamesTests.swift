@@ -37,6 +37,7 @@ private struct UsesHostNames {
   var driver: Driver?
   var coordinator: Coordinator?
   var viewModel: ViewModel?
+  var waitArguments: WaitArguments?
 }
 
 /// What this guards: a host that declares common words of its own still compiles beside every AgentCtl module (see
@@ -44,7 +45,7 @@ private struct UsesHostNames {
 struct HostNamesTests {
   @Test func aHostsOwnNamesStayUnambiguous() {
     let types = Mirror(reflecting: UsesHostNames()).children.map { String(reflecting: type(of: $0.value)) }
-    #expect(types.count == 26)
+    #expect(types.count == 27)
     #expect(types.allSatisfy { $0.contains("HostNames.") })
   }
 }

@@ -165,7 +165,10 @@
           settle: { [self] in await settle() },
           advance: { [clock] duration in await clock.advance(by: duration) },
           synthesizesAppearance: true,
-          dependencies: dependencies
+          dependencies: dependencies,
+          timeUntilNextSleep: { [clock, countingClock] in
+            countingClock.earliestDeadline.map { clock.now.duration(to: $0) }
+          }
         ),
         mockMethods: mockMethods,
         device: device,

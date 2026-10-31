@@ -20,6 +20,7 @@
   /// - `-appctl-seed "<script>"`: commands run before the first real frame; the app shows a splash until then.
   /// - `-mock-latency <ms>`: fixed mock latency (default: the config's live latency).
   /// - `-clear-session`: `config.clearSession()` before the app launches.
+  @available(iOS 17, macOS 14, *)
   @MainActor
   @Observable
   public final class AgentLaunch<Driver: AgentDriver> {
@@ -170,6 +171,7 @@
   }
 
   /// The token never appears in a description or a dump of the options.
+  @available(iOS 17, macOS 14, *)
   extension AgentLaunch.Options: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public var description: String {
       "Options(token: \(token == nil ? "nil" : BridgeToken.redacted), port: \(port), seed: \(seed.map { "\"\($0)\"" } ?? "nil"), "

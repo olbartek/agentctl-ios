@@ -1,7 +1,7 @@
 // Debug builds only (or a CLI built with -DAGENTCTL_RELEASE): see the note on this target in Package.swift.
 #if DEBUG || AGENTCTL_RELEASE
+  import AgentCtlCore
   import Foundation
-  import Synchronization
 
   /// The running app's clock: real time, which `advance` can move forward.
   ///
@@ -15,7 +15,7 @@
     public typealias Instant = ContinuousClock.Instant
 
     private let base = ContinuousClock()
-    private let state = Mutex(State())
+    private let state = Locked(State())
 
     private struct State {
       var offset: Duration = .zero
@@ -99,7 +99,7 @@
     /// One waiting sleep. ``wake()`` ends ``wait()``, whether it comes before, during or after it, and only once.
     final class Sleeper: Sendable {
       let deadline: Instant
-      private let state = Mutex<(woken: Bool, continuation: CheckedContinuation<Void, Never>?)>((false, nil))
+      private let state = Locked<(woken: Bool, continuation: CheckedContinuation<Void, Never>?)>((false, nil))
 
       init(deadline: Instant) {
         self.deadline = deadline

@@ -1,5 +1,4 @@
 import Dependencies
-import Synchronization
 
 /// Where an app that starts its own `Task`s — an MVVM-C app's view models — starts them, so the agent runtime can
 /// see its work start and finish, and so the work runs in the dependencies of the object that started it.
@@ -24,7 +23,7 @@ import Synchronization
 /// In a Release build it is a plain `Task`, plus one atomic count. A TCA app does not need it: its effects are counted
 /// by the store.
 public final class AgentTasks: Sendable {
-  private let count = Mutex(0)
+  private let count = Locked(0)
 
   public init() {}
 

@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "agent-ctl",
-  platforms: [.iOS(.v18), .macOS(.v15)],
+  platforms: [.iOS(.v16), .macOS(.v15)],
   products: [
     .library(name: "AgentCtlCore", targets: ["AgentCtlCore"]),
     .library(name: "AgentCtlRuntime", targets: ["AgentCtlRuntime"]),

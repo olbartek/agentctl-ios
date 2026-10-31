@@ -1,5 +1,4 @@
 import Dependencies
-import Synchronization
 
 extension AgentDevice {
   /// A permission's status, as the app's permission fakes report it (CONTRACT.md §2.4).
@@ -123,7 +122,7 @@ public final class AgentDevice: Sendable {
   public let isDriven: Bool
   /// The error code every mocked call fails with while offline (``AgentDeviceConfig/offlineErrorCode``).
   public let offlineErrorCode: String?
-  private let state = Mutex(State())
+  private let state = Locked(State())
 
   /// An undriven device: every request is granted at once.
   public convenience init() {

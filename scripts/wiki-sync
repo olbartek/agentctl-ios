@@ -110,7 +110,9 @@ def rewrite_links(text, base, repo):
         resolved = posixpath.normpath(posixpath.join(base, path)) if path else base
         if resolved in PAGE_OF and not prefix.startswith("!"):
             return f"{prefix}{PAGE_OF[resolved]}{fragment}{title})"
-        kind = "tree" if os.path.isdir(os.path.join(repo.root, resolved)) else "blob"
+        # An image is served raw, so the wiki shows it; a blob URL is a page about the file.
+        kind = ("raw" if prefix.startswith("!") else
+                "tree" if os.path.isdir(os.path.join(repo.root, resolved)) else "blob")
         return f"{prefix}{repo.url(kind, 'main', resolved)}{fragment}{title})"
 
     parts = re.split(r"(^[ \t]*```.*?^[ \t]*```[^\n]*$)", text, flags=re.S | re.M)
@@ -206,7 +208,8 @@ def main():
     parser = argparse.ArgumentParser(prog="scripts/wiki-sync", description=__doc__.split("\n\n")[0])
     parser.add_argument("--check", action="store_true", help="exit 1 when the wiki is out of date; change nothing")
     parser.add_argument("--out", metavar="DIR", help="only write the pages into DIR")
-    parser.add_argument("--wiki-dir", metavar="DIR", help="an existing checkout of the wiki, instead of a clone")
+    parser.add_argument("--wiki-dir", metavar="DIR",
+                        help="an existing clone of the wiki (it is pulled first), instead of a fresh clone")
     arguments = parser.parse_args()
     if arguments.out and (arguments.check or arguments.wiki_dir):
         parser.error("--out writes the pages only; it takes neither --check nor --wiki-dir")
@@ -223,6 +226,8 @@ def main():
     try:
         if arguments.wiki_dir:
             directory = arguments.wiki_dir
+            if not os.path.isdir(os.path.join(directory, ".git")):
+                raise Failure(f"{directory} is not a clone of the wiki")
             git("pull", "--ff-only", "-q", cwd=directory)
         else:
             clone = tempfile.mkdtemp(prefix="wiki-sync-")
@@ -261,4 +266,8 @@ if __name__ == "__main__":
         sys.exit(main())
     except Failure as failure:
         print(f"wiki-sync: {failure}", file=sys.stderr)
+        sys.exit(3)
+    except OSError as error:
+        # A setup problem, never "out of date": exit 3, not 1.
+        print(f"wiki-sync: {error}", file=sys.stderr)
         sys.exit(3)

@@ -84,6 +84,55 @@ a comment line, and `app test` prints it as skipped:
 If your app opens URLs, stub `openURL` in `makeLive`'s `configure`: opening Safari puts the app, and its bridge,
 in the background, and the next request never gets an answer.
 
+## UIKit apps and iOS 16
+
+`AgentLaunch` is `@Observable` for the SwiftUI view above, which is why it needs iOS 17. `AgentLaunchSession` is the
+same launch without it: the same launch arguments, the same seed and the same bridge, from iOS 16 and with no UI
+framework. It tells you about its two changes through closures instead: `onReady` when the seed is applied, and
+`onAppChange` with the new app after a `device relaunch`. A UIKit app keeps one in its scene delegate:
+
+```swift
+#if DEBUG
+  import AgentCtlBridge
+  import MyAppCtl
+#endif
+
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+  #if DEBUG
+    private var session: AgentLaunchSession<AgentObservationDriver<AppCoordinator>>?
+  #endif
+
+  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+    guard let scene = scene as? UIWindowScene else { return }
+    let window = UIWindow(windowScene: scene)
+    self.window = window
+    #if DEBUG
+      if AgentLaunchArguments.isRequested() {
+        let launch = AgentLaunchSession(config: MyAppConfig.appCtl)
+        self.session = launch
+        launch.onAppChange = { [weak self] coordinator in self?.show(coordinator) }
+        launch.onReady = { [weak self, weak launch] in if let launch { self?.show(launch.app) } }
+        if launch.isReady { show(launch.app) } else { window.rootViewController = SplashViewController() }
+        window.makeKeyAndVisible()
+        Task { await launch.start() }
+        return
+      }
+    #endif
+    show(AppCoordinator())
+    window.makeKeyAndVisible()
+  }
+
+  private func show(_ coordinator: AppCoordinator) {
+    window?.rootViewController = coordinator.rootViewController
+  }
+}
+```
+
+Call `start()` once, after the first screen is up: it applies the seed before it starts listening, exactly as
+`AgentLaunch.start()` does, and without a token it logs `AgentCtlBridge: no -agent-token; not listening` and returns.
+Keep the session for the life of the app; the bridge stops with it.
+
 ## Who may use the bridge
 
 Every request carries the launch's token in `X-Appctl-Token`, and a `Host` of `127.0.0.1` or `localhost`; one with an

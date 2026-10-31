@@ -11,7 +11,7 @@ dependencies: [
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.11.0"` admits every later
+Until 1.0, a minor version may change the API (see [Before 1.0](before-1.0.md)); `from: "0.11.0"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`. Take only the products each target needs:
@@ -73,7 +73,7 @@ extension ItemDetail: AgentScreen {
 
 `screenPaths` is the path as the generated docs list it, with `<id>` standing for the variable part;
 `screenPath(_:)` is the concrete one an agent sees and asserts on. `summaryKeys` is checked against what
-`summary` actually emits (see [the coverage guards](coverage-and-checks.md#the-coverage-guards)) — and **never put a secret in a
+`summary` actually emits (see [the coverage guards](coverage-and-checks.md)) — and **never put a secret in a
 summary**, because it is printed on every step.
 
 A command can do more than send an action. The list screen's
@@ -480,75 +480,6 @@ and settling relies on every one of them:
 In the app shell, `AgentLaunch(config:)` works as it does for TCA; `launch.app` is the coordinator, and a
 `device relaunch` replaces it (see [the bridge guide](bridge.md)).
 
-### Moving a host to 0.11
+## Upgrading
 
-0.11 adds `AgentLaunchSession`: everything `AgentLaunch` does — the token gate, `-clear-session`, the live host, the
-launch seed and the bridge — without `@Observable`, so a UIKit app, or any app on iOS 16, starts the bridge with it
-instead of building one from `BridgeServer` (see [the bridge guide](bridge.md#uikit-apps-and-ios-16)). Nothing else
-changes; scripts, scenarios, the CLI and CONTRACT.md (still version 4) are the same.
-
-- **A SwiftUI app keeps `AgentLaunch`**, with the same API. It now wraps a session, which `launch.session` exposes.
-- **`AgentLaunch.Options` is `AgentLaunchOptions`**, a type of its own, as on Android. The old name is an alias.
-- **On Android the names differ**: its `AgentLaunch` plays this `AgentLaunchSession`'s role, and its `AgentLaunchSession`
-  is a lower-level JVM piece. [Differences from agentctl-android](platform-differences.md) maps them.
-- **A host that started the bridge itself** — `BridgeServer` and `BridgeRouter` with its own argument parsing — moves
-  to `AgentLaunchSession` and deletes that code.
-
-### Moving a host to 0.10
-
-0.10 lowers the libraries' floor from iOS 18 to iOS 16. Nothing changes for a host on iOS 18: scripts, scenarios,
-the CLI and CONTRACT.md (still version 4) are the same.
-
-- **A host on iOS 16 or 17** can now depend on every product. `AgentLaunch` is `@Observable`, so it is
-  `@available(iOS 17, *)`: an app whose floor is iOS 16 uses it only where `#available(iOS 17, *)` holds.
-- **TinyMVVM is its own package** (`Examples/TinyMVVM`), like AgentShop, because Swift's `@Observable` needs iOS 17.
-  Run its CLI from its directory: `cd Examples/TinyMVVM && swift run tinymvvmctl test`.
-
-### Moving a host to 0.9
-
-0.9 hardens the in-app bridge (CONTRACT.md version 4, §8): every request carries the token of the launch that started
-it, a loopback `Host` and no `Origin`, and the bridge parses requests strictly. The token ties requests to whoever
-launched the app; the launch itself is not authenticated, so anything that can launch a debug build can still give it
-a token of its own, as before. The Host and Origin checks do not stop every request a web page can make; the token
-does. Scripts and scenarios are unchanged; what launches the app may need a line:
-
-- **Gate `AgentLaunch` behind `AgentLaunchArguments.isRequested()`**, as [the bridge guide](bridge.md) shows. It is now
-  true only for a well-formed `-agent-token` (32 lowercase hex characters), which every CLI launch passes; `-agent-port`
-  alone no longer counts.
-- **An `AgentLaunch` started without a token does not listen.** It logs `AgentCtlBridge: no -agent-token; not
-  listening` and ignores `-agent-port`, `-appctl-seed`, `-mock-latency` and `-clear-session`: a launch without a token
-  neither seeds nor resets the app.
-- **UI tests that launch the app themselves pass a token**: add `"-agent-token", AgentLaunchArguments.makeToken()` to
-  `launchArguments` beside `-clear-session` or `-appctl-seed`, and link `AgentCtlBridge` to the UI-test target (see
-  [UI tests that launch the app themselves](bridge.md#ui-tests-that-launch-the-app-themselves)).
-- **The token travels in `bridge.json`.** `app launch` writes it beside the port, with mode 0600, and `app run`,
-  `app state` and `app screens` send it to the port the file records. `APPCTL_TOKEN` overrides it, as `APPCTL_PORT`
-  does the port. A bridge that refuses it exits 3 with `refused the token (relaunch it: <cli> app launch)`: relaunch
-  the app, since a `bridge.json` from before 0.9 has no token. A script or tool that calls the bridge itself sends
-  `X-Appctl-Token` and a loopback `Host`, and no `Origin`.
-
-### Moving a host to 0.8
-
-0.8 makes the CLI follow CONTRACT.md version 3 more strictly. Scenarios that passed keep passing, with these
-exceptions to check:
-
-- A scenario file with CRLF line endings now runs every line. One that passed before may have run nothing (a CRLF
-  file starting with `#` was one long comment), so it can now fail for real.
-- `expect "key=value"` with the `=` only inside quotes is a syntax error (exit 2); write `expect key="value"`.
-- An argument is unquoted only when it is one quoted span from end to end: `"a"b"c"` stays as written.
-- `snapshots` and `check` exit 2 for a usage error and 3 for an environment failure (no simulator, a tool that could
-  not start); 1 still means the app was found wrong. A command group run without a subcommand (`appctl`, `appctl app`)
-  exits 2, and a `--session` file that cannot be read, or is not UTF-8, exits 3.
-- `ScriptRunner.run` is `async throws(CancellationError)`: a host that calls it directly adds `try`. A bridge request
-  whose client goes away is cancelled and gets no answer (CONTRACT §8.1).
-
-### Moving a TCA host to 0.7
-
-0.7 put the engine behind `AgentDriver`. A TCA host changes a few type names and nothing else:
-
-- `AppCtlConfig<Root>`, `HeadlessHost<Root>`, `LiveHost<Root>` and `ScriptRunner<Root>` become
-  `…<AgentStoreDriver<Root>>`. The `HeadlessHost(initialState:reducer:…)` and `LiveHost(…)` initializers are unchanged.
-- The same for the test helpers that name the root: `AgentCoverage<AgentStoreDriver<Root>>` and
-  `AgentScenarioChecks<AgentStoreDriver<Root>>`. Test files that build a host import `AgentCtlTCA`.
-- `AgentLaunch.store` is now `launch.app` (`store` still compiles, with a deprecation warning), and
-  `AgentLaunch<Root>.isRequested()` is `AgentLaunchArguments.isRequested()`.
+What a host changes for each release, "Moving a host to X.Y", is in [Releases](releases.md).

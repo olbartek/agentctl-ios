@@ -45,7 +45,7 @@ private struct UsesHostNames {
 struct HostNamesTests {
   @Test func aHostsOwnNamesStayUnambiguous() {
     let types = Mirror(reflecting: UsesHostNames()).children.map { String(reflecting: type(of: $0.value)) }
-    #expect(types.count == 26)
+    #expect(types.count == 27)
     #expect(types.allSatisfy { $0.contains("HostNames.") })
   }
 }

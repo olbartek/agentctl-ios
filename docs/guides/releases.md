@@ -1,7 +1,5 @@
 # Releases
 
-Every version, newest first: what changed, and what a host changes to move to it.
-
 ## 0.11.0 (2026-10-31)
 
 A UIKit app, or any app on iOS 16, starts the debug bridge in one line: `AgentLaunchSession` does everything `AgentLaunch` does, without `@Observable`. Released with agentctl-android 0.11.0; CONTRACT.md is unchanged (version 4). [Release notes](https://github.com/olbartek/agentctl-ios/releases/tag/0.11.0).

@@ -3,7 +3,7 @@
 > **GENERATED** by `swift run tinymvvmctl docs` from the `+Agent.swift` files. Do not edit by hand; run `swift run tinymvvmctl docs` instead.
 
 TinyMVVM is TinyApp rebuilt as MVVM-C: `@Observable` view models under a coordinator, no TCA.
-It is driven with the same commands, and runs TinyApp's scenario files (`Examples/TinyApp/scenarios/*.appctl`).
+It is driven with the same commands, and runs TinyApp's scenario files (`../TinyApp/scenarios/*.appctl`).
 
 ## Script syntax
 
@@ -29,7 +29,7 @@ swift run tinymvvmctl run "open 2; save"                       # save the second
 swift run tinymvvmctl test                                     # TinyApp's scenarios, on the MVVM-C app
 ```
 
-Scenarios in `Examples/TinyApp/scenarios/*.appctl` use the same syntax plus `expect` lines; `swift run tinymvvmctl test` runs them.
+Scenarios in `../TinyApp/scenarios/*.appctl` use the same syntax plus `expect` lines; `swift run tinymvvmctl test` runs them.
 
 ## Runtime commands (every screen)
 

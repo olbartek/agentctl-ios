@@ -63,7 +63,8 @@ place where the headless run disagreed with iOS. It is a case for which one an a
 ## Requirements, and what this is not
 
 - **macOS 15+ and a Swift 6.1+ toolchain** (`swift-tools-version: 6.1`; developed and verified on Swift 6.3,
-  Xcode 26.6). The library targets support iOS 18+ as well; the CLI is macOS-only, see below.
+  Xcode 26.6). The libraries support iOS 16+ as well (`AgentLaunch`, which is `@Observable`, needs iOS 17); the CLI
+  is macOS-only, see below.
 - **The app is built with [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture)**
   (1.26+), **or as MVVM-C**: `@Observable` view models under a coordinator, with their dependencies from
   [swift-dependencies](https://github.com/pointfreeco/swift-dependencies). The engine talks to an `AgentDriver`, never
@@ -84,7 +85,7 @@ place where the headless run disagreed with iOS. It is a case for which one an a
 The whole integration, in five steps — each is a few lines of real code in
 [the integration guide](docs/guides/integration.md):
 
-1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.9.1")`, and take only
+1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.10.0")`, and take only
    the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` or `AgentCtlObservation` for the
    config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, gated behind `AgentLaunchArguments.isRequested()`,
    and for UI tests that launch the app, `AgentCtlTestSupport` for tests).
@@ -98,7 +99,7 @@ The whole integration, in five steps — each is a few lines of real code in
 
 | Guide | What it covers |
 |---|---|
-| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7, 0.8 and 0.9. |
+| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7, 0.8, 0.9 and 0.10. |
 | [Commands](docs/guides/commands.md) | Every command your CLI gets (`run`, `test`, `docs`, `check`, `app …`), the exit codes, the runtime commands, and what a headless run pins to stay deterministic. |
 | [The device environment](docs/guides/device-environment.md) | `device …`: permissions and system prompts, links, pushes, background, foreground and relaunch, the network, location and biometry — one row per capability, with what your app wires and the real-OS `app` wrapper. |
 | [The verification ladder](docs/guides/verification-ladder.md) | `check`, from `swift build` to the real app on a simulator, and verifying at the cheapest rung that proves a change. |
@@ -128,7 +129,9 @@ swift test          # this package's own suite, driven against TinyApp
 ```
 
 [`Examples/TinyMVVM`](Examples/TinyMVVM) is TinyApp rebuilt as MVVM-C, with no TCA. It runs TinyApp's scenario files
-unchanged and prints the same output byte for byte (`swift run tinymvvmctl test`). See [its README](Examples/TinyMVVM/README.md).
+unchanged and prints the same output byte for byte (`swift run tinymvvmctl test` in its directory). It is its own
+package, depending on this one by path, because Swift's `@Observable` needs iOS 17. See
+[its README](Examples/TinyMVVM/README.md).
 
 [`Examples/AgentShop`](Examples/AgentShop) is the showcase: a real iOS app (sign-in, onboarding, a shop with a
 cart and checkout) with an Xcode project, 123 scenarios, UI tests generated from them, and the benchmark behind
@@ -137,16 +140,16 @@ cart and checkout) with an Xcode project, 123 scenarios, UI tests generated from
 
 ## Status
 
-Version 0.9.1: the debug bridge answers only requests that carry the token its launch was given (a fresh one per
-`app launch`, kept in `.appctl/bridge.json`), from a loopback `Host` with no `Origin`, with a body of at most 1 MiB
-(CONTRACT.md version 4), and since 0.9.1 neither the token nor its helpers ship in a Release build — on top of 0.8's
-stricter scripts and exit codes, 0.7's engine that drives any architecture (a TCA store through `AgentStoreDriver`,
-or `@Observable` view models under a coordinator through `AgentObservationDriver`), 0.6's
+Version 0.10.0: the libraries support iOS 16, down from iOS 18 (`AgentLaunch` needs iOS 17) — on top of 0.9's
+debug bridge, which answers only requests that carry the token its launch was given (a fresh one per `app launch`,
+kept in `.appctl/bridge.json`), from a loopback `Host` with no `Origin`, with a body of at most 1 MiB (CONTRACT.md
+version 4); 0.8's stricter scripts and exit codes; 0.7's engine that drives any architecture (a TCA store through
+`AgentStoreDriver`, or view models under a coordinator through `AgentObservationDriver`); 0.6's
 [device environment](docs/guides/device-environment.md) and 0.5, which was extracted from the app it was built for.
 The three example apps in this repository are the integrations CI exercises, and the API may still change between
-minor versions before 1.0; see [moving a host to 0.9](docs/guides/integration.md#moving-a-host-to-09). MIT licensed.
+minor versions before 1.0; see [moving a host to 0.10](docs/guides/integration.md#moving-a-host-to-010). MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
 lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,
-so 0.9.x here and 0.9.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
+so 0.10.x here and 0.10.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
 own fix, so the two patch numbers can differ.

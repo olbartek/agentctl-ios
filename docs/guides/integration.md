@@ -7,11 +7,11 @@ client that is also this package's test fixture.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.9.1"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.10.0"),
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.9.1"` admits every later
+Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.10.0"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`. Take only the products each target needs:
@@ -421,7 +421,8 @@ active, deliver this action, has anything changed (settling's fingerprint), rela
 `AgentStoreDriver`; an app of `@Observable` view models under a coordinator uses `AgentObservationDriver` from
 `AgentCtlObservation`. Scripts, scenarios, the step output and the generated docs are the same either way:
 [`Examples/TinyMVVM`](../../Examples/TinyMVVM) is TinyApp rebuilt as MVVM-C, and it runs TinyApp's scenario files
-byte for byte.
+byte for byte. `AgentViewModel` asks only for a class that is `Sendable`, so the view models need not be `@Observable`:
+an iOS 16 app's view models (Combine's `ObservableObject`, say) conform the same way.
 
 A screen is an `AgentViewModel`. Its agent surface is the `AgentScreen` you already know, computed from a value,
 `agentState`; its commands are `AgentScreenIntent`s, closures over the view model on screen:
@@ -478,6 +479,16 @@ and settling relies on every one of them:
 
 In the app shell, `AgentLaunch(config:)` works as it does for TCA; `launch.app` is the coordinator, and a
 `device relaunch` replaces it (see [the bridge guide](bridge.md)).
+
+### Moving a host to 0.10
+
+0.10 lowers the libraries' floor from iOS 18 to iOS 16. Nothing changes for a host on iOS 18: scripts, scenarios,
+the CLI and CONTRACT.md (still version 4) are the same.
+
+- **A host on iOS 16 or 17** can now depend on every product. `AgentLaunch` is `@Observable`, so it is
+  `@available(iOS 17, *)`: an app whose floor is iOS 16 uses it only where `#available(iOS 17, *)` holds.
+- **TinyMVVM is its own package** (`Examples/TinyMVVM`), like AgentShop, because Swift's `@Observable` needs iOS 17.
+  Run its CLI from its directory: `cd Examples/TinyMVVM && swift run tinymvvmctl test`.
 
 ### Moving a host to 0.9
 

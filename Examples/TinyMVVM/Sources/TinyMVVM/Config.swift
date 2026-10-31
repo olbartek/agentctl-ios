@@ -33,7 +33,7 @@
     public static let docsText = DocsText(
       title: "TinyMVVM agent commands",
       intro: "TinyMVVM is TinyApp rebuilt as MVVM-C: `@Observable` view models under a coordinator, no TCA.\n"
-        + "It is driven with the same commands, and runs TinyApp's scenario files (`Examples/TinyApp/scenarios/*.appctl`).",
+        + "It is driven with the same commands, and runs TinyApp's scenario files (`../TinyApp/scenarios/*.appctl`).",
       usageExamples: [
         "swift run tinymvvmctl run \"open 2; save\"                       # save the second item",
         "swift run tinymvvmctl test                                     # TinyApp's scenarios, on the MVVM-C app",
@@ -41,7 +41,7 @@
       invocation: "swift run tinymvvmctl",
       exampleCommand: "open 2",
       exampleStep: "screen=items/2 title=\"Second item\" saved=false cooldown=0",
-      scenariosGlob: "Examples/TinyApp/scenarios/*.appctl",
+      scenariosGlob: "../TinyApp/scenarios/*.appctl",
       mockExample: "mock items.fetch network",
       appendix: []
     )
@@ -57,14 +57,14 @@
         simulatorName: "iPhone 17 Pro",
         snapshotRuntimeMajor: 18,
         // TinyApp's scenarios: the point of this example is that they pass unchanged.
-        scenariosPath: "Examples/TinyApp/scenarios",
-        docsPath: "Examples/TinyMVVM/agent-commands.md",
+        scenariosPath: "../TinyApp/scenarios",
+        docsPath: "agent-commands.md",
         help: HelpExamples(
           invocation: "swift run tinymvvmctl",
           note: "TinyMVVM is TinyApp as MVVM-C; it runs headlessly, with no simulator.",
           runScripts: ["open 2; save", "refresh", "expect screen=items items=3"],
           sessionPath: ".appctl/tinymvvm.session",
-          scenarioPath: "Examples/TinyApp/scenarios/browse.appctl",
+          scenarioPath: "../TinyApp/scenarios/browse.appctl",
           appSeeds: ["open 2", "refresh; open 2"],
           appScripts: ["open 2; expect saved=false", "save"]
         ),

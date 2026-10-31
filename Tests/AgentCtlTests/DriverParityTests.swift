@@ -1,18 +1,25 @@
 import AgentCtlCore
-import AgentCtlObservation
 import AgentCtlTCA
-import AgentCtlTestSupport
 import Foundation
 import Testing
 import TinyApp
-import TinyMVVM
 
 extension AgentCtlSuite {
-  /// What this guards: the engine is architecture-neutral. TinyApp (TCA, `AgentStoreDriver`) and TinyMVVM (MVVM-C,
-  /// `AgentObservationDriver`) are the same app, and every script prints the same bytes and exits the same way on both:
-  /// TinyApp's scenarios, failures of every kind, `advance`, `mock`, `device` and a relaunch.
+  /// What this guards, with TinyMVVM's own tests: the engine is architecture-neutral. TinyApp (TCA,
+  /// `AgentStoreDriver`) and TinyMVVM (MVVM-C, `AgentObservationDriver`) are the same app, and every script prints the
+  /// same bytes and exits the same way on both: TinyApp's scenarios, failures of every kind, `advance`, `mock`,
+  /// `device` and a relaunch.
+  ///
+  /// TinyMVVM is its own package (`Examples/TinyMVVM`), because Swift's `@Observable` needs iOS 17 and this package
+  /// supports iOS 16. So the two cannot run side by side in one test: this one keeps TinyApp's transcripts current
+  /// in TinyMVVM's fixture, and TinyMVVM's `ParityTests` run the same scripts and compare.
+  /// `APPCTL_RECORD=1 swift test --filter DriverParityTests` rewrites the fixture.
   @MainActor
   struct DriverParityTests {
+    static let fixture = PackageRoot.url.appending(
+      path: "Examples/TinyMVVM/Tests/TinyMVVMTests/Fixtures/tinyapp-transcripts.json"
+    )
+
     static let scripts: [String] = {
       let scenarios = ScenarioRunner.files(in: PackageRoot.scenarios).compactMap {
         try? String(contentsOf: $0, encoding: .utf8)
@@ -34,61 +41,48 @@ extension AgentCtlSuite {
       ]
     }()
 
+    /// A relaunch throws the app away mid-countdown and after a failure, and both drivers start over alike.
+    static let relaunchScript = "open 2; save; expect pending=1; device relaunch; expect screen=items pending=0; "
+      + "mock items.fetch network; device relaunch; expect error=network; device relaunch; open 3"
+
     func run<Driver: AgentDriver>(_ runner: ScriptRunner<Driver>, _ script: String) async throws -> String {
       let launch = await runner.launch()
       let result = try await runner.run(script)
       return StepFormatter.text([launch.step] + result.steps) + "\nexit=\(result.status.rawValue)"
     }
 
-    @Test func tinyMVVMPrintsWhatTinyAppPrints() async throws {
+    @Test func tinyMVVMsFixtureHoldsWhatTinyAppPrints() async throws {
       #expect(Self.scripts.count >= 18)
+      var transcripts: [Transcript] = []
       for script in Self.scripts {
-        let tca = try await serially { try await run(TinyAppConfig.headless().makeRunner(), script) }
-        let mvvm = try await serially { try await run(TinyMVVMConfig.headless().makeRunner(), script) }
-        #expect(tca == mvvm, "\(script)\n--- TCA\n\(tca)\n--- MVVM-C\n\(mvvm)")
+        let output = try await serially { try await run(TinyAppConfig.headless().makeRunner(), script) }
+        transcripts.append(Transcript(script: script, relaunch: false, output: output))
       }
-    }
+      let relaunch = try await serially {
+        try await run(TinyAppConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), Self.relaunchScript)
+      }
+      #expect(relaunch.hasSuffix("exit=0"), "\(relaunch)")
+      transcripts.append(Transcript(script: Self.relaunchScript, relaunch: true, output: relaunch))
 
-    /// A relaunch throws the app away mid-countdown and after a failure, and both drivers start over alike.
-    @Test func aRelaunchIsTheSameOnBothDrivers() async throws {
-      let script = "open 2; save; expect pending=1; device relaunch; expect screen=items pending=0; "
-        + "mock items.fetch network; device relaunch; expect error=network; device relaunch; open 3"
-      let tca = try await serially {
-        try await run(TinyAppConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), script)
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+      let current = try encoder.encode(transcripts) + Data("\n".utf8)
+      if ProcessInfo.processInfo.environment["APPCTL_RECORD"] == "1" {
+        try current.write(to: Self.fixture)
       }
-      let mvvm = try await serially {
-        try await run(TinyMVVMConfig.headless(device: AgentDeviceConfig(relaunch: true)).makeRunner(), script)
-      }
-      #expect(tca.hasSuffix("exit=0"), "\(tca)")
-      #expect(tca == mvvm, "--- TCA\n\(tca)\n--- MVVM-C\n\(mvvm)")
+      let committed = try? Data(contentsOf: Self.fixture)
+      #expect(
+        committed == current,
+        "\(Self.fixture.path) is stale: run `APPCTL_RECORD=1 swift test --filter DriverParityTests` and commit it"
+      )
     }
   }
-}
 
-extension AgentCtlSuite {
-  /// The coverage guards and scenario checks are architecture-neutral too: aimed at TinyMVVM, they hold.
-  @MainActor
-  struct ObservationCoverageTests {
-    static func coverage() throws -> AgentCoverage<AgentObservationDriver<AppCoordinator>> {
-      try AgentCoverage(screens: TinyMVVMConfig.screens, scenarios: PackageRoot.scenarios) {
-        TinyMVVMConfig.headless().makeRunner()
-      }
-    }
-
-    @Test func everyCommandIsUsedAndEveryScreenVisited() async throws {
-      let coverage = try Self.coverage()
-      #expect(try coverage.unusedCommands().isEmpty)
-      #expect(try coverage.unusedDeviceCommands().isEmpty)
-      #expect(await serially { await coverage.undocumentedSummaryKeys() }.isEmpty)
-      #expect(await serially { await coverage.unvisitedScreens() }.isEmpty)
-    }
-
-    @Test func theScenarioChecksHold() async throws {
-      let checks = try AgentScenarioChecks(config: TinyMVVMConfig.appCtl)
-      let problems = await checks.allPass() + checks.endWithExpect() + checks.docsCurrent(root: PackageRoot.url)
-      #expect(problems.isEmpty, "\(problems.joined(separator: "\n"))")
-      let deterministic = await checks.deterministic(runs: 5)
-      #expect(deterministic.isEmpty, "\(deterministic.joined(separator: "\n"))")
-    }
+  /// One script's run on TinyApp, as TinyMVVM's `ParityTests` read it back.
+  struct Transcript: Codable, Equatable {
+    var script: String
+    /// Whether the run's device allows `device relaunch`.
+    var relaunch: Bool
+    var output: String
   }
 }

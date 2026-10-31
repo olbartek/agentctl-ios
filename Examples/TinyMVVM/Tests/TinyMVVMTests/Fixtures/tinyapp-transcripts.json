@@ -1,0 +1,97 @@
+[
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> expect screen=items items=3 loading=false error=none call=items.fetch\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> expect screen=items/2 title=\"Second item\" saved=false cooldown=0\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> expect saved=true cooldown=3 pending=1\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> advance 3s\n  screen=items/2 title=\"Second item\" saved=true cooldown=0\n> expect cooldown=0 pending=0 error=none\n  screen=items/2 title=\"Second item\" saved=true cooldown=0\n> back\n  screen=items items=3 loading=false calls=items.fetch\n> expect screen=items items=3\n  screen=items items=3 loading=false calls=items.fetch\nexit=0",
+    "relaunch" : false,
+    "script" : "# The happy path: the list loads on appearance, an item opens, a save starts the cooldown, and back returns\n# to the list. `call=items.fetch` asserts on the mock call the previous step made.\n# app-test: skip its first expect checks the launch's own call, which the app makes before the script starts\nexpect screen=items items=3 loading=false error=none call=items.fetch\nopen 2\nexpect screen=items/2 title=\"Second item\" saved=false cooldown=0\nsave\nexpect saved=true cooldown=3 pending=1\nadvance 3s\nexpect cooldown=0 pending=0 error=none\nback\nexpect screen=items items=3\n"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> device open-url tinyapp://items/2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> expect screen=items/2 title=\"Second item\"\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> back\n  screen=items items=3 loading=false calls=items.fetch\n> device open-url tinyapp://items/9\n  screen=items items=3 loading=false error=notFound\n> expect screen=items error=notFound\n  screen=items items=3 loading=false error=notFound\n> device open-url tinyapp://items/3\n  screen=items/3 title=\"Third item\" saved=false cooldown=0\n> expect screen=items/3 title=\"Third item\" error=none\n  screen=items/3 title=\"Third item\" saved=false cooldown=0\nexit=0",
+    "relaunch" : false,
+    "script" : "# Links: `device open-url` hands a URL to the app as a tapped deep link would. `tinyapp://items/<id>` opens that\n# item on top of whatever is shown; a link to an item the list does not have reports notFound, as `open` does.\ndevice open-url tinyapp://items/2\nexpect screen=items/2 title=\"Second item\"\nback\ndevice open-url tinyapp://items/9\nexpect screen=items error=notFound\ndevice open-url tinyapp://items/3\nexpect screen=items/3 title=\"Third item\" error=none\n"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> device push item-updated\n  screen=items items=3 loading=false calls=items.fetch\n> expect screen=items items=3 call=items.fetch\n  screen=items items=3 loading=false calls=items.fetch\n> device push item-updated tap\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> expect screen=items/2 title=\"Second item\"\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\nexit=0",
+    "relaunch" : false,
+    "script" : "# A push notification: received while the app is in front, `item-updated` reloads the list; tapped, it opens the\n# item it is about, on top of whatever is shown.\ndevice push item-updated\nexpect screen=items items=3 call=items.fetch\ndevice push item-updated tap\nexpect screen=items/2 title=\"Second item\"\n"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> expect screen=items items=3 error=none\n  screen=items items=3 loading=false calls=items.fetch\n> mock items.fetch network\n  screen=items items=3 loading=false\n> refresh\n  screen=items items=3 loading=false calls=items.fetch error=network\n> expect error=network items=3 loading=false call=items.fetch\n  screen=items items=3 loading=false calls=items.fetch error=network\n> retry\n  screen=items items=3 loading=false calls=items.fetch\n> expect error=none items=3 call=items.fetch\n  screen=items items=3 loading=false calls=items.fetch\nexit=0",
+    "relaunch" : false,
+    "script" : "# A forced failure: `mock` makes the next call to items.fetch throw, and the screen reports the error code.\n# The rows that were already loaded stay, the way a real list keeps its contents when a refresh fails.\nexpect screen=items items=3 error=none\nmock items.fetch network\nrefresh\nexpect error=network items=3 loading=false call=items.fetch\n# `retry` is gated on there being an error, so it is offered only now; before the failure the runner refuses it\n# with `retry is disabled here (error=none)`. The fault is one-shot, so this load succeeds.\nretry\nexpect error=none items=3 call=items.fetch\n"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> expect screen=items/2 cooldown=0 error=none\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> expect saved=true cooldown=3 pending=1 error=none\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 error=cooldown pending=1\n> expect error=cooldown saved=true cooldown=3 pending=1\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 error=cooldown pending=1\n> advance 1s\n  screen=items/2 title=\"Second item\" saved=true cooldown=2 error=cooldown pending=1\n> expect cooldown=2 pending=1 error=cooldown\n  screen=items/2 title=\"Second item\" saved=true cooldown=2 error=cooldown pending=1\n> advance 2s\n  screen=items/2 title=\"Second item\" saved=true cooldown=0\n> expect cooldown=0 pending=0 error=none\n  screen=items/2 title=\"Second item\" saved=true cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> expect saved=true cooldown=3 pending=1 error=none\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\nexit=0",
+    "relaunch" : false,
+    "script" : "# The cooldown: a second save while the countdown is running is refused with error=cooldown, and the countdown\n# keeps going. `pending=1` is that countdown waiting on the clock; `advance` is what releases it.\n# app-test: skip it checks the countdown's exact values, which in the app also tick in real time\nopen 2\nexpect screen=items/2 cooldown=0 error=none\nsave\nexpect saved=true cooldown=3 pending=1 error=none\nsave\nexpect error=cooldown saved=true cooldown=3 pending=1\nadvance 1s\nexpect cooldown=2 pending=1 error=cooldown\nadvance 2s\nexpect cooldown=0 pending=0 error=none\n# Saving is allowed again.\nsave\nexpect saved=true cooldown=3 pending=1 error=none\n"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> advance 1m\n  screen=items/2 title=\"Second item\" saved=true cooldown=0\nexit=0",
+    "relaunch" : false,
+    "script" : "open 2; save; advance 1m"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> back\n  screen=items items=3 loading=false calls=items.fetch\nexit=0",
+    "relaunch" : false,
+    "script" : "open 2; save; back"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> back\n  screen=items items=3 loading=false\n  FAIL unknown command 'back' on items. Valid here: open <id>, refresh, retry, expect, advance, mock, device\nexit=1",
+    "relaunch" : false,
+    "script" : "back"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> mock items.fetch timeout\n  screen=items items=3 loading=false\n> refresh\n  screen=items items=3 loading=false calls=items.fetch error=timeout\n> retry\n  screen=items items=3 loading=false calls=items.fetch\nexit=0",
+    "relaunch" : false,
+    "script" : "mock items.fetch timeout; refresh; retry"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> mock items.fetch bogus\n  screen=items items=3 loading=false\n  FAIL unknown error 'bogus' for items.fetch; valid: network, timeout\nexit=1",
+    "relaunch" : false,
+    "script" : "mock items.fetch bogus"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open x\n  screen=items items=3 loading=false\n  FAIL open <id>: invalid argument: expected an item id such as 2\nexit=1",
+    "relaunch" : false,
+    "script" : "open x"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 9\n  screen=items items=3 loading=false error=notFound\n> expect error=notFound\n  screen=items items=3 loading=false error=notFound\n> open 1\n  screen=items/1 title=\"First item\" saved=false cooldown=0\nexit=0",
+    "relaunch" : false,
+    "script" : "open 9; expect error=notFound; open 1"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 1\n  screen=items/1 title=\"First item\" saved=false cooldown=0\n> device push item-updated\n  screen=items/1 title=\"First item\" saved=false cooldown=0 calls=items.fetch\n> device push item-updated tap\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\nexit=0",
+    "relaunch" : false,
+    "script" : "open 1; device push item-updated; device push item-updated tap"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> retry\n  screen=items items=3 loading=false\n  FAIL retry is disabled here (error=none)\nexit=1",
+    "relaunch" : false,
+    "script" : "retry"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> open 1\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n  FAIL unknown command 'open' on items/2. Valid here: save, back, expect, advance, mock, device\nexit=1",
+    "relaunch" : false,
+    "script" : "open 2; save; open 1"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 error=cooldown pending=1\n> expect error=cooldown\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 error=cooldown pending=1\n> advance 1s\n  screen=items/2 title=\"Second item\" saved=true cooldown=2 error=cooldown pending=1\n> expect cooldown=2\n  screen=items/2 title=\"Second item\" saved=true cooldown=2 error=cooldown pending=1\nexit=0",
+    "relaunch" : false,
+    "script" : "open 2; save; save; expect error=cooldown; advance 1s; expect cooldown=2"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> device open-url tinyapp://items/3\n  screen=items/3 title=\"Third item\" saved=false cooldown=0\n> device open-url tinyapp://items/x\n  screen=items/3 title=\"Third item\" saved=false cooldown=0\n  FAIL device open-url: the app does not handle tinyapp://items/x\nexit=1",
+    "relaunch" : false,
+    "script" : "device open-url tinyapp://items/3; device open-url tinyapp://items/x"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> device relaunch\n  screen=items items=3 loading=false\n  FAIL device relaunch is not configured by this app; available: open-url, push\nexit=2",
+    "relaunch" : false,
+    "script" : "device relaunch"
+  },
+  {
+    "output" : "> (launch)\n  screen=items items=3 loading=false calls=items.fetch\n> open 2\n  screen=items/2 title=\"Second item\" saved=false cooldown=0\n> save\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> expect pending=1\n  screen=items/2 title=\"Second item\" saved=true cooldown=3 pending=1\n> device relaunch\n  screen=items items=3 loading=false calls=items.fetch\n> expect screen=items pending=0\n  screen=items items=3 loading=false calls=items.fetch\n> mock items.fetch network\n  screen=items items=3 loading=false\n> device relaunch\n  screen=items items=0 loading=false calls=items.fetch error=network\n> expect error=network\n  screen=items items=0 loading=false calls=items.fetch error=network\n> device relaunch\n  screen=items items=3 loading=false calls=items.fetch\n> open 3\n  screen=items/3 title=\"Third item\" saved=false cooldown=0\nexit=0",
+    "relaunch" : true,
+    "script" : "open 2; save; expect pending=1; device relaunch; expect screen=items pending=0; mock items.fetch network; device relaunch; expect error=network; device relaunch; open 3"
+  }
+]

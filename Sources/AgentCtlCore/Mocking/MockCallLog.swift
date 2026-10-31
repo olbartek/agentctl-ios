@@ -1,5 +1,4 @@
 import Dependencies
-import Synchronization
 
 /// Records every mock call as `"<client>.<method>"`, e.g. `items.fetch`, and how many are still running.
 ///
@@ -13,7 +12,7 @@ public final class MockCallLog: Sendable {
     var running: [String] = []
   }
 
-  private let storage = Mutex(Storage())
+  private let storage = Locked(Storage())
 
   public init() {}
 

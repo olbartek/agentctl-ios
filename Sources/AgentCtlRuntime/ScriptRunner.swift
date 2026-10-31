@@ -409,7 +409,11 @@
       guard let first = scheme.first, first.isASCII, first.isLetter,
         scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+.-".contains($0)) })
       else { return nil }
-      return URL(string: text, encodingInvalidCharacters: false)
+      if #available(iOS 17, *) {
+        return URL(string: text, encodingInvalidCharacters: false)
+      }
+      // Before iOS 17, `URL(string:)` was already strict: it never percent-encoded.
+      return URL(string: text)
     }
 
     // MARK: - Helpers

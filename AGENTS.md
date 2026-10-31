@@ -18,6 +18,21 @@ implementation; see the README for the layout and commands.
    `examples/*/scenarios/`. The Android repo's AgentShop parity test compares its output with this repo's CLI
    (`examples/agentshop/bench/ios_transcripts.sh` there regenerates the transcripts).
 
+## Verifying a change
+
+Run these before a merge (CI is the same list):
+
+- `swift test`, then `swift run tinyctl test` and `swift run tinyctl docs --check`, at the root.
+- In `Examples/TinyMVVM`: `swift test`, `swift run tinymvvmctl test` and `swift run tinymvvmctl docs --check`.
+- In `Examples/AgentShop`: `swift test`, `./appctl test` and `./appctl docs --check`.
+- The iOS floor, so it cannot creep up: build every library for the iOS Simulator at iOS 16:
+  `xcodebuild build -quiet -scheme agent-ctl-Package -destination 'generic/platform=iOS Simulator' -skipMacroValidation IPHONEOS_DEPLOYMENT_TARGET=16.0`.
+  An API newer than iOS 16 without `@available` fails it.
+- The release builds: `swift build -c release`, and `swift build -c release -Xswiftc -DAGENTCTL_RELEASE --product tinyctl`.
+
+A nested example depends on this package by path, and a path dependency's identity is its directory's name: build it
+from a checkout or worktree whose directory is named `agentctl-ios`.
+
 ## Releases
 
 The two repositories share MAJOR.MINOR; PATCH is each repository's own.

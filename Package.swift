@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
   name: "agent-ctl",
-  platforms: [.iOS(.v18), .macOS(.v15)],
+  platforms: [.iOS(.v16), .macOS(.v15)],
   products: [
     .library(name: "AgentCtlCore", targets: ["AgentCtlCore"]),
     .library(name: "AgentCtlRuntime", targets: ["AgentCtlRuntime"]),
@@ -115,23 +115,6 @@ let package = Package(
       dependencies: ["TinyApp", "AgentCtlCLI"],
       path: "Examples/TinyApp/Sources/tinyctl"
     ),
-    // TinyApp as MVVM-C: `@Observable` view models under a coordinator, driven through AgentCtlObservation. No TCA.
-    // It runs TinyApp's scenario files, and the tests compare its output with TinyApp's byte for byte.
-    .target(
-      name: "TinyMVVM",
-      dependencies: [
-        "AgentCtlCore",
-        "AgentCtlObservation",
-        .product(name: "Dependencies", package: "swift-dependencies"),
-        .product(name: "DependenciesMacros", package: "swift-dependencies"),
-      ],
-      path: "Examples/TinyMVVM/Sources/TinyMVVM"
-    ),
-    .executableTarget(
-      name: "tinymvvmctl",
-      dependencies: ["TinyMVVM", "AgentCtlCLI"],
-      path: "Examples/TinyMVVM/Sources/tinymvvmctl"
-    ),
     .testTarget(
       name: "AgentCtlTests",
       // AgentCtlCLI so the help pages and the messages that name the CLI can be rendered and asserted on;
@@ -139,7 +122,7 @@ let package = Package(
       // test that needs a real app to drive. AgentCtlTestSupport is proved against that same fixture below.
       dependencies: [
         "AgentCtlCore", "AgentCtlTCA", "AgentCtlObservation", "AgentCtlBridge", "AgentCtlCLI", "AgentCtlTestSupport",
-        "TinyApp", "TinyMVVM",
+        "TinyApp",
       ],
       // Read by path (`PackageRoot`), not bundled.
       exclude: ["Fixtures"]

@@ -1,5 +1,4 @@
 import Dependencies
-import Synchronization
 
 /// Wraps a clock and counts the sleeps currently waiting on it.
 ///
@@ -30,7 +29,7 @@ public struct CountingClock<Base: Clock>: Clock where Base.Duration == Duration 
   }
 
   final class Counter: Sendable {
-    private let count = Mutex(0)
+    private let count = Locked(0)
     var value: Int { count.withLock { $0 } }
     func increment() { count.withLock { $0 += 1 } }
     func decrement() { count.withLock { $0 -= 1 } }

@@ -8,7 +8,7 @@ The runtime command `wait` blocks until the app matches or changes, so neither a
 
 0.12 adds the runtime command `wait [<duration>] [k=v …]` (CONTRACT.md version 5, §2.5): it waits until the pairs
 match or, with none, until the screen changes, moving the clock headlessly and in real time in the running app. A
-scenario that waited in a shell loop, or a bridge client that polled `GET /snapshot`, uses it instead. No API
+scenario that waited in a shell loop, or a bridge client that polled `GET /snapshot`, uses it instead. No breaking API
 changes, but three things a host may see:
 
 - **`wait` is now a runtime command,** and a runtime command takes precedence over a screen's: an app command named

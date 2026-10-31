@@ -402,6 +402,19 @@
     /// script that waits on the app's real time stays silent for as long as it runs: the limit is on the whole
     /// request, and generous.
     @TaskLocal static var scriptLimit: TimeInterval = 3600
+    /// What a script's `wait` lines are allowed on top of their durations: each may settle once more at its end, and
+    /// the request has its round trip (CONTRACT.md §8.6).
+    static let waitMargin: TimeInterval = 60
+
+    /// How long `POST /run` with `script` may take: ``scriptLimit``, or the durations of its `wait` lines plus
+    /// ``waitMargin`` when they add up to more, so a wait never ends on the client's side first.
+    static func limit(for script: String?) -> TimeInterval {
+      guard let script, let lines = try? ScriptParser.parse(script) else { return scriptLimit }
+      let waits = lines.filter { $0.name == "wait" }.compactMap { try? WaitArguments.parse($0.argument).duration }
+      guard !waits.isEmpty else { return scriptLimit }
+      let seconds = waits.reduce(0.0) { $0 + Double($1.components.seconds) + Double($1.components.attoseconds) / 1e18 }
+      return max(scriptLimit, seconds + waitMargin)
+    }
 
     /// `POST /run` that did not finish within ``scriptLimit``: the bridge was reached, and the app may still be
     /// running the script.
@@ -416,11 +429,11 @@
     }
 
     /// Sends one request. `timeout` replaces ``idleTimeout`` for a request that runs nothing; `POST /run` is
-    /// limited by ``scriptLimit`` instead, and throws ``ScriptTimedOut`` past it.
+    /// limited by ``limit(for:)`` instead, and throws ``ScriptTimedOut`` past it.
     func send(_ method: String, _ path: String, body: String? = nil, timeout: TimeInterval? = nil) async throws -> Response {
       guard let url = URL(string: "http://127.0.0.1:\(port)\(path)") else { throw AppCtlError("bad path \(path)") }
       let runsScript = method == "POST" && path.hasPrefix("/run")
-      let limit = Self.scriptLimit
+      let limit = runsScript ? Self.limit(for: body) : Self.scriptLimit
       // `timeoutInterval` is an idle timeout, which a silent script would hit; the session's resource timeout
       // bounds the whole request.
       var request = URLRequest(url: url, timeoutInterval: runsScript ? limit : timeout ?? Self.idleTimeout)

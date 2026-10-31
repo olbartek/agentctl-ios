@@ -451,7 +451,10 @@ does (`wait would take the clock past 9223372036854775807 seconds`, exit 2).
 **In the running app** (§8.5) real time passes and the clock is not moved: the runtime looks at the
 screen every few milliseconds (the reference: 20 ms). The wait starts from the state the previous
 step settled on, and what it sees counts once the app has settled on it, so a transition's passing
-frames are never reported and a state the app only passes through is waited past. Over the bridge,
+frames are never reported and a state the app only passes through is waited past. Without pairs,
+the first state the app settles on that differs from the start ends the wait: with a countdown
+ticking once a second, that is the next tick. An app that keeps changing faster than settling's
+quiet moment never settles, and the wait fails as any unsettled step does (§3.3). Over the bridge,
 `POST /run` with a `wait` is how a client blocks until the app changes rather than polling
 `GET /snapshot` (§8.4).
 
@@ -977,6 +980,13 @@ command that launches sends the token it made, kept in memory.
 - A file that cannot be read or parsed is exit 3.
 - When the port came from the file and nothing answers there, the command exits 3, as it would for
   any unreachable bridge, and the message says the file may be stale and to launch again.
+
+**How long it waits for an answer.** The bridge answers `POST /run` only once the script has
+ended, and sends nothing before, so a CLI applies no idle timeout to it, only a limit on the whole
+request. That limit is at least the sum of the script's `wait` durations (§2.5) plus a margin for
+each one's last settle and the round trip, so a `wait` always ends on the app's side, with its own
+exit code, and never on the client's (the reference: one hour, or the waits plus 60 s when that is
+longer). A request that runs nothing has an ordinary timeout (the reference: 60 s).
 
 **Checking who answers.** Two apps cannot share a port (§8.1), but a port can still be taken
 between the CLI's check and the app's start, or be one the user named. So the CLI compares the

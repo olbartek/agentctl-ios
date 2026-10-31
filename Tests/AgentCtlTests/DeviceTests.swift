@@ -232,9 +232,9 @@ extension AgentCtlSuite {
     @Test func noDeviceConfigurationMeansNoDeviceCommand() async throws {
       let (text, status) = try await run("device network offline", host: Gadget.host(device: .none))
       #expect(status == .failed)
-      #expect(text.hasSuffix("  FAIL unknown command 'device' on gadget. Valid here: camera, unlock, fetch, expect, advance, mock"))
+      #expect(text.hasSuffix("  FAIL unknown command 'device' on gadget. Valid here: camera, unlock, fetch, expect, advance, mock, wait"))
       let (configured, _) = try await run("nope")
-      #expect(configured.hasSuffix("Valid here: camera, unlock, fetch, expect, advance, mock, device"))
+      #expect(configured.hasSuffix("Valid here: camera, unlock, fetch, expect, advance, mock, wait, device"))
     }
 
     @Test func linksAndPushes() async throws {
@@ -343,14 +343,14 @@ extension AgentCtlSuite {
       let docs = AgentRegistry.runtimeCommands(device: Gadget.device.surface).map(\.usage)
       #expect(
         docs == [
-          "expect k=v [k=v …]", "advance <duration>", "mock <client.method> <error>",
+          "expect k=v [k=v …]", "advance <duration>", "mock <client.method> <error>", "wait [<duration>] [k=v …]",
           "device permission <service> <not-determined|granted|denied|limited>", "device prompt <allow|deny|limited>",
           "device open-url <url>", "device push <name> [tap]", "device background", "device foreground",
           "device relaunch", "device network <online|offline>", "device location <lat>,<lon>|none",
           "device biometry <enrolled|unenrolled|match|fail>",
         ]
       )
-      #expect(AgentRegistry.runtimeCommands().count == 3)
+      #expect(AgentRegistry.runtimeCommands().count == 4)
       #expect(
         AgentRegistry.runtimeCommands(device: Gadget.device.surface)[0].help
           .contains("error=<code|none>, pending=<n> or prompt=<service|none>")

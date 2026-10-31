@@ -91,6 +91,44 @@ public struct Expectation: Equatable, Sendable {
   }
 }
 
+/// `wait [<duration>] [k=v …]` (CONTRACT.md §2.5): how long to wait, and for what. With pairs, until they all
+/// match, as `expect` would check them; with none, until the screen's line changes.
+public struct WaitArguments: Equatable, Sendable {
+  /// How long a `wait` that names no duration waits.
+  public static var defaultDuration: Duration { .seconds(10) }
+
+  public var duration: Duration
+  /// `nil`: wait for the screen's path, summary, error or prompt to change.
+  public var expectation: Expectation?
+
+  public init(duration: Duration = Self.defaultDuration, expectation: Expectation? = nil) {
+    self.duration = duration
+    self.expectation = expectation
+  }
+
+  /// Parses the argument of `wait`: an optional duration first (`30s`, as `advance` takes it), then `key=value`
+  /// pairs, as `expect` takes them.
+  public static func parse(_ argument: String?) throws(ExpectationSyntaxError) -> Self {
+    var tokens = ArgumentText.pairs(argument ?? "")[...]
+    var duration = defaultDuration
+    if let first = tokens.first, first.pair == nil {
+      guard let parsed = ScriptParser.parseDuration(first.token) else {
+        throw ExpectationSyntaxError(
+          message: "usage: wait [<duration>] [key=value …]; a duration such as 500ms, 30s, 5m or 1h, got '\(first.token)'"
+        )
+      }
+      duration = parsed
+      tokens = tokens.dropFirst()
+    }
+    var pairs: [Expectation.Pair] = []
+    for (token, pair) in tokens {
+      guard let pair else { throw ExpectationSyntaxError(message: "expected key=value, got '\(token)'") }
+      pairs.append(Expectation.Pair(pair.key, pair.value))
+    }
+    return Self(duration: duration, expectation: pairs.isEmpty ? nil : Expectation(pairs: pairs))
+  }
+}
+
 public struct ExpectationSyntaxError: Error, Equatable, Sendable {
   public var message: String
 

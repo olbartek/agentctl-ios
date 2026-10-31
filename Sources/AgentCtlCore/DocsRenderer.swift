@@ -52,7 +52,7 @@ public struct DocsText: Sendable {
 /// compare it byte for byte.
 public enum DocsRenderer {
   /// The whole command reference as `docs` writes it and `docs --check` compares it: the app's screens and mock
-  /// methods plus the runtime commands (`expect`, `advance`, `mock`) every app has. The CLI and
+  /// methods plus the runtime commands (`expect`, `advance`, `mock`, `wait`) every app has. The CLI and
   /// `AgentScenarioChecks.docsCurrent` both call this, so a host's test and its `docs --check` cannot disagree.
   public static func render(
     screens: [ScreenDoc],

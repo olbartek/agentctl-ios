@@ -68,6 +68,13 @@ what sleeps on that clock moves; a timer on `Task.sleep` or a dispatch queue kee
 that reads the time should read `LiveEnvironment.now` (in `makeLive`'s `configure`), as it would read the
 `TestClock` headlessly.
 
+`wait` blocks until the app gets somewhere, so a client never polls `GET /snapshot`: `app run 'wait 30s
+screen=chat/voice'` returns as soon as the app has settled on that screen, and a bare `app run 'wait 30s'` as soon
+as it has settled on any change to the screen's line (path, summary, error or prompt), from the state the previous
+step settled on. Either fails with exit 1 and the screen as it stands once the time runs out. A driver that cannot
+name the next state loops: act, `wait`, read the step, decide. Requests are answered one at a time, so a waiting
+`POST /run` holds the ones behind it; closing its connection ends the wait.
+
 `app test` runs the scenario files this way, as `test` runs them headlessly: it builds once, then for each file
 launches the app with no saved session and sends the file through the bridge. `--latency <ms>` fixes the mock
 latency, `--no-build` uses the installed app, `--record <mp4>` records the simulator for the whole run and writes

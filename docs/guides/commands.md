@@ -24,9 +24,11 @@ snapshots that differ), 2 for an ambiguous `--sim`, and 3 when they could not ru
 a tool that could not start, a failed launch, an unreachable bridge); see
 [the verification ladder](verification-ladder.md#exit-codes).
 
-Three runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (the virtual clock
+Four runtime commands work on every screen: `expect k=v [k=v …]`, `advance <duration>` (the virtual clock
 headlessly; in the running app, the app's real-time clock jumped forward, see [the bridge](bridge.md)),
-and `mock <client.method> <error>`. An app that simulates its device has a fourth, `device …`
+`mock <client.method> <error>`, and `wait [<duration>] [k=v …]`, which waits (10 s unless told otherwise) until the
+pairs match or, with none, until the screen's line changes — headlessly by moving the clock to each timer due, in the
+running app in real time (CONTRACT.md §2.5). An app that simulates its device has a fifth, `device …`
 ([the device environment](device-environment.md)).
 
 Headless runs are deterministic by construction, so the same script always prints the same bytes — which is what

@@ -42,7 +42,7 @@ by `tinyctl test` and by this package's own test suite.
 The whole integration, in five steps — each is a few lines of real code in
 [the integration guide](docs/guides/integration.md):
 
-1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.11.0")`, and take only
+1. **Add the dependency** — `.package(url: "https://github.com/olbartek/agentctl-ios", from: "0.12.0")`, and take only
    the products each target needs (`AgentCtlCore` for screens, `AgentCtlTCA` or `AgentCtlObservation` for the
    config, `AgentCtlCLI` for your CLI, `AgentCtlBridge` for the app shell, gated behind `AgentLaunchArguments.isRequested()`,
    and for UI tests that launch the app, `AgentCtlTestSupport` for tests).
@@ -74,10 +74,10 @@ every tag:
 
 ## Status
 
-Version 0.11.0 ([releases](docs/guides/releases.md)). The API may still change between minor versions before 1.0
+Version 0.12.0 ([releases](docs/guides/releases.md)). The API may still change between minor versions before 1.0
 ([before 1.0](docs/guides/before-1.0.md)). MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
 lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,
-so 0.11.x here and 0.11.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
+so 0.12.x here and 0.12.x there implement the same [`CONTRACT.md`](CONTRACT.md). A patch release is one repository's
 own fix, so the two patch numbers can differ.

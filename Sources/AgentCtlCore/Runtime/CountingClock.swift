@@ -9,29 +9,44 @@ public struct CountingClock<Base: Clock>: Clock where Base.Duration == Duration 
   public typealias Instant = Base.Instant
 
   public let base: Base
-  private let counter: Counter
+  private let sleeps: Sleeps
 
   public init(_ base: Base) {
     self.base = base
-    self.counter = Counter()
+    self.sleeps = Sleeps()
   }
 
   /// Sleeps in progress right now.
-  public var activeSleeps: Int { counter.value }
+  public var activeSleeps: Int { sleeps.count }
+
+  /// The earliest deadline among the sleeps in progress, `nil` when there are none. Headlessly, `wait` moves the
+  /// clock from one to the next (CONTRACT.md §2.5).
+  public var earliestDeadline: Instant? { sleeps.earliest }
 
   public var now: Instant { base.now }
   public var minimumResolution: Duration { base.minimumResolution }
 
   public func sleep(until deadline: Instant, tolerance: Duration?) async throws {
-    counter.increment()
-    defer { counter.decrement() }
+    let id = sleeps.add(deadline)
+    defer { sleeps.remove(id) }
     try await base.sleep(until: deadline, tolerance: tolerance)
   }
 
-  final class Counter: Sendable {
-    private let count = Locked(0)
-    var value: Int { count.withLock { $0 } }
-    func increment() { count.withLock { $0 += 1 } }
-    func decrement() { count.withLock { $0 -= 1 } }
+  final class Sleeps: Sendable {
+    private let state = Locked((next: 0, deadlines: [Int: Instant]()))
+    var count: Int { state.withLock { $0.deadlines.count } }
+    var earliest: Instant? { state.withLock { $0.deadlines.values.min() } }
+
+    func add(_ deadline: Instant) -> Int {
+      state.withLock { state in
+        state.next += 1
+        state.deadlines[state.next] = deadline
+        return state.next
+      }
+    }
+
+    func remove(_ id: Int) {
+      state.withLock { _ = $0.deadlines.removeValue(forKey: id) }
+    }
   }
 }

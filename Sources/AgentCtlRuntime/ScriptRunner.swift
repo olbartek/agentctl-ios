@@ -16,17 +16,22 @@
     /// The app's dependencies. Screens, summaries and commands are computed inside them, so they read what the
     /// reducers read (the app's `\.date`, above all) rather than the ambient context. `nil` keeps the ambient one.
     public var dependencies: DependencyValues?
+    /// Headlessly, how long until the earliest sleep on the virtual clock ends (`nil` when nothing sleeps): `wait`
+    /// moves the clock from one deadline to the next. `nil` in the running app, where `wait` waits in real time.
+    public var timeUntilNextSleep: (@MainActor () -> Duration?)?
 
     public init(
       settle: @escaping @MainActor () async -> SettleResult,
       advance: (@MainActor (Duration) async -> Void)?,
       synthesizesAppearance: Bool,
-      dependencies: DependencyValues? = nil
+      dependencies: DependencyValues? = nil,
+      timeUntilNextSleep: (@MainActor () -> Duration?)? = nil
     ) {
       self.settle = settle
       self.advance = advance
       self.synthesizesAppearance = synthesizesAppearance
       self.dependencies = dependencies
+      self.timeUntilNextSleep = timeUntilNextSleep
     }
   }
 
@@ -60,7 +65,7 @@
   /// (AgentCtlBridge).
   @MainActor
   public final class ScriptRunner<Driver: AgentDriver> {
-    public static var runtimeCommandNames: [String] { ["expect", "advance", "mock"] }
+    public static var runtimeCommandNames: [String] { ["expect", "advance", "mock", "wait"] }
 
     /// The app the script drives. `device relaunch` has it replace the app with a fresh one.
     public let driver: Driver
@@ -166,6 +171,8 @@
         return await advance(line)
       case "mock":
         return mock(line)
+      case "wait":
+        return await wait(line)
       case "device" where deviceSurface.exists:
         return await device(line)
       default:
@@ -213,6 +220,82 @@
       await advanceClock(duration)
       let settle = await settleAndAppear()
       return finish(command: line.text, callStart: start, settle: settle, before: before)
+    }
+
+    // MARK: - wait (CONTRACT.md §2.5)
+
+    /// How often a `wait` in the running app looks at the screen.
+    static var waitPollInterval: Duration { .milliseconds(20) }
+
+    /// Waits until the screen matches the line's pairs, or, with none, until its line changes; fails once the
+    /// duration has passed. Headlessly the virtual clock moves from one sleep's deadline to the next, settling after
+    /// each, and stops at the one that brings the match; in the running app real time passes, and what the screen
+    /// shows counts once the app has settled on it.
+    private func wait(_ line: ScriptLine) async -> (step: StepRecord, status: RunStatus) {
+      let arguments: WaitArguments
+      do {
+        arguments = try WaitArguments.parse(line.argument)
+      } catch {
+        return fail(line, status: .usage, error.message)
+      }
+      let duration = arguments.duration
+      let start = callLog.count
+      let before = driver.stateSnapshot()
+      let initial = snapshot(command: line.text)
+      /// The step as it stands, with the calls made since the wait began, and what still keeps it from matching.
+      func current(_ settle: SettleResult) -> (step: StepRecord, unmet: [String]) {
+        let step = record(command: line.text, calls: callLog.entries(since: start), settle: settle)
+        guard let expectation = arguments.expectation else {
+          let changed =
+            step.screen != initial.screen || step.summary != initial.summary || step.error != initial.error
+            || step.prompt != initial.prompt
+          return (step, changed ? [] : ["nothing changed"])
+        }
+        return (step, expectation.evaluate(step.snapshot))
+      }
+
+      var settle = SettleResult(settled: true, pending: pending())
+      if let timeUntilNextSleep = environment.timeUntilNextSleep, let advanceClock = environment.advance {
+        guard duration <= Self.advanceLimit - advanced else {
+          return fail(line, status: .usage, "wait would take the clock past \(Int.max) seconds")
+        }
+        var waited = Duration.zero
+        // A bound, in case a sleep keeps its deadline where it is without ever finishing.
+        for _ in 0..<10_000 where waited < duration && !current(settle).unmet.isEmpty {
+          let step = min(max(timeUntilNextSleep() ?? duration, .zero), duration - waited)
+          await advanceClock(step)
+          advanced += step
+          waited += step
+          settle = await settleAndAppear()
+          guard settle.settled else { break }
+        }
+      } else {
+        // The start is the state the previous step settled on. A change or match counts once the app has settled
+        // on it, so a transition's passing frames are never reported, and a state the app only passes through is
+        // waited past.
+        let clock = ContinuousClock()
+        let began = clock.now
+        while !Task.isCancelled {
+          if !current(settle).unmet.isEmpty {
+            let left = duration - began.duration(to: clock.now)
+            guard left > .zero else { break }
+            try? await clock.sleep(for: min(Self.waitPollInterval, left))
+            continue
+          }
+          settle = await settleAndAppear()
+          guard settle.settled, !current(settle).unmet.isEmpty else { break }
+        }
+      }
+
+      var (step, status) = finish(command: line.text, callStart: start, settle: settle, before: before)
+      guard status == .ok else { return (step, status) }
+      let unmet = current(settle).unmet
+      guard unmet.isEmpty else {
+        step.ok = false
+        step.message = (["wait timed out after \(ScriptParser.formatDuration(duration))"] + unmet).joined(separator: "\n")
+        return (step, .failed)
+      }
+      return (step, status)
     }
 
     private func mock(_ line: ScriptLine) -> (step: StepRecord, status: RunStatus) {

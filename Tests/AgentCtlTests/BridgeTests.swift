@@ -110,6 +110,24 @@
         #expect(response.exit == "0", "\(response.body)")
       }
 
+      /// `wait` in the running app takes real time, and reports a state only once the app has settled on it: the
+      /// cooldown's first tick, a second after `save`, is the change a bare `wait` sees (CONTRACT.md §2.5, §8.5).
+      @Test func waitWaitsInRealTime() async throws {
+        let bridge = try await startBridge()
+        defer { bridge.server.stop() }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let match = try await request("POST", "/run", body: "open 2; save; wait 5s cooldown=2", port: bridge.port)
+        #expect(match.exit == "0", "\(match.body)")
+        #expect(start.duration(to: clock.now) >= .milliseconds(700))
+        let change = try await request("POST", "/run", body: "wait 5s", port: bridge.port)
+        #expect(change.exit == "0", "\(change.body)")
+        #expect(change.body.contains("cooldown=1"), "\(change.body)")
+        let timeout = try await request("POST", "/run", body: "wait 300ms screen=nowhere", port: bridge.port)
+        #expect(timeout.exit == "1")
+        #expect(timeout.body.hasSuffix("  FAIL wait timed out after 300ms\n  FAIL expected screen=nowhere, got screen=items/2\n"), "\(timeout.body)")
+      }
+
       @Test func otherEndpoints() async throws {
         let bridge = try await startBridge()
         defer { bridge.server.stop() }

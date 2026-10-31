@@ -7,11 +7,11 @@ client that is also this package's test fixture.
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.10.0"),
+  .package(url: "https://github.com/olbartek/agentctl-ios", from: "0.11.0"),
 ],
 ```
 
-Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.10.0"` admits every later
+Until 1.0, a minor version may change the API (see [Status](../../README.md#status)); `from: "0.11.0"` admits every later
 `0.x` release, and your `Package.resolved` holds the exact one.
 
 The package identity is `agentctl-ios`. Take only the products each target needs:
@@ -479,6 +479,20 @@ and settling relies on every one of them:
 
 In the app shell, `AgentLaunch(config:)` works as it does for TCA; `launch.app` is the coordinator, and a
 `device relaunch` replaces it (see [the bridge guide](bridge.md)).
+
+### Moving a host to 0.11
+
+0.11 adds `AgentLaunchSession`: everything `AgentLaunch` does — the token gate, `-clear-session`, the live host, the
+launch seed and the bridge — without `@Observable`, so a UIKit app, or any app on iOS 16, starts the bridge with it
+instead of building one from `BridgeServer` (see [the bridge guide](bridge.md#uikit-apps-and-ios-16)). Nothing else
+changes; scripts, scenarios, the CLI and CONTRACT.md (still version 4) are the same.
+
+- **A SwiftUI app keeps `AgentLaunch`**, with the same API. It now wraps a session, which `launch.session` exposes.
+- **`AgentLaunch.Options` is `AgentLaunchOptions`**, a type of its own, as on Android. The old name is an alias.
+- **On Android the names differ**: its `AgentLaunch` plays this `AgentLaunchSession`'s role, and its `AgentLaunchSession`
+  is a lower-level JVM piece. [Differences from agentctl-android](platform-differences.md) maps them.
+- **A host that started the bridge itself** — `BridgeServer` and `BridgeRouter` with its own argument parsing — moves
+  to `AgentLaunchSession` and deletes that code.
 
 ### Moving a host to 0.10
 

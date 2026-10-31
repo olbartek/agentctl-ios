@@ -292,6 +292,81 @@
         #expect(listening.isListening)
         listening.stop()
       }
+
+      /// TinyApp's config, with `device relaunch` allowed in the live app.
+      static var relaunchingConfig: AppCtlConfig<AgentStoreDriver<TinyRoot>> {
+        var config = TinyAppConfig.appCtl
+        config.makeLive = { latency in
+          LiveHost(
+            initialState: { TinyRoot.State() }, reducer: { TinyRoot() }, latency: latency,
+            mockMethods: TinyAppConfig.mockMethods, device: AgentDeviceConfig(relaunch: true)
+          ) { deps, _ in
+            deps.itemsClient = .liveValue
+          }
+        }
+        return config
+      }
+
+      /// The session is the launch without `@Observable`, for UIKit and iOS 16: its seed calls `onReady` once, and a
+      /// `device relaunch` through its bridge calls `onAppChange` with the new app.
+      @Test func aSessionReportsItsSeedAndItsRelaunches() async throws {
+        let session = AgentLaunchSession(
+          config: Self.relaunchingConfig,
+          arguments: ["TinyApp", "-agent-token", Self.token, "-agent-port", "0", "-appctl-seed", "open 2", "-mock-latency", "0"]
+        )
+        var readies = 0
+        var apps: [ObjectIdentifier] = []
+        session.onReady = { readies += 1 }
+        session.onAppChange = { apps.append(ObjectIdentifier($0)) }
+        let first = ObjectIdentifier(session.app)
+        #expect(!session.isReady, "a seed is pending")
+        await session.start()
+        defer { session.stop() }
+        #expect(session.isReady)
+        #expect(readies == 1)
+        #expect(session.isListening)
+        let port = try #require(session.port)
+
+        let response = try await request("POST", "/run", body: "device relaunch", port: port)
+        #expect(response.exit == "0", "\(response.body)")
+        #expect(apps == [ObjectIdentifier(session.app)])
+        #expect(ObjectIdentifier(session.app) != first)
+        #expect(readies == 1, "a relaunch is not a second seed")
+      }
+
+      /// `AgentLaunch` is the same session, observed: its `app` and `isReady` follow the session's.
+      @Test func agentLaunchFollowsItsSession() async throws {
+        let launch = AgentLaunch(
+          config: Self.relaunchingConfig,
+          arguments: ["TinyApp", "-agent-token", Self.token, "-agent-port", "0", "-appctl-seed", "open 2", "-mock-latency", "0"]
+        )
+        #expect(!launch.isReady)
+        await launch.start()
+        defer { launch.stop() }
+        #expect(launch.isReady)
+        let port = try #require(launch.session.port)
+        let before = ObjectIdentifier(launch.app)
+        let response = try await request("POST", "/run", body: "device relaunch", port: port)
+        #expect(response.exit == "0", "\(response.body)")
+        #expect(ObjectIdentifier(launch.app) == ObjectIdentifier(launch.session.app))
+        #expect(ObjectIdentifier(launch.app) != before)
+      }
+
+      /// Without a token a session starts no bridge, and takes no seed, as `AgentLaunch` does.
+      @Test func withoutATokenASessionStartsNoBridge() async throws {
+        let session = AgentLaunchSession(
+          config: TinyAppConfig.appCtl, arguments: ["TinyApp", "-agent-port", "0", "-appctl-seed", "open 2"]
+        )
+        #expect(session.options == AgentLaunchOptions(arguments: []))
+        #expect(session.isReady)
+        await session.start()
+        #expect(!session.isListening)
+        var dumped = ""
+        dump(session, to: &dumped, maxDepth: 4)
+        let listening = AgentLaunchSession(config: TinyAppConfig.appCtl, arguments: ["TinyApp", "-agent-token", Self.token])
+        dump(listening, to: &dumped, maxDepth: 4)
+        #expect(!dumped.contains(Self.token))
+      }
     }
   }
 #endif

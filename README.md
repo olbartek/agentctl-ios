@@ -37,49 +37,6 @@ expect cooldown=2 pending=1 error=cooldown
 — from [`Examples/TinyApp/scenarios/save-cooldown.appctl`](Examples/TinyApp/scenarios/save-cooldown.appctl), run
 by `tinyctl test` and by this package's own test suite.
 
-## How much faster
-
-[`Examples/AgentShop`](Examples/AgentShop) (sign-in, onboarding, a shop) has 99 scenarios that run unchanged in
-three modes: headlessly, through the bridge in the real app on a simulator, and as XCUITests generated from the
-same files. On an Apple M4 Max, with an iPhone 17 Pro simulator:
-
-| | Headless | Simulator, via the bridge | XCUITest |
-|---|---|---|---|
-| All 99 scenarios (1,104 steps) | **1.3 s** | 8 min 2 s | 30 min 8 s |
-| A typical 12-step scenario | **18 ms** | 5.1 s | 18.4 s |
-| Change a line of a reducer, then check it | **1.6 s** | — | 35.2 s |
-
-Headless has nothing to wait for: no simulator, no app to launch, no views, and a test clock instead of real
-time. The bridge pays for a real app, a launch per scenario and a 250 ms quiet window per command; the UI tests
-also pay for a second process that finds every element through accessibility, types key by key and waits for
-every animation. [The full report](docs/benchmarks/2026-09-24-agentshop.md) explains where the time goes, and
-[this video](docs/benchmarks/2026-09-24-agentshop.mp4) runs three scenarios side by side. The same 99 scenarios on
-Android, in [the Kotlin port](https://github.com/olbartek/agentctl-android#how-much-faster), take 291 ms headlessly,
-5 min 48 s through the bridge on an emulator and 5 min 12 s as Compose UI tests.
-
-The modes check different things, so this is not a case for deleting UI tests: the generated UI tests found a
-place where the headless run disagreed with iOS. It is a case for which one an agent runs hundreds of times a day.
-
-## Requirements, and what this is not
-
-- **macOS 15+ and a Swift 6.1+ toolchain** (`swift-tools-version: 6.1`; developed and verified on Swift 6.3,
-  Xcode 26.6). The libraries support iOS 16+ as well (a SwiftUI shell's `AgentLaunch`, which is `@Observable`, needs
-  iOS 17; `AgentLaunchSession` does not); the CLI is macOS-only, see below.
-- **The app is built with [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture)**
-  (1.26+), **or as MVVM-C**: `@Observable` view models under a coordinator, with their dependencies from
-  [swift-dependencies](https://github.com/pointfreeco/swift-dependencies). The engine talks to an `AgentDriver`, never
-  to your app's types; `AgentCtlTCA` drives a store, `AgentCtlObservation` drives a coordinator, and both run the same
-  scripts with the same output (see [MVVM-C](docs/guides/integration.md#mvvm-c-apps-without-tca)).
-- **Screens are driven through state, not through the UI.** Nothing taps and nothing reads pixels; a headless
-  run has no views at all. Rendering is verified separately, by snapshot tests (see
-  [the ladder](docs/guides/verification-ladder.md)).
-- **The CLI cannot ship as a prebuilt binary.** It links your reducers: it builds your app's store in its own
-  process and sends your actions to it. So `AgentCtlCLI` is a *library*, and each host compiles a small
-  executable — an import, its `AppCtlConfig`, one call — that becomes its own CLI. That executable is macOS-only
-  because it shells out to `xcodebuild`, `simctl` and SwiftPM, which is why every file in `AgentCtlCLI` is
-  wrapped in `#if os(macOS)`: building the package for an iOS destination compiles that target to nothing
-  instead of failing.
-
 ## Get started
 
 The whole integration, in five steps — each is a few lines of real code in
@@ -95,92 +52,30 @@ The whole integration, in five steps — each is a few lines of real code in
 4. **Copy the wrapper** — [`Templates/appctl`](Templates/appctl) rebuilds the CLI quietly before every call.
 5. **Run something** — `./appctl screens`, `./appctl run "…"`, `./appctl test`.
 
-## Packages
+## Documentation
 
-### What this package provides
+The [wiki](https://github.com/olbartek/agentctl-ios/wiki) is where to read it all. It is generated from this
+repository's [`docs/guides`](docs/guides) by [`scripts/wiki-sync`](scripts/wiki-sync), so the same pages are here, at
+every tag:
 
-Take only the products each target needs. Everything but `AgentCtlCore` compiles to nothing in a Release build, so
-only the screens' agent surface ships.
-
-| Product | What it is for | Who depends on it | In a Release build |
-|---|---|---|---|
-| `AgentCtlCore` | The vocabulary: `AgentScreen`, commands and their gates, `AgentViewModel`, the script parser, `expect`, mocked calls and faults, the simulated device | your features' `+Agent.swift` files | ships |
-| `AgentCtlRuntime` | The engine: `ScriptRunner`, settling, the headless and live hosts, `AppCtlConfig`, the deterministic executor | your config module | compiled away |
-| `AgentCtlTCA` | `AgentStoreDriver`: drives a Composable Architecture store | the config module of a TCA app | compiled away |
-| `AgentCtlObservation` | `AgentObservationDriver`: drives view models under an `AgentCoordinator` (MVVM-C, no TCA) | the config module of an MVVM-C app | compiled away |
-| `AgentCtlBridge` | The in-app bridge: `AgentLaunch` (SwiftUI, iOS 17+), `AgentLaunchSession` (UIKit or iOS 16), the token-checked HTTP server on `127.0.0.1` | the app shell, in `#if DEBUG` | compiled away |
-| `AgentCtlCLI` | The CLI as a library: `run`, `test`, `docs`, `check`, `app …`, `device …`; macOS only | your CLI executable (4 lines) | not linked by the app |
-| `AgentCtlTestSupport` | `AgentCoverage` and `AgentScenarioChecks`: the guards that fail a build when the agent surface drifts | your test targets | not linked by the app |
-
-### What it depends on
-
-| Package | Used by | What for |
-|---|---|---|
-| [swift-dependencies](https://github.com/pointfreeco/swift-dependencies) | `AgentCtlCore`, `AgentCtlRuntime`, `AgentCtlObservation` | The `@Dependency` values a headless run swaps: the clock, mocked clients, the simulated device |
-| [swift-clocks](https://github.com/pointfreeco/swift-clocks) | `AgentCtlRuntime` | `TestClock`: a headless run's time, which `advance` moves instead of waiting |
-| [swift-concurrency-extras](https://github.com/pointfreeco/swift-concurrency-extras) | `AgentCtlRuntime` | The main serial executor, which makes a headless run's task scheduling deterministic |
-| [swift-composable-architecture](https://github.com/pointfreeco/swift-composable-architecture) | `AgentCtlTCA` (and TinyApp, AgentShop) | The store `AgentStoreDriver` drives; only a TCA app links it |
-| [swift-custom-dump](https://github.com/pointfreeco/swift-custom-dump) | `AgentCtlObservation` | Diffing two dumps of the view models' state, to show what a step changed |
-| [swift-argument-parser](https://github.com/apple/swift-argument-parser) | `AgentCtlCLI` | The CLI's commands, options and help pages |
-
-Apple's own frameworks fill in the rest: Network for the bridge's listener, Security for its token, Observation for
-`AgentLaunch`, AVFoundation for the CLI's recordings.
-
-## Guides
-
-| Guide | What it covers |
+| Page | What it covers |
 |---|---|
-| [Integration](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps, and moving a host to 0.7, 0.8, 0.9, 0.10 and 0.11. |
+| [Overview](docs/guides/overview.md) | How much faster than UI tests, what it needs and is not, the packages, the example apps, building this repository. |
+| [Getting started](docs/guides/integration.md) | The five steps above in full: screens, commands (`.action`, `.parsing`, `.text`, `.onOff`, `.choice`), gates, containers and inherited commands, mocked clients and `mockCall`, the config, debug-only builds, the wrapper; MVVM-C apps. |
 | [Commands](docs/guides/commands.md) | Every command your CLI gets (`run`, `test`, `docs`, `check`, `app …`), the exit codes, the runtime commands, and what a headless run pins to stay deterministic. |
-| [The device environment](docs/guides/device-environment.md) | `device …`: permissions and system prompts, links, pushes, background, foreground and relaunch, the network, location and biometry — one row per capability, with what your app wires and the real-OS `app` wrapper. |
+| [The in-app bridge](docs/guides/bridge.md) | Driving the real app on a simulator: `AgentLaunch` and `AgentLaunchSession`, launch seeds, `advance` on real time, `app test`, the bridge's token, and UI tests that launch the app. |
+| [The device environment](docs/guides/device-environment.md) | `device …`: permissions and system prompts, links, pushes, background, foreground and relaunch, the network, location and biometry. |
 | [The verification ladder](docs/guides/verification-ladder.md) | `check`, from `swift build` to the real app on a simulator, and verifying at the cheapest rung that proves a change. |
-| [Coverage and scenario checks](docs/guides/coverage-and-checks.md) | The guards that fail your build when the agent surface drifts, and the scenario checks every host's tests need. |
-| [The in-app bridge](docs/guides/bridge.md) | Driving the real app on a simulator: `AgentLaunch` and `isRequested()`, launch seeds, `advance` on real time, `app test`, the bridge's token, and UI tests that launch the app. |
-| [Differences from agentctl-android](docs/guides/platform-differences.md) | Which type plays which role on each side where the names differ — the bridge's launch above all — and what is to be settled before 1.0. |
-| [CONTRACT.md](CONTRACT.md) | The engine specified independently of Swift: what a port implements. |
-
-## The contract
-
-[`CONTRACT.md`](CONTRACT.md) specifies the engine independently of Swift: the script language and its quoting,
-command resolution, the three runtime commands, the exact step output format, `expect` semantics and failure
-text, the exit codes, the determinism requirements, and the in-app bridge's wire protocol. It is what a port in
-another language implements, and it is a more precise description of the behaviour summarized above. Its
-examples are TinyApp's, and their output is real.
-
-## The example apps
-
-[`Examples/TinyApp`](Examples/TinyApp) is the smallest complete integration and this package's fixture: two screens,
-one mocked client, five scenarios, its own `tinyctl` executable and a committed
-[generated command reference](Examples/TinyApp/agent-commands.md). See
-[its README](Examples/TinyApp/README.md), or just run it:
-
-```bash
-swift run tinyctl run "open 2; save; advance 3s"
-swift run tinyctl test
-swift test          # this package's own suite, driven against TinyApp
-```
-
-[`Examples/TinyMVVM`](Examples/TinyMVVM) is TinyApp rebuilt as MVVM-C, with no TCA. It runs TinyApp's scenario files
-unchanged and prints the same output byte for byte (`swift run tinymvvmctl test` in its directory). It is its own
-package, depending on this one by path, because Swift's `@Observable` needs iOS 17. See
-[its README](Examples/TinyMVVM/README.md).
-
-[`Examples/AgentShop`](Examples/AgentShop) is the showcase: a real iOS app (sign-in, onboarding, a shop with a
-cart and checkout) with an Xcode project, 123 scenarios, UI tests generated from them, and the benchmark behind
-[the numbers above](#how-much-faster). It is its own package, depending on this one by path. See
-[its README](Examples/AgentShop/README.md).
+| [Coverage and checks](docs/guides/coverage-and-checks.md) | The guards that fail your build when the agent surface drifts, and the scenario checks every host's tests need. |
+| [Platform differences](docs/guides/platform-differences.md) | Which type plays which role here and in [agentctl-android](https://github.com/olbartek/agentctl-android) where the names differ. |
+| [The contract](docs/guides/contract.md) | [`CONTRACT.md`](CONTRACT.md), the engine specified independently of Swift: what a port implements. |
+| [Releases](docs/guides/releases.md) | Every version, and what a host changes to move to it. |
+| [Before 1.0](docs/guides/before-1.0.md) | What may still change, and what is to be settled by 1.0. |
 
 ## Status
 
-Version 0.11.0: `AgentLaunchSession` starts the bridge in a UIKit app or on iOS 16, where the `@Observable`
-`AgentLaunch` cannot — on top of 0.10's iOS 16 floor; 0.9's debug bridge, which answers only requests that carry the
-token its launch was given (a fresh one per `app launch`, kept in `.appctl/bridge.json`), from a loopback `Host` with
-no `Origin`, with a body of at most 1 MiB (CONTRACT.md version 4); 0.8's stricter scripts and exit codes; 0.7's engine
-that drives any architecture (a TCA store through `AgentStoreDriver`, or view models under a coordinator through
-`AgentObservationDriver`); 0.6's [device environment](docs/guides/device-environment.md) and 0.5, which was extracted
-from the app it was built for. The three example apps in this repository are the integrations CI exercises, and the
-API may still change between minor versions before 1.0; see
-[moving a host to 0.11](docs/guides/integration.md#moving-a-host-to-011). MIT licensed.
+Version 0.11.0 ([releases](docs/guides/releases.md)). The API may still change between minor versions before 1.0
+([before 1.0](docs/guides/before-1.0.md)). MIT licensed.
 
 [agentctl-android](https://github.com/olbartek/agentctl-android) is the Kotlin port of this package. The two move in
 lockstep: the same features, the same example apps with the same scenario files, and the same MAJOR.MINOR version,

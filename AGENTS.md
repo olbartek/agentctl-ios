@@ -47,8 +47,22 @@ The two repositories share MAJOR.MINOR; PATCH is each repository's own.
 - **A change to step output, the CLI's surface, CONTRACT.md or a scenario is never a patch.** It is a minor release
   of both repositories.
 
-Tags are bare `X.Y.Z` on `main`. To release here: bump the version pins (README.md and docs/guides/integration.md) and the README's Status, merge, then tag and push the
-tag. For a minor or major release, release agentctl-android with the same number.
+Tags are bare `X.Y.Z` on `main`. To release here: bump the version pins (README.md and docs/guides/integration.md) and the README's Status, add the version's section to docs/guides/releases.md (`## X.Y.Z (YYYY-MM-DD)`, newest first, with its "Moving a host to X.Y"), merge, then tag and push the
+tag, run `scripts/wiki-sync` and check it with `scripts/wiki-sync --check`. For a minor or major release, release agentctl-android with the same number.
+
+## The wiki
+
+The [wiki](https://github.com/olbartek/agentctl-ios/wiki) is built from README.md and docs/guides by
+`scripts/wiki-sync`; it is never edited in the browser.
+
+Every change that touches public API, CONTRACT, CLI, docs/guides, README or a release updates the wiki in the same
+cycle: after the merge, run `scripts/wiki-sync` and push the wiki; a release is not done until
+`scripts/wiki-sync --check` passes. The page list and format are shared with the sibling library
+(nzozopole-hub plans/2026-10-31-agentctl-wiki.md); changing them is agreed through nzoz-lead and done on both.
+
+- A wiki page's source is one file: Home is README.md's intro and docs/guides/overview.md; every other page is the
+  docs/guides file `scripts/wiki-sync`'s page table names. Write in those files, never in the wiki.
+- `scripts/wiki-sync --out <dir>` writes the pages without publishing, for a look first.
 
 ## After a merge
 

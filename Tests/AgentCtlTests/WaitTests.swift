@@ -84,17 +84,17 @@ extension AgentCtlSuite {
     }
 
     @Test func parsing() throws {
-      #expect(try WaitArguments.parse(nil) == WaitArguments(duration: .seconds(10)))
-      #expect(try WaitArguments.parse("500ms") == WaitArguments(duration: .milliseconds(500)))
+      #expect(try AgentWaitArguments.parse(nil) == AgentWaitArguments(duration: .seconds(10)))
+      #expect(try AgentWaitArguments.parse("500ms") == AgentWaitArguments(duration: .milliseconds(500)))
       #expect(
-        try WaitArguments.parse("screen=items title=\"Second item\"")
-          == WaitArguments(expectation: Expectation(pairs: [.init("screen", "items"), .init("title", "Second item")]))
+        try AgentWaitArguments.parse("screen=items title=\"Second item\"")
+          == AgentWaitArguments(expectation: Expectation(pairs: [.init("screen", "items"), .init("title", "Second item")]))
       )
       #expect(
-        try WaitArguments.parse("30s screen=items")
-          == WaitArguments(duration: .seconds(30), expectation: Expectation(pairs: [.init("screen", "items")]))
+        try AgentWaitArguments.parse("30s screen=items")
+          == AgentWaitArguments(duration: .seconds(30), expectation: Expectation(pairs: [.init("screen", "items")]))
       )
-      #expect(throws: ExpectationSyntaxError.self) { try WaitArguments.parse("screen=items 30s") }
+      #expect(throws: ExpectationSyntaxError.self) { try AgentWaitArguments.parse("screen=items 30s") }
       #expect(ScriptParser.formatDuration(.milliseconds(1500)) == "1500ms")
       #expect(ScriptParser.formatDuration(.seconds(90)) == "90s")
       #expect(ScriptParser.formatDuration(.seconds(300)) == "5m")

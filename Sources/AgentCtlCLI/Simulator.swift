@@ -410,7 +410,7 @@
     /// ``waitMargin`` when they add up to more, so a wait never ends on the client's side first.
     static func limit(for script: String?) -> TimeInterval {
       guard let script, let lines = try? ScriptParser.parse(script) else { return scriptLimit }
-      let waits = lines.filter { $0.name == "wait" }.compactMap { try? WaitArguments.parse($0.argument).duration }
+      let waits = lines.filter { $0.name == "wait" }.compactMap { try? AgentWaitArguments.parse($0.argument).duration }
       guard !waits.isEmpty else { return scriptLimit }
       let seconds = waits.reduce(0.0) { $0 + Double($1.components.seconds) + Double($1.components.attoseconds) / 1e18 }
       return max(scriptLimit, seconds + waitMargin)

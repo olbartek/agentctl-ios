@@ -93,7 +93,7 @@ public struct Expectation: Equatable, Sendable {
 
 /// `wait [<duration>] [k=v …]` (CONTRACT.md §2.5): how long to wait, and for what. With pairs, until they all
 /// match, as `expect` would check them; with none, until the screen's line changes.
-public struct WaitArguments: Equatable, Sendable {
+public struct AgentWaitArguments: Equatable, Sendable {
   /// How long a `wait` that names no duration waits.
   public static var defaultDuration: Duration { .seconds(10) }
 

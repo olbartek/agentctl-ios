@@ -232,9 +232,9 @@
     /// each, and stops at the one that brings the match; in the running app real time passes, and what the screen
     /// shows counts once the app has settled on it.
     private func wait(_ line: ScriptLine) async -> (step: StepRecord, status: RunStatus) {
-      let arguments: WaitArguments
+      let arguments: AgentWaitArguments
       do {
-        arguments = try WaitArguments.parse(line.argument)
+        arguments = try AgentWaitArguments.parse(line.argument)
       } catch {
         return fail(line, status: .usage, error.message)
       }

@@ -33,3 +33,5 @@ public struct AppFactory {}
 public struct Driver {}
 public struct Coordinator {}
 public struct ViewModel {}
+// 0.12: `wait`.
+public struct WaitArguments {}

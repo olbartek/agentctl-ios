@@ -59,17 +59,12 @@ jobs:
       - name: Generated command reference is current
         run: swift run tinyctl docs --check
 
-      - name: TinyApp's scenarios on TinyMVVM (MVVM-C, no TCA)
-        run: swift run tinymvvmctl test
-
-      - name: TinyMVVM's command reference is current
-        run: swift run tinymvvmctl docs --check
-
   # The package's two advertised properties that the host-side steps above never exercise, each in its own job so
   # they run alongside the tests.
 
-  # The libraries support iOS (only AgentCtlCLI is macOS-only, and compiles to nothing there). Build every target of
-  # the package for the iOS Simulator, the way a host app's Xcode build does.
+  # The libraries support iOS 16 and later (only AgentCtlCLI is macOS-only, and compiles to nothing there). Build every
+  # target of the package for the iOS Simulator, the way a host app's Xcode build does, at iOS 16 whatever the manifest
+  # says: an API newer than iOS 16 without `@available` fails the build, so the floor cannot creep up.
   ios:
     runs-on: macos-26
     timeout-minutes: 20
@@ -100,7 +95,7 @@ jobs:
           set -euo pipefail
           xcodebuild -list
           xcodebuild build -quiet -scheme agent-ctl-Package -destination 'generic/platform=iOS Simulator' \
-            -skipMacroValidation
+            -skipMacroValidation IPHONEOS_DEPLOYMENT_TARGET=16.0
 
   # AgentCtlBridge is `#if DEBUG` from end to end, and AgentCtlTCA, AgentCtlCLI and AgentCtlTestSupport are
   # `#if DEBUG || AGENTCTL_RELEASE`, so a host's Release build compiles them all away. A Release build of the package
@@ -178,7 +173,17 @@ jobs:
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
-          key: ${{ runner.os }}-swiftpm-agentshop-${{ hashFiles('agentctl-ios/Examples/AgentShop/Package.resolved', 'agentctl-ios/Examples/AgentShop/App/AgentShop.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          key: ${{ runner.os }}-swiftpm-agentshop-${{ hashFiles('agentctl-ios/Examples/AgentShop/Package.resolved', 'agentctl-ios/Examples/TinyMVVM/Package.resolved', 'agentctl-ios/Examples/AgentShop/App/AgentShop.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+      # TinyMVVM, TinyApp as MVVM-C: its own package, since Swift's `@Observable` needs iOS 17. Its tests run every
+      # script of TinyApp's transcripts (kept current by the root package's tests) and compare.
+      - name: TinyMVVM's tests, TinyApp's scenarios on it, and its command reference
+        run: |
+          set -euo pipefail
+          swift test
+          swift run tinymvvmctl test
+          swift run tinymvvmctl docs --check
+        working-directory: agentctl-ios/Examples/TinyMVVM
 
       - name: Test
         run: swift test
